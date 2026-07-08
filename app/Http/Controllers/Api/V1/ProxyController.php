@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\LlmRun;
 use App\Models\ProviderCredential;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
@@ -35,8 +36,14 @@ class ProxyController extends Controller
         $base = rtrim($cred->base_url ?: 'https://openrouter.ai/api/v1', '/');
         $url = $base.'/chat/completions';
         $payload = $request->all();
+
+        // Luczor-only metadata; strip before forwarding to OpenRouter.
+        $taskType = is_string($payload['task_type'] ?? null) ? $payload['task_type'] : 'chat.general';
+        unset($payload['task_type']);
+        $model = is_string($payload['model'] ?? null) ? $payload['model'] : 'unknown';
         $stream = (bool) ($payload['stream'] ?? false);
 
+        $started = microtime(true);
         $client = new Client(['timeout' => 0]);
 
         $upstream = $client->post($url, [
@@ -55,22 +62,61 @@ class ProxyController extends Controller
         $status = $upstream->getStatusCode();
 
         if (! $stream) {
-            return response($upstream->getBody()->getContents(), $status)
-                ->header('Content-Type', 'application/json');
+            $bodyStr = $upstream->getBody()->getContents();
+            $json = json_decode($bodyStr, true) ?: [];
+            $this->recordRun($request, $model, $taskType, $status, (int) round((microtime(true) - $started) * 1000),
+                $json['usage']['prompt_tokens'] ?? null, $json['usage']['completion_tokens'] ?? null);
+
+            return response($bodyStr, $status)->header('Content-Type', 'application/json');
         }
 
         $body = $upstream->getBody();
+        $ctx = [
+            'user_id' => $request->user()?->id,
+            'client_id' => $request->input('client_id'),
+            'project_id' => $request->input('project_id'),
+        ];
 
-        return new StreamedResponse(function () use ($body) {
+        return new StreamedResponse(function () use ($body, $ctx, $model, $taskType, $status, $started) {
             while (! $body->eof()) {
                 echo $body->read(8192);
                 @ob_flush();
                 @flush();
             }
+            $ok = $status >= 200 && $status < 300;
+            LlmRun::create([
+                'user_id' => $ctx['user_id'],
+                'client_id' => $ctx['client_id'],
+                'project_id' => $ctx['project_id'],
+                'task_type' => $taskType,
+                'model_id' => $model,
+                'provider_id' => 'openrouter',
+                'status' => $ok ? 'ok' : 'error',
+                'success' => $ok,
+                'latency_ms' => (int) round((microtime(true) - $started) * 1000),
+            ]);
         }, $status, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
             'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    private function recordRun(Request $request, string $model, string $taskType, int $status, int $latencyMs, ?int $inTok, ?int $outTok): void
+    {
+        $ok = $status >= 200 && $status < 300;
+        LlmRun::create([
+            'user_id' => $request->user()?->id,
+            'client_id' => $request->input('client_id'),
+            'project_id' => $request->input('project_id'),
+            'task_type' => $taskType,
+            'model_id' => $model,
+            'provider_id' => 'openrouter',
+            'status' => $ok ? 'ok' : 'error',
+            'success' => $ok,
+            'latency_ms' => $latencyMs,
+            'input_tokens' => $inTok,
+            'output_tokens' => $outTok,
         ]);
     }
 

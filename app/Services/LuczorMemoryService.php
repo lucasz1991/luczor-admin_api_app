@@ -2,15 +2,18 @@
 
 namespace App\Services;
 
+use App\Models\MemoryLink;
 use App\Services\Cognee\CogneeClient;
+use Illuminate\Support\Str;
 
 /**
- * Server-side memory facade mirroring the desktop LuczorMemoryService.
+ * Server-side memory facade (Masterplan v3).
  *
- * The rest of the Laravel app (controllers, jobs) uses this facade instead of
- * calling Cognee directly, so dataset namespacing, scope rules and graceful
- * degradation live in ONE place. When Cognee is not configured, remember/recall
- * degrade to no-ops (recall returns []) while the sync archive keeps working.
+ * System-of-Record: the `memory_links` table (stable pointers + summary +
+ * staleness). Engine: Cognee (semantic recall / graph). remember() writes the
+ * link row ALWAYS and Cognee best-effort; recall() prefers Cognee and falls
+ * back to the summaries in memory_links so the system stays useful before
+ * Cognee is deployed.
  */
 class LuczorMemoryService
 {
@@ -19,14 +22,12 @@ class LuczorMemoryService
         $this->cognee ??= CogneeClient::fromConfig();
     }
 
-    public function enabled(): bool
+    public function cogneeEnabled(): bool
     {
         return $this->cognee->enabled();
     }
 
-    /**
-     * Namespaced dataset key. Scopes: private | project | skill | agent | global.
-     */
+    /** Namespaced dataset key. Scopes: private|project|skill|agent|global. */
     public function datasetFor(string $scope, array $ids = []): string
     {
         $user = $ids['user_id'] ?? 'server';
@@ -40,39 +41,112 @@ class LuczorMemoryService
         };
     }
 
-    /**
-     * @param  array<string,mixed>  $meta
-     */
-    public function remember(string $scope, string $content, array $ids = [], array $meta = []): void
+    /** @param array<string,mixed> $data */
+    public function remember(array $data): MemoryLink
     {
-        $content = trim($content);
-        if ($content === '' || ! $this->cognee->enabled()) {
-            return;
+        $scope = $data['scope'] ?? 'project';
+        $ids = [
+            'user_id' => $data['user_id'] ?? null,
+            'project_id' => $data['project_id'] ?? null,
+            'agent_id' => $data['agent_id'] ?? null,
+        ];
+        $dataset = $this->datasetFor($scope, $ids);
+        $content = trim((string) ($data['content'] ?? ''));
+        $visibility = $data['visibility'] ?? 'syncable';
+
+        $cogneeId = null;
+        if ($content !== '' && $visibility !== 'private' && $this->cognee->enabled()) {
+            $res = $this->cognee->add($dataset, $content, [
+                'scope' => $scope,
+                'project_id' => $data['project_id'] ?? null,
+                'feature_key' => $data['feature_key'] ?? null,
+                'type' => $data['type'] ?? 'note',
+            ]);
+            $cogneeId = $res['id'] ?? ($res['memory_id'] ?? null);
         }
 
-        $this->cognee->add($this->datasetFor($scope, $ids), $content, array_merge($meta, [
-            'scope' => $scope,
-            'user_id' => $ids['user_id'] ?? null,
-            'project_id' => $ids['project_id'] ?? null,
-        ]));
+        return MemoryLink::updateOrCreate(
+            [
+                'client_id' => $data['client_id'] ?? null,
+                'external_id' => $data['external_id'] ?? (string) Str::uuid(),
+            ],
+            [
+                'scope' => $scope,
+                'dataset' => $dataset,
+                'project_id' => $data['project_id'] ?? null,
+                'feature_key' => $data['feature_key'] ?? null,
+                'session_id' => $data['session_id'] ?? null,
+                'cognee_memory_id' => $cogneeId,
+                'type' => $data['type'] ?? 'note',
+                'visibility' => $visibility,
+                'staleness' => 'fresh',
+                'importance' => (float) ($data['importance'] ?? 0.5),
+                'summary' => mb_substr($content, 0, 500),
+                'meta' => $data['meta'] ?? null,
+            ]
+        );
     }
 
-    /**
-     * @return array<int,mixed>
-     */
-    public function recall(string $scope, string $query, array $ids = [], int $topK = 6): array
+    /** @return array<int,array<string,mixed>> */
+    public function recall(string $query, string $scope, array $ids = [], int $topK = 6): array
     {
-        if (! $this->cognee->enabled()) {
-            return [];
-        }
+        $dataset = $this->datasetFor($scope, $ids);
+        $topK = max(1, min(20, $topK));
 
-        return $this->cognee->search($this->datasetFor($scope, $ids), $query, $topK);
-    }
-
-    public function forget(string $scope, string $id, array $ids = []): void
-    {
         if ($this->cognee->enabled()) {
-            $this->cognee->delete($this->datasetFor($scope, $ids), $id);
+            $hits = $this->cognee->search($dataset, $query, $topK);
+            if (! empty($hits)) {
+                return array_map(fn ($h) => [
+                    'id' => $h['id'] ?? null,
+                    'content' => $h['text'] ?? ($h['content'] ?? ($h['metadata']['content'] ?? '')),
+                    'type' => $h['metadata']['type'] ?? 'note',
+                    'importance' => (float) ($h['metadata']['importance'] ?? ($h['score'] ?? 0.5)),
+                    'staleness' => 'fresh',
+                    'feature_key' => $h['metadata']['feature_key'] ?? null,
+                    'source' => 'cognee',
+                ], $hits);
+            }
+        }
+
+        // Fallback: degraded recall from the memory_links summaries.
+        $q = trim($query);
+        $base = MemoryLink::query()->where('dataset', $dataset)->where('visibility', '!=', 'private');
+
+        $rows = (clone $base)
+            ->when($q !== '', fn ($qb) => $qb->where('summary', 'like', '%'.$q.'%'))
+            ->orderByDesc('importance')->orderByDesc('updated_at')
+            ->limit($topK)->get();
+
+        if ($rows->isEmpty()) {
+            $rows = (clone $base)->orderByDesc('importance')->orderByDesc('updated_at')->limit($topK)->get();
+        }
+
+        return $rows->map(fn (MemoryLink $r) => [
+            'id' => $r->external_id ?: (string) $r->id,
+            'content' => $r->summary,
+            'type' => $r->type,
+            'importance' => (float) $r->importance,
+            'staleness' => $r->staleness,
+            'feature_key' => $r->feature_key,
+            'source' => 'links',
+        ])->all();
+    }
+
+    public function forget(string $scope, string $externalId, array $ids = [], ?string $clientId = null): void
+    {
+        $dataset = $this->datasetFor($scope, $ids);
+
+        $link = MemoryLink::query()
+            ->where('dataset', $dataset)
+            ->where('external_id', $externalId)
+            ->when($clientId, fn ($q) => $q->where('client_id', $clientId))
+            ->first();
+
+        if ($link) {
+            if ($this->cognee->enabled() && $link->cognee_memory_id) {
+                $this->cognee->delete($dataset, $link->cognee_memory_id);
+            }
+            $link->delete();
         }
     }
 
@@ -81,5 +155,12 @@ class LuczorMemoryService
         if ($this->cognee->enabled()) {
             $this->cognee->cognify($this->datasetFor($scope, $ids));
         }
+    }
+
+    public function pendingCount(?string $clientId = null): int
+    {
+        return MemoryLink::query()
+            ->when($clientId, fn ($q) => $q->where('client_id', $clientId))
+            ->count();
     }
 }
