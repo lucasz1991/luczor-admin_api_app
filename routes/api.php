@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AgentEventController;
 use App\Http\Controllers\Api\V1\BootstrapController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\ProxyController;
 use App\Http\Controllers\Api\V1\SyncController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,4 +27,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/agent-events', [AgentEventController::class, 'store'])
         ->middleware('luczor.api:brain.write')
         ->name('api.v1.agent-events.store');
+
+    Route::middleware('luczor.api:proxy.use')->group(function () {
+        Route::post('/proxy/chat', [ProxyController::class, 'chat'])->name('api.v1.proxy.chat');
+        Route::post('/proxy/eleven/tts', [ProxyController::class, 'elevenTts'])->name('api.v1.proxy.eleven.tts');
+        Route::post('/proxy/eleven/stt', [ProxyController::class, 'elevenStt'])->name('api.v1.proxy.eleven.stt');
+    });
 });

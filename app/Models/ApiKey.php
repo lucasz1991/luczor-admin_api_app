@@ -17,6 +17,7 @@ class ApiKey extends Model
         'settings.write',
         'brain.read',
         'brain.write',
+        'proxy.use',
         'all',
     ];
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 
 class BootstrapController extends Controller
@@ -57,6 +58,8 @@ class BootstrapController extends Controller
             'default_model_profile' => config('luczor.default_model_profile'),
             'api_prefix' => config('luczor.api_prefix'),
             'registration_enabled' => (bool) config('luczor.allow_registration'),
+            // Server-managed client defaults, editable in the admin dashboard.
+            'settings' => Setting::asMap(),
         ];
     }
 

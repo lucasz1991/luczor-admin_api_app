@@ -34,6 +34,36 @@
         @endforeach
     </section>
 
+    <section class="mt-8">
+        <div class="luczor-card p-5">
+            <h2 class="text-lg font-semibold text-white">Client-Einstellungen (Server-Defaults)</h2>
+            <p class="mt-1 text-sm text-slate-400">Werden an die Desktop-App ausgeliefert (<code class="text-cyan-200">/api/v1/runtime-settings</code>).</p>
+            <form class="mt-4" method="POST" action="{{ route('dashboard.settings.store') }}">
+                @csrf
+                <div class="grid gap-3 md:grid-cols-2">
+                    @foreach ($settings as $setting)
+                        <div class="rounded border border-slate-800 bg-slate-950/50 px-3 py-2">
+                            <div class="text-sm text-slate-200">{{ $setting->label ?? $setting->key }} <span class="text-xs text-slate-500">({{ $setting->key }})</span></div>
+                            <div class="mt-2">
+                                @if ($setting->type === 'bool')
+                                    <label class="flex items-center gap-2 text-sm text-slate-300">
+                                        <input type="checkbox" class="rounded border-slate-700 bg-slate-950 text-cyan-400" name="settings[{{ $setting->key }}]" value="1" @checked($setting->value['v'] ?? false)>
+                                        aktiviert
+                                    </label>
+                                @elseif ($setting->type === 'number')
+                                    <input type="number" step="any" class="luczor-input" name="settings[{{ $setting->key }}]" value="{{ $setting->value['v'] ?? 0 }}">
+                                @else
+                                    <input type="text" class="luczor-input" name="settings[{{ $setting->key }}]" value="{{ $setting->value['v'] ?? '' }}">
+                                @endif
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+                <button class="luczor-btn mt-4" type="submit">Einstellungen speichern</button>
+            </form>
+        </div>
+    </section>
+
     <section class="mt-8 grid gap-6 lg:grid-cols-2">
         <div class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Device API Key erstellen</h2>

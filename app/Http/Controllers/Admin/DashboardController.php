@@ -13,6 +13,7 @@ use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
 use App\Models\ProviderCredential;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Str;
@@ -35,7 +36,36 @@ class DashboardController extends Controller
                 'summaries' => LuczorSummaryArchive::count(),
                 'agent_events' => LuczorAgentEventArchive::count(),
             ],
+            'settings' => Setting::orderBy('group')->orderBy('key')->get(),
         ]);
+    }
+
+    public function storeSettings(Request $request)
+    {
+        $incoming = (array) $request->input('settings', []);
+
+        foreach (Setting::all() as $setting) {
+            $attrs = ['group' => $setting->group, 'label' => $setting->label, 'type' => $setting->type];
+
+            if (! array_key_exists($setting->key, $incoming)) {
+                // Unchecked checkboxes are absent -> false.
+                if ($setting->type === 'bool') {
+                    Setting::putValue($setting->key, false, $attrs);
+                }
+                continue;
+            }
+
+            $raw = $incoming[$setting->key];
+            $value = match ($setting->type) {
+                'bool' => filter_var($raw, FILTER_VALIDATE_BOOLEAN),
+                'number' => is_numeric($raw) ? (float) $raw : 0,
+                default => (string) $raw,
+            };
+
+            Setting::putValue($setting->key, $value, $attrs);
+        }
+
+        return Redirect::route('dashboard')->with('status', 'Einstellungen gespeichert.');
     }
 
     public function storeApiKey(Request $request)
