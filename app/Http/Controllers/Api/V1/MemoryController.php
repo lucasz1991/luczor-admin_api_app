@@ -36,12 +36,13 @@ class MemoryController extends Controller
             'external_id' => ['nullable', 'string', 'max:190'],
             'client_id' => ['nullable', 'string', 'max:120'],
             'tags' => ['nullable', 'array'],
+            'meta' => ['nullable', 'array'],
         ]);
 
         $link = $memory->remember(array_merge($data, [
             'user_id' => $request->user()?->id,
             'scope' => $data['scope'] ?? 'project',
-            'meta' => ['tags' => $data['tags'] ?? []],
+            'meta' => array_merge($data['meta'] ?? [], ['tags' => $data['tags'] ?? []]),
         ]));
 
         return response()->json([

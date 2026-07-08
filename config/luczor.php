@@ -12,4 +12,11 @@ return [
         'api_key' => env('COGNEE_API_KEY', ''),
         'timeout' => (int) env('COGNEE_TIMEOUT', 15),
     ],
+
+    // Optional Graphify connector. Empty base_url keeps the deterministic
+    // Git/query fallback active for MVP and tests.
+    'graphify' => [
+        'base_url' => env('GRAPHIFY_BASE_URL', ''),
+        'timeout' => (int) env('GRAPHIFY_TIMEOUT', 10),
+    ],
 ];

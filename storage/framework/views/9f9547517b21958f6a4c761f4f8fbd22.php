@@ -43,6 +43,36 @@
         <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </section>
 
+    <section class="mt-8">
+        <div class="luczor-card p-5">
+            <h2 class="text-lg font-semibold text-white">Client-Einstellungen (Server-Defaults)</h2>
+            <p class="mt-1 text-sm text-slate-400">Werden an die Desktop-App ausgeliefert (<code class="text-cyan-200">/api/v1/runtime-settings</code>).</p>
+            <form class="mt-4" method="POST" action="<?php echo e(route('dashboard.settings.store')); ?>">
+                <?php echo csrf_field(); ?>
+                <div class="grid gap-3 md:grid-cols-2">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $settings; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $setting): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                        <div class="rounded border border-slate-800 bg-slate-950/50 px-3 py-2">
+                            <div class="text-sm text-slate-200"><?php echo e($setting->label ?? $setting->key); ?> <span class="text-xs text-slate-500">(<?php echo e($setting->key); ?>)</span></div>
+                            <div class="mt-2">
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($setting->type === 'bool'): ?>
+                                    <label class="flex items-center gap-2 text-sm text-slate-300">
+                                        <input type="checkbox" class="rounded border-slate-700 bg-slate-950 text-cyan-400" name="settings[<?php echo e($setting->key); ?>]" value="1" <?php if($setting->value['v'] ?? false): echo 'checked'; endif; ?>>
+                                        aktiviert
+                                    </label>
+                                <?php elseif($setting->type === 'number'): ?>
+                                    <input type="number" step="any" class="luczor-input" name="settings[<?php echo e($setting->key); ?>]" value="<?php echo e($setting->value['v'] ?? 0); ?>">
+                                <?php else: ?>
+                                    <input type="text" class="luczor-input" name="settings[<?php echo e($setting->key); ?>]" value="<?php echo e($setting->value['v'] ?? ''); ?>">
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
+                <button class="luczor-btn mt-4" type="submit">Einstellungen speichern</button>
+            </form>
+        </div>
+    </section>
+
     <section class="mt-8 grid gap-6 lg:grid-cols-2">
         <div class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Device API Key erstellen</h2>

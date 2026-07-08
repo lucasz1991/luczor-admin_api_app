@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\LlmRun;
 use App\Models\ProviderCredential;
+use App\Services\EvaluationService;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -36,10 +37,17 @@ class ProxyController extends Controller
         $base = rtrim($cred->base_url ?: 'https://openrouter.ai/api/v1', '/');
         $url = $base.'/chat/completions';
         $payload = $request->all();
+        $meta = $this->runMeta($request, $payload);
 
         // Luczor-only metadata; strip before forwarding to OpenRouter.
-        $taskType = is_string($payload['task_type'] ?? null) ? $payload['task_type'] : 'chat.general';
-        unset($payload['task_type']);
+        $taskType = $meta['task_type'];
+        foreach ([
+            'task_type', 'client_id', 'project_id', 'workflow_id', 'task_id', 'session_id',
+            'feature_key', 'context_id', 'prompt_template_id', 'context_strategy_id',
+            'network_policy_id', 'repo_id', 'branch', 'commit_sha', 'tool_call_count', 'retry_count',
+        ] as $internalKey) {
+            unset($payload[$internalKey]);
+        }
         $model = is_string($payload['model'] ?? null) ? $payload['model'] : 'unknown';
         $stream = (bool) ($payload['stream'] ?? false);
 
@@ -64,37 +72,20 @@ class ProxyController extends Controller
         if (! $stream) {
             $bodyStr = $upstream->getBody()->getContents();
             $json = json_decode($bodyStr, true) ?: [];
-            $this->recordRun($request, $model, $taskType, $status, (int) round((microtime(true) - $started) * 1000),
-                $json['usage']['prompt_tokens'] ?? null, $json['usage']['completion_tokens'] ?? null);
+            $this->recordRun($meta, $model, $taskType, $status, (int) round((microtime(true) - $started) * 1000), $json['usage'] ?? []);
 
             return response($bodyStr, $status)->header('Content-Type', 'application/json');
         }
 
         $body = $upstream->getBody();
-        $ctx = [
-            'user_id' => $request->user()?->id,
-            'client_id' => $request->input('client_id'),
-            'project_id' => $request->input('project_id'),
-        ];
 
-        return new StreamedResponse(function () use ($body, $ctx, $model, $taskType, $status, $started) {
+        return new StreamedResponse(function () use ($body, $meta, $model, $taskType, $status, $started) {
             while (! $body->eof()) {
                 echo $body->read(8192);
                 @ob_flush();
                 @flush();
             }
-            $ok = $status >= 200 && $status < 300;
-            LlmRun::create([
-                'user_id' => $ctx['user_id'],
-                'client_id' => $ctx['client_id'],
-                'project_id' => $ctx['project_id'],
-                'task_type' => $taskType,
-                'model_id' => $model,
-                'provider_id' => 'openrouter',
-                'status' => $ok ? 'ok' : 'error',
-                'success' => $ok,
-                'latency_ms' => (int) round((microtime(true) - $started) * 1000),
-            ]);
+            $this->recordRun($meta, $model, $taskType, $status, (int) round((microtime(true) - $started) * 1000), []);
         }, $status, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
@@ -102,21 +93,77 @@ class ProxyController extends Controller
         ]);
     }
 
-    private function recordRun(Request $request, string $model, string $taskType, int $status, int $latencyMs, ?int $inTok, ?int $outTok): void
+    /** @param array<string,mixed> $payload */
+    private function runMeta(Request $request, array $payload): array
+    {
+        return [
+            'user_id' => $request->user()?->id,
+            'client_id' => $payload['client_id'] ?? null,
+            'project_id' => $payload['project_id'] ?? null,
+            'workflow_id' => $payload['workflow_id'] ?? null,
+            'task_id' => $payload['task_id'] ?? null,
+            'session_id' => $payload['session_id'] ?? null,
+            'task_type' => is_string($payload['task_type'] ?? null) ? $payload['task_type'] : 'chat.general',
+            'feature_key' => $payload['feature_key'] ?? null,
+            'context_id' => $payload['context_id'] ?? null,
+            'prompt_template_id' => $payload['prompt_template_id'] ?? null,
+            'context_strategy_id' => $payload['context_strategy_id'] ?? 'context.memory_code_budgeted',
+            'network_policy_id' => $payload['network_policy_id'] ?? 'proxy.openrouter.default',
+            'repo_id' => $payload['repo_id'] ?? null,
+            'branch' => $payload['branch'] ?? null,
+            'commit_sha' => $payload['commit_sha'] ?? null,
+            'tool_call_count' => (int) ($payload['tool_call_count'] ?? 0),
+            'retry_count' => (int) ($payload['retry_count'] ?? 0),
+        ];
+    }
+
+    /** @param array<string,mixed> $meta @param array<string,mixed> $usage */
+    private function recordRun(array $meta, string $model, string $taskType, int $status, int $latencyMs, array $usage): void
     {
         $ok = $status >= 200 && $status < 300;
-        LlmRun::create([
-            'user_id' => $request->user()?->id,
-            'client_id' => $request->input('client_id'),
-            'project_id' => $request->input('project_id'),
+        $inputTokens = $usage['prompt_tokens'] ?? ($usage['input_tokens'] ?? null);
+        $outputTokens = $usage['completion_tokens'] ?? ($usage['output_tokens'] ?? null);
+        $cost = $usage['cost'] ?? ($usage['total_cost'] ?? 0);
+
+        $run = LlmRun::create([
+            'user_id' => $meta['user_id'],
+            'client_id' => $meta['client_id'],
+            'project_id' => $meta['project_id'],
+            'workflow_id' => $meta['workflow_id'],
+            'task_id' => $meta['task_id'],
+            'session_id' => $meta['session_id'],
             'task_type' => $taskType,
+            'feature_key' => $meta['feature_key'],
+            'context_id' => $meta['context_id'],
             'model_id' => $model,
             'provider_id' => 'openrouter',
+            'prompt_template_id' => $meta['prompt_template_id'],
+            'context_strategy_id' => $meta['context_strategy_id'],
+            'network_policy_id' => $meta['network_policy_id'],
+            'repo_id' => $meta['repo_id'],
+            'branch' => $meta['branch'],
+            'commit_sha' => $meta['commit_sha'],
             'status' => $ok ? 'ok' : 'error',
             'success' => $ok,
             'latency_ms' => $latencyMs,
-            'input_tokens' => $inTok,
-            'output_tokens' => $outTok,
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
+            'cost_total' => $cost,
+            'tool_call_count' => $meta['tool_call_count'],
+            'retry_count' => $meta['retry_count'],
+        ]);
+
+        app(EvaluationService::class)->recordMetric($run, [
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
+            'latency_ms' => $latencyMs,
+            'tool_call_count' => $meta['tool_call_count'],
+            'retry_count' => $meta['retry_count'],
+            'cost_total' => $cost,
+            'prompt_template_id' => $meta['prompt_template_id'],
+            'context_strategy_id' => $meta['context_strategy_id'],
+            'network_policy_id' => $meta['network_policy_id'],
+            'raw_usage' => $usage ?: null,
         ]);
     }
 

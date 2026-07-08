@@ -18,6 +18,14 @@ class ContextController extends Controller
             'budget' => ['nullable', 'array'],
             'budget.max_input_tokens' => ['nullable', 'integer', 'min:100', 'max:8000'],
             'budget.max_items' => ['nullable', 'integer', 'min:1', 'max:20'],
+            'repo_id' => ['nullable', 'string', 'max:120'],
+            'repo_path' => ['nullable', 'string', 'max:1000'],
+            'branch' => ['nullable', 'string', 'max:160'],
+            'commit_sha' => ['nullable', 'string', 'max:80'],
+            'changed_files' => ['nullable', 'array'],
+            'changed_files.*' => ['string', 'max:500'],
+            'code' => ['nullable', 'array'],
+            'code_limit' => ['nullable', 'integer', 'min:1', 'max:30'],
         ]);
 
         return response()->json(

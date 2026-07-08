@@ -104,6 +104,7 @@ class LuczorMemoryService
                     'staleness' => 'fresh',
                     'feature_key' => $h['metadata']['feature_key'] ?? null,
                     'source' => 'cognee',
+                    'meta' => $h['metadata'] ?? null,
                 ], $hits);
             }
         }
@@ -129,6 +130,7 @@ class LuczorMemoryService
             'staleness' => $r->staleness,
             'feature_key' => $r->feature_key,
             'source' => 'links',
+            'meta' => $r->meta,
         ])->all();
     }
 
