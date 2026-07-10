@@ -2,21 +2,19 @@
 
 namespace App\Services;
 
-use Symfony\Component\Process\Process;
+use App\Models\Repository;
 
 class GitFreshnessService
 {
     /**
-     * Build the Git freshness block for a context package. If no usable repo
-     * path is provided, explicit request fields are returned and marked as
-     * caller-provided so the endpoint remains deterministic and testable.
+     * Builds freshness from user-owned, webhook-maintained repository metadata.
+     * The API never executes Git against a request-controlled local path.
      *
      * @param  array<string,mixed>  $req
      * @return array<string,mixed>
      */
     public function inspect(array $req): array
     {
-        $repoPath = is_string($req['repo_path'] ?? null) ? trim($req['repo_path']) : '';
         $fallback = [
             'repo_id' => $req['repo_id'] ?? null,
             'branch' => $req['branch'] ?? null,
@@ -26,29 +24,28 @@ class GitFreshnessService
             'source' => 'request',
         ];
 
-        if ($repoPath === '' || ! is_dir($repoPath)) {
+        $repoId = trim((string) ($req['repo_id'] ?? ''));
+        if ($repoId === '' || empty($req['user_id'])) {
             return $fallback;
         }
 
-        $inside = $this->git($repoPath, ['rev-parse', '--is-inside-work-tree']);
-        if ($inside !== 'true') {
-            return $fallback + ['source' => 'invalid_repo'];
+        $repository = Repository::query()
+            ->where('user_id', $req['user_id'])
+            ->where(fn ($q) => $q->where('id', $repoId)->orWhere('external_id', $repoId)->orWhere('full_name', $repoId))
+            ->first();
+        if (! $repository) {
+            return $fallback + ['source' => 'repository_not_found'];
         }
-
-        $branch = $this->git($repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
-        $commit = $this->git($repoPath, ['rev-parse', 'HEAD']);
-        $changed = $this->git($repoPath, ['diff', '--name-only', 'HEAD']);
-        $changedFiles = $changed !== null && $changed !== ''
-            ? preg_split('/\R+/', $changed) ?: []
-            : $fallback['changed_files'];
+        $branch = (string) ($req['branch'] ?? $repository->default_branch);
+        $head = $repository->branches()->where('name', $branch)->value('head_sha') ?: $repository->last_commit_sha;
 
         return [
-            'repo_id' => $req['repo_id'] ?? basename($repoPath),
-            'branch' => $branch ?: $fallback['branch'],
-            'commit_sha' => $commit ?: $fallback['commit_sha'],
-            'changed_files' => $this->normalizeFiles($changedFiles),
-            'available' => true,
-            'source' => 'git',
+            'repo_id' => (string) $repository->id,
+            'branch' => $branch,
+            'commit_sha' => $req['commit_sha'] ?? $head,
+            'changed_files' => $fallback['changed_files'],
+            'available' => $head !== null,
+            'source' => 'repository_index',
         ];
     }
 
@@ -67,17 +64,4 @@ class GitFreshnessService
             ->all();
     }
 
-    /** @param array<int,string> $args */
-    private function git(string $repoPath, array $args): ?string
-    {
-        $process = new Process(array_merge(['git', '-C', $repoPath], $args));
-        $process->setTimeout(5);
-        $process->run();
-
-        if (! $process->isSuccessful()) {
-            return null;
-        }
-
-        return trim($process->getOutput());
-    }
 }

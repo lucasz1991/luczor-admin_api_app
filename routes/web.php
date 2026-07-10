@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\GithubOAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard');
@@ -14,4 +15,6 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     Route::post('/dashboard/model-use-cases', [DashboardController::class, 'storeModelUseCase'])->name('dashboard.model-use-cases.store');
     Route::post('/dashboard/model-use-case-entries', [DashboardController::class, 'storeModelUseCaseEntry'])->name('dashboard.model-use-case-entries.store');
     Route::post('/dashboard/settings', [DashboardController::class, 'storeSettings'])->name('dashboard.settings.store');
+    Route::get('/github/redirect', [GithubOAuthController::class, 'redirect'])->name('github.redirect');
+    Route::get('/github/callback', [GithubOAuthController::class, 'callback'])->name('github.callback');
 });

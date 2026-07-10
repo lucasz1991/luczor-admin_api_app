@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 class EvaluationResult extends Model
 {
     protected $fillable = [
+        'user_id',
         'llm_run_id',
         'agent_run_id',
+        'project_ref_id',
         'evaluator_id',
         'status',
         'success_score',

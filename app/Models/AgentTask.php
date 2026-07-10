@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 class AgentTask extends Model
 {
     protected $fillable = [
+        'user_id',
         'agent_run_id',
         'project_id',
+        'project_ref_id',
         'task_id',
         'task_type',
         'feature_key',

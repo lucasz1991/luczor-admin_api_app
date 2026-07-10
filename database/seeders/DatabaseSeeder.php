@@ -84,9 +84,6 @@ class DatabaseSeeder extends Seeder
             ['key' => 'memory_inject_count', 'value' => 5, 'group' => 'client', 'label' => 'Anzahl Erinnerungen', 'type' => 'number'],
             ['key' => 'sync_auto', 'value' => false, 'group' => 'client', 'label' => 'Auto-Sync', 'type' => 'bool'],
             ['key' => 'sync_auto_threshold', 'value' => 20, 'group' => 'client', 'label' => 'Auto-Sync Schwelle', 'type' => 'number'],
-            ['key' => 'voice_stt_backend', 'value' => 'local', 'group' => 'voice', 'label' => 'STT Backend', 'type' => 'string'],
-            ['key' => 'voice_tts_backend', 'value' => 'local', 'group' => 'voice', 'label' => 'TTS Backend', 'type' => 'string'],
-            ['key' => 'voice_local_stt_language', 'value' => 'de', 'group' => 'voice', 'label' => 'STT Sprache', 'type' => 'string'],
             ['key' => 'chat_auto_speech', 'value' => false, 'group' => 'voice', 'label' => 'Antworten automatisch vorlesen', 'type' => 'bool'],
         ];
 

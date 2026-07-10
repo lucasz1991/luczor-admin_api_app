@@ -34,7 +34,151 @@
         </div>
     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-    <section class="grid gap-4 md:grid-cols-5">
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(! $isAdmin): ?>
+        <section class="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
+            <div class="luczor-card overflow-hidden border-cyan-400/30">
+                <div class="border-b border-cyan-400/10 bg-cyan-400/5 px-5 py-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <h1 class="font-mono text-xl font-semibold text-cyan-100">luczor terminal</h1>
+                            <p class="mt-1 text-sm text-slate-400">Cloud-gesteuerter Zugriff auf deine verbundenen Geraete, Projekte und Repositories.</p>
+                        </div>
+                        <span class="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">USER MODE</span>
+                    </div>
+                </div>
+                <div class="space-y-4 p-5 font-mono text-sm">
+                    <div class="text-slate-500">$ luczor status --scope=user</div>
+                    <div class="grid gap-3 md:grid-cols-4">
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $archiveCounts; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $label => $count): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                            <div class="rounded-md border border-cyan-400/10 bg-slate-950/70 p-3">
+                                <div class="text-[10px] uppercase tracking-[0.18em] text-slate-500"><?php echo e(str_replace('_', ' ', $label)); ?></div>
+                                <div class="mt-2 text-2xl font-semibold text-cyan-100"><?php echo e($count); ?></div>
+                            </div>
+                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    </div>
+                    <div class="rounded-md border border-cyan-400/10 bg-slate-950/80 p-4">
+                        <div class="text-cyan-300">&gt; online clients</div>
+                        <div class="mt-2 text-slate-300">
+                            <?php echo e($clientIds->count() ? $clientIds->implode(', ') : 'Noch kein Device verbunden. Erzeuge unten ein Geraete-Token und verbinde die Tauri-App.'); ?>
+
+                        </div>
+                    </div>
+                    <div class="grid gap-3 md:grid-cols-3">
+                        <div class="rounded-md border border-cyan-400/10 bg-slate-950/70 p-3">
+                            <div class="text-slate-500">control</div>
+                            <div class="mt-1 text-cyan-100">cloud queue bereit</div>
+                        </div>
+                        <div class="rounded-md border border-cyan-400/10 bg-slate-950/70 p-3">
+                            <div class="text-slate-500">mode</div>
+                            <div class="mt-1 text-cyan-100">agent assisted</div>
+                        </div>
+                        <div class="rounded-md border border-cyan-400/10 bg-slate-950/70 p-3">
+                            <div class="text-slate-500">provider</div>
+                            <div class="mt-1 text-cyan-100">server routed</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="devices" class="luczor-card p-5">
+                <h2 class="text-lg font-semibold text-white">Meine Geraete</h2>
+                <div class="mt-4 space-y-3">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $apiKeys; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                        <div class="rounded border border-slate-800 bg-slate-950/50 p-3 text-sm">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <div class="font-semibold text-slate-100"><?php echo e($key->device_name ?: $key->name); ?></div>
+                                    <div class="text-slate-500"><?php echo e($key->device_id ?: 'keine Device ID'); ?></div>
+                                </div>
+                                <span class="rounded-full px-2 py-1 text-xs <?php echo e($key->active ? 'bg-emerald-400/10 text-emerald-200' : 'bg-rose-400/10 text-rose-200'); ?>"><?php echo e($key->active ? 'aktiv' : 'inaktiv'); ?></span>
+                            </div>
+                            <div class="mt-2 text-xs text-slate-500">Abilities: <?php echo e(implode(', ', $key->abilities ?? [])); ?></div>
+                        </div>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                        <p class="text-sm text-slate-500">Noch keine Geraete verbunden.</p>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
+            </div>
+        </section>
+
+        <section class="mt-8 grid gap-6 lg:grid-cols-2">
+            <div id="projects" class="luczor-card p-5">
+                <h2 class="text-lg font-semibold text-white">Meine Projekte</h2>
+                <div class="mt-4 space-y-3">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $userProjects; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $project): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                        <div class="rounded border border-slate-800 bg-slate-950/50 p-3 text-sm">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <div class="font-semibold text-cyan-100"><?php echo e($project->name); ?></div>
+                                    <div class="font-mono text-xs text-slate-500"><?php echo e($project->external_id); ?></div>
+                                </div>
+                                <span class="text-xs text-slate-500"><?php echo e(optional($project->updated_at)->diffForHumans()); ?></span>
+                            </div>
+                        </div>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                        <p class="text-sm text-slate-500">Noch keine Projekte synchronisiert.</p>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
+            </div>
+
+            <div id="github" class="luczor-card p-5">
+                <h2 class="text-lg font-semibold text-white">Cloud / GitHub</h2>
+                <p class="mt-1 text-sm text-slate-400">Hier wird der Codex-aehnliche Einstieg fuer Online-Geraete und Repository-basierte Projekte gebuendelt.</p>
+                <div class="mt-4 rounded-md border border-cyan-400/10 bg-slate-950/70 p-4 font-mono text-sm">
+                    <div class="text-slate-500">$ luczor attach github --repo owner/repo</div>
+                    <div class="mt-2 text-cyan-100">Repository-Verknuepfung ist als naechster Cloud-Workflow vorbereitet.</div>
+                </div>
+                <div class="mt-4">
+                    <h3 class="text-sm font-semibold text-slate-200">Letzte Agent-Events</h3>
+                    <div class="mt-3 space-y-2">
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $userEvents; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $event): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                            <div class="rounded border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs">
+                                <span class="font-mono text-cyan-200"><?php echo e($event->event_type); ?></span>
+                                <span class="ml-2 text-slate-500"><?php echo e(optional($event->created_at)->diffForHumans()); ?></span>
+                            </div>
+                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                            <p class="text-sm text-slate-500">Noch keine Agent-Events.</p>
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="mt-8 luczor-card p-5">
+            <h2 class="text-lg font-semibold text-white">Geraete-Verbindung erstellen</h2>
+            <p class="mt-1 text-sm text-slate-400">Dieses Token verbindet deine Tauri-App mit deinem User-Bereich. Provider-API-Keys bleiben auf dem Server.</p>
+            <form class="mt-4 space-y-3" method="POST" action="<?php echo e(route('dashboard.api-keys.store')); ?>">
+                <?php echo csrf_field(); ?>
+                <input class="luczor-input" name="name" placeholder="Name, z.B. Mein Desktop" required>
+                <div class="grid gap-3 md:grid-cols-2">
+                    <input class="luczor-input" name="device_id" placeholder="Device ID optional">
+                    <input class="luczor-input" name="device_name" placeholder="Device Name optional">
+                </div>
+                <input class="luczor-input" name="expires_at" type="datetime-local">
+                <div class="grid gap-2 md:grid-cols-2">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $abilities; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $ability): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                        <label class="flex items-center gap-2 rounded border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-200">
+                            <input class="rounded border-slate-700 bg-slate-950 text-cyan-400" type="checkbox" name="abilities[]" value="<?php echo e($ability); ?>" <?php if(in_array($ability, ['sync.read', 'sync.write', 'brain.read', 'proxy.use'], true)): echo 'checked'; endif; ?>>
+                            <?php echo e($ability); ?>
+
+                        </label>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
+                <button class="luczor-btn" type="submit">Verbindungstoken erzeugen</button>
+            </form>
+        </section>
+    <?php else: ?>
+
+    <section class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $operations; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $label => $count): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+            <div class="luczor-card p-4">
+                <div class="text-xs uppercase tracking-wider text-slate-500"><?php echo e(str_replace('_', ' ', $label)); ?></div>
+                <div class="mt-2 text-2xl font-semibold text-cyan-100"><?php echo e($count); ?></div>
+            </div>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </section>
+
+    <section id="archives" class="grid gap-4 md:grid-cols-5">
         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $archiveCounts; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $label => $count): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
             <div class="luczor-card p-4">
                 <div class="text-xs uppercase tracking-wider text-slate-500"><?php echo e(str_replace('_', ' ', $label)); ?></div>
@@ -43,7 +187,7 @@
         <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </section>
 
-    <section class="mt-8">
+    <section id="settings" class="mt-8">
         <div class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Client-Einstellungen (Server-Defaults)</h2>
             <p class="mt-1 text-sm text-slate-400">Werden an die Desktop-App ausgeliefert (<code class="text-cyan-200">/api/v1/runtime-settings</code>).</p>
@@ -74,7 +218,7 @@
     </section>
 
     <section class="mt-8 grid gap-6 lg:grid-cols-2">
-        <div class="luczor-card p-5">
+        <div id="api-keys" class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Device API Key erstellen</h2>
             <form class="mt-4 space-y-3" method="POST" action="<?php echo e(route('dashboard.api-keys.store')); ?>">
                 <?php echo csrf_field(); ?>
@@ -97,7 +241,7 @@
             </form>
         </div>
 
-        <div class="luczor-card p-5">
+        <div id="providers" class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Provider Credential</h2>
             <form class="mt-4 space-y-3" method="POST" action="<?php echo e(route('dashboard.provider-credentials.store')); ?>">
                 <?php echo csrf_field(); ?>
@@ -112,7 +256,7 @@
         </div>
     </section>
 
-    <section class="mt-8 grid gap-6 lg:grid-cols-2">
+    <section id="models" class="mt-8 grid gap-6 lg:grid-cols-2">
         <div class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Einzelnes Modellprofil</h2>
             <p class="mt-1 text-sm text-slate-400">Diese Profile werden pro Use-Case in Fallback-Reihenfolge zusammengestellt.</p>
@@ -235,6 +379,7 @@
             </div>
         </div>
     </section>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
  <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
 <?php if (isset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>

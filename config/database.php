@@ -63,6 +63,22 @@ return [
             ]) : [],
         ],
 
+        'mysql_legacy' => [
+            'driver' => 'mysql',
+            'host' => env('LEGACY_MYSQL_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('LEGACY_MYSQL_PORT', env('DB_PORT', '3306')),
+            'database' => env('LEGACY_MYSQL_DATABASE', env('DB_DATABASE', 'forge')),
+            'username' => env('LEGACY_MYSQL_USERNAME', env('DB_USERNAME', 'forge')),
+            'password' => env('LEGACY_MYSQL_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('LEGACY_MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DATABASE_URL'),

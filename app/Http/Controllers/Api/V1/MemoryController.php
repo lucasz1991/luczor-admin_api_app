@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\LuczorMemoryService;
+use App\Services\ApiActor;
 use Illuminate\Http\Request;
 
 /**
@@ -22,7 +23,7 @@ class MemoryController extends Controller
         ];
     }
 
-    public function remember(Request $request, LuczorMemoryService $memory)
+    public function remember(Request $request, LuczorMemoryService $memory, ApiActor $actor)
     {
         $data = $request->validate([
             'content' => ['required', 'string', 'max:8000'],
@@ -39,8 +40,13 @@ class MemoryController extends Controller
             'meta' => ['nullable', 'array'],
         ]);
 
+        abort_if(($data['scope'] ?? 'project') === 'global' && ! $request->user()?->isAdmin(), 403, 'Only an administrator can publish global memory.');
+
+        $project = $actor->project($request, $data['project_id'] ?? null);
         $link = $memory->remember(array_merge($data, [
-            'user_id' => $request->user()?->id,
+            'user_id' => $actor->userId($request),
+            'client_id' => $actor->deviceId($request, $data['client_id'] ?? null),
+            'project_ref_id' => $project?->id,
             'scope' => $data['scope'] ?? 'project',
             'meta' => array_merge($data['meta'] ?? [], ['tags' => $data['tags'] ?? []]),
         ]));
@@ -62,6 +68,8 @@ class MemoryController extends Controller
             'limit' => ['nullable', 'integer', 'min:1', 'max:20'],
         ]);
 
+        abort_if(($data['scope'] ?? 'project') === 'global' && ! $request->user()?->isAdmin(), 403, 'Global memory is administrator-managed.');
+
         $items = $memory->recall(
             $data['query'] ?? '',
             $data['scope'] ?? 'project',
@@ -72,7 +80,7 @@ class MemoryController extends Controller
         return response()->json(['data' => $items]);
     }
 
-    public function forget(Request $request, LuczorMemoryService $memory)
+    public function forget(Request $request, LuczorMemoryService $memory, ApiActor $actor)
     {
         $data = $request->validate([
             'external_id' => ['required', 'string', 'max:190'],
@@ -81,11 +89,13 @@ class MemoryController extends Controller
             'client_id' => ['nullable', 'string', 'max:120'],
         ]);
 
+        abort_if(($data['scope'] ?? 'project') === 'global' && ! $request->user()?->isAdmin(), 403, 'Global memory is administrator-managed.');
+
         $memory->forget(
             $data['scope'] ?? 'project',
             $data['external_id'],
             $this->ids($request),
-            $data['client_id'] ?? null
+            $actor->deviceId($request, $data['client_id'] ?? null)
         );
 
         return response()->json(['ok' => true]);
@@ -97,6 +107,8 @@ class MemoryController extends Controller
             'scope' => ['nullable', 'string', 'in:private,project,skill,agent,global'],
             'project_id' => ['nullable', 'string', 'max:120'],
         ]);
+
+        abort_if(($data['scope'] ?? 'project') === 'global' && ! $request->user()?->isAdmin(), 403, 'Global memory is administrator-managed.');
 
         $memory->improve($data['scope'] ?? 'project', $this->ids($request));
 

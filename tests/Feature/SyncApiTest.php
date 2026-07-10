@@ -47,6 +47,33 @@ class SyncApiTest extends TestCase
         $this->assertSame(2, LuczorAgentEventArchive::count());
     }
 
+    public function test_sync_and_agent_runs_are_isolated_by_user_and_bound_device(): void
+    {
+        [$first, $firstToken] = $this->tokenFor(['sync.read', 'sync.write', 'brain.read', 'brain.write']);
+        [$second, $secondToken] = $this->tokenFor(['sync.read', 'brain.read']);
+
+        $this->withHeader('X-Api-Key', $firstToken)->postJson('/api/v1/sync/push', [
+            'client_id' => 'first-device',
+            'projects' => [['id' => 'first-project', 'name' => 'First']],
+        ])->assertOk();
+
+        $this->withHeader('X-Api-Key', $secondToken)->getJson('/api/v1/sync/pull')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.projects');
+
+        $this->withHeader('X-Api-Key', $firstToken)->postJson('/api/v1/sync/push', [
+            'client_id' => 'other-device',
+        ])->assertForbidden();
+
+        $runId = $this->withHeader('X-Api-Key', $firstToken)->postJson('/api/v1/agent-runs', [
+            'client_id' => 'first-device',
+            'project_id' => 'first-project',
+            'goal' => 'private work',
+        ])->assertCreated()->json('data.id');
+
+        $this->withHeader('X-Api-Key', $secondToken)->getJson('/api/v1/agent-runs/'.$runId)->assertNotFound();
+    }
+
     private function token(array $abilities): string
     {
         $user = User::factory()->create();
@@ -58,5 +85,19 @@ class SyncApiTest extends TestCase
         ]);
 
         return $minted['plain'];
+    }
+
+    /** @return array{0: User, 1: string} */
+    private function tokenFor(array $abilities): array
+    {
+        $user = User::factory()->create();
+        $minted = ApiKey::mint([
+            'user_id' => $user->id,
+            'name' => 'Test Device',
+            'abilities' => $abilities,
+            'active' => true,
+        ]);
+
+        return [$user, $minted['plain']];
     }
 }

@@ -10,10 +10,11 @@ use App\Models\ModelRanking;
  */
 class ModelRanker
 {
-    public function recompute(?string $taskType = null): void
+    public function recompute(?string $taskType = null, ?int $userId = null): void
     {
         $rows = LlmRun::query()
             ->selectRaw('
+                user_id,
                 task_type,
                 model_id,
                 provider_id,
@@ -31,7 +32,8 @@ class ModelRanker
                 avg(retry_count) as avg_retry_count
             ')
             ->when($taskType, fn ($q) => $q->where('task_type', $taskType))
-            ->groupBy('task_type', 'model_id', 'provider_id')
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))
+            ->groupBy('user_id', 'task_type', 'model_id', 'provider_id')
             ->get();
 
         foreach ($rows as $row) {
@@ -56,7 +58,7 @@ class ModelRanker
                 - $retryPenalty;
 
             ModelRanking::updateOrCreate(
-                ['task_type' => $row->task_type, 'model_id' => $row->model_id],
+                ['user_id' => $row->user_id, 'task_type' => $row->task_type, 'model_id' => $row->model_id],
                 [
                     'provider_id' => $row->provider_id,
                     'sample_count' => (int) $row->sample_count,
@@ -73,10 +75,11 @@ class ModelRanker
         }
     }
 
-    public function bestFor(string $taskType): ?ModelRanking
+    public function bestFor(string $taskType, ?int $userId = null): ?ModelRanking
     {
         return ModelRanking::query()
             ->where('task_type', $taskType)
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))
             ->orderByDesc('score')
             ->orderByDesc('sample_count')
             ->first();

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\EvaluationResult;
 use App\Models\LlmRun;
 use App\Models\LlmRunMetric;
+use App\Models\PerformanceProfile;
 
 class EvaluationService
 {
@@ -61,8 +62,10 @@ class EvaluationService
         $status = (string) ($data['status'] ?? ($successScore >= 0.5 ? 'passed' : 'failed'));
 
         $result = EvaluationResult::create([
+            'user_id' => $run->user_id,
             'llm_run_id' => $run->id,
             'agent_run_id' => $data['agent_run_id'] ?? null,
+            'project_ref_id' => $run->project_ref_id,
             'evaluator_id' => $data['evaluator_id'] ?? 'luczor.mvp',
             'status' => $status,
             'success_score' => $successScore,
@@ -83,7 +86,26 @@ class EvaluationService
             'test_passed' => $testPassed,
         ])->save();
 
-        $this->ranker->recompute($run->task_type);
+        PerformanceProfile::create([
+            'user_id' => $run->user_id,
+            'project_id' => $run->project_ref_id,
+            'task_type' => $run->task_type,
+            'model_id' => $run->model_id,
+            'quality_score' => $quality,
+            'security_score' => $result->security_score,
+            'test_pass_rate' => $testPassRate,
+            'cost_score' => 1 / (1 + max(0, (float) $run->cost_total) / 0.02),
+            'hallucination_score' => min(1, (int) $result->hallucination_flags / 5),
+            'metrics' => [
+                'llm_run_id' => $run->id,
+                'evaluation_id' => $result->id,
+                'latency_ms' => $run->latency_ms,
+                'input_tokens' => $run->input_tokens,
+                'output_tokens' => $run->output_tokens,
+            ],
+        ]);
+
+        $this->ranker->recompute($run->task_type, $run->user_id ? (int) $run->user_id : null);
 
         return $result;
     }

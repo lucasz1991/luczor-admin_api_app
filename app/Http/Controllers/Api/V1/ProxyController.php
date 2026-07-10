@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\LlmRun;
 use App\Models\ProviderCredential;
 use App\Services\EvaluationService;
+use App\Services\ApiActor;
+use App\Services\ProviderPolicyService;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -19,8 +23,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ProxyController extends Controller
 {
-    public function chat(Request $request)
+    public function chat(Request $request, ApiActor $actor, ProviderPolicyService $policy)
     {
+        $userId = $actor->userId($request);
+        $rateKey = 'proxy:'.$userId.':'.($request->attributes->get('apiKey')?->id ?? 'unknown');
+        if (RateLimiter::tooManyAttempts($rateKey, config('luczor.proxy.requests_per_minute'))) {
+            return response()->json(['message' => 'Provider rate limit exceeded.'], 429)
+                ->header('Retry-After', RateLimiter::availableIn($rateKey));
+        }
+        RateLimiter::hit($rateKey, 60);
+
         $cred = ProviderCredential::query()
             ->where('provider', 'openrouter')
             ->where('active', true)
@@ -36,8 +48,38 @@ class ProxyController extends Controller
 
         $base = rtrim($cred->base_url ?: 'https://openrouter.ai/api/v1', '/');
         $url = $base.'/chat/completions';
-        $payload = $request->all();
+        $payload = $request->validate([
+            'model' => ['nullable', 'string', 'max:180'],
+            'messages' => ['required', 'array', 'min:1', 'max:100'],
+            'messages.*.role' => ['required', 'string', 'in:system,user,assistant,tool'],
+            'messages.*.content' => ['nullable', 'string', 'max:100000'],
+            'tools' => ['nullable', 'array', 'max:64'],
+            'tool_choice' => ['nullable'],
+            'temperature' => ['nullable', 'numeric', 'min:0', 'max:2'],
+            'max_tokens' => ['nullable', 'integer', 'min:1', 'max:200000'],
+            'stream' => ['nullable', 'boolean'],
+            'task_type' => ['nullable', 'string', 'max:120'],
+            'client_id' => ['nullable', 'string', 'max:120'],
+            'project_id' => ['nullable', 'string', 'max:120'],
+            'workflow_id' => ['nullable', 'string', 'max:120'],
+            'task_id' => ['nullable', 'string', 'max:120'],
+            'session_id' => ['nullable', 'string', 'max:120'],
+            'feature_key' => ['nullable', 'string', 'max:160'],
+            'context_id' => ['nullable', 'string', 'max:120'],
+            'prompt_template_id' => ['nullable', 'string', 'max:120'],
+            'context_strategy_id' => ['nullable', 'string', 'max:120'],
+            'network_policy_id' => ['nullable', 'string', 'max:120'],
+            'repo_id' => ['nullable', 'string', 'max:120'],
+            'branch' => ['nullable', 'string', 'max:160'],
+            'commit_sha' => ['nullable', 'string', 'max:80'],
+            'tool_call_count' => ['nullable', 'integer', 'min:0', 'max:1000'],
+            'retry_count' => ['nullable', 'integer', 'min:0', 'max:10'],
+        ]);
         $meta = $this->runMeta($request, $payload);
+        $meta['user_id'] = $userId;
+        $meta['client_id'] = $actor->deviceId($request, $payload['client_id'] ?? null);
+        $project = $actor->project($request, $payload['project_id'] ?? null);
+        $meta['project_ref_id'] = $project?->id;
 
         // Luczor-only metadata; strip before forwarding to OpenRouter.
         $taskType = $meta['task_type'];
@@ -48,44 +90,75 @@ class ProxyController extends Controller
         ] as $internalKey) {
             unset($payload[$internalKey]);
         }
-        $model = is_string($payload['model'] ?? null) ? $payload['model'] : 'unknown';
+        $profiles = $policy->candidates($payload['model'] ?? null, $taskType);
+        $profile = $profiles[0];
+        $model = $profile->model_id;
+        $payload['model'] = $model;
+        $payload['max_tokens'] = $policy->outputBudget($profile, $payload['max_tokens'] ?? null);
         $stream = (bool) ($payload['stream'] ?? false);
 
         $started = microtime(true);
-        $client = new Client(['timeout' => 0]);
-
-        $upstream = $client->post($url, [
-            'headers' => [
-                'Authorization' => 'Bearer '.$cred->api_key,
-                'Content-Type' => 'application/json',
-                'HTTP-Referer' => 'https://luczor.local',
-                'X-Title' => 'Luczor',
-                'Accept' => $stream ? 'text/event-stream' : 'application/json',
-            ],
-            'json' => $payload,
-            'stream' => $stream,
-            'http_errors' => false,
+        $client = new Client([
+            'connect_timeout' => config('luczor.proxy.connect_timeout'),
+            'timeout' => config('luczor.proxy.timeout'),
         ]);
+
+        $upstream = null;
+        $attempt = 0;
+        foreach ($profiles as $candidate) {
+            $attempt++;
+            $payload['model'] = $candidate->model_id;
+            $payload['max_tokens'] = $policy->outputBudget($candidate, $payload['max_tokens'] ?? null);
+            try {
+                $upstream = $client->post($url, [
+                    'headers' => [
+                        'Authorization' => 'Bearer '.$cred->api_key,
+                        'Content-Type' => 'application/json',
+                        'HTTP-Referer' => 'https://luczor.local',
+                        'X-Title' => 'Luczor',
+                        'Accept' => $stream ? 'text/event-stream' : 'application/json',
+                    ],
+                    'json' => $payload,
+                    'stream' => $stream,
+                    'http_errors' => false,
+                ]);
+            } catch (GuzzleException) {
+                if ($attempt < count($profiles)) {
+                    usleep(200000 * $attempt);
+                    continue;
+                }
+                return response()->json(['message' => 'OpenRouter is currently unreachable.'], 503);
+            }
+
+            if ($upstream->getStatusCode() < 500 || $stream || $attempt === count($profiles)) {
+                break;
+            }
+            usleep(200000 * $attempt);
+        }
+
+        if (! $upstream) {
+            return response()->json(['message' => 'OpenRouter is currently unreachable.'], 503);
+        }
 
         $status = $upstream->getStatusCode();
 
         if (! $stream) {
             $bodyStr = $upstream->getBody()->getContents();
             $json = json_decode($bodyStr, true) ?: [];
-            $this->recordRun($meta, $model, $taskType, $status, (int) round((microtime(true) - $started) * 1000), $json['usage'] ?? []);
+            $this->recordRun($meta, (string) $payload['model'], $taskType, $status, (int) round((microtime(true) - $started) * 1000), $json['usage'] ?? []);
 
             return response($bodyStr, $status)->header('Content-Type', 'application/json');
         }
 
         $body = $upstream->getBody();
 
-        return new StreamedResponse(function () use ($body, $meta, $model, $taskType, $status, $started) {
+        return new StreamedResponse(function () use ($body, $meta, $payload, $taskType, $status, $started) {
             while (! $body->eof()) {
                 echo $body->read(8192);
                 @ob_flush();
                 @flush();
             }
-            $this->recordRun($meta, $model, $taskType, $status, (int) round((microtime(true) - $started) * 1000), []);
+            $this->recordRun($meta, (string) $payload['model'], $taskType, $status, (int) round((microtime(true) - $started) * 1000), []);
         }, $status, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
@@ -100,6 +173,7 @@ class ProxyController extends Controller
             'user_id' => $request->user()?->id,
             'client_id' => $payload['client_id'] ?? null,
             'project_id' => $payload['project_id'] ?? null,
+            'project_ref_id' => null,
             'workflow_id' => $payload['workflow_id'] ?? null,
             'task_id' => $payload['task_id'] ?? null,
             'session_id' => $payload['session_id'] ?? null,
@@ -129,6 +203,7 @@ class ProxyController extends Controller
             'user_id' => $meta['user_id'],
             'client_id' => $meta['client_id'],
             'project_id' => $meta['project_id'],
+            'project_ref_id' => $meta['project_ref_id'],
             'workflow_id' => $meta['workflow_id'],
             'task_id' => $meta['task_id'],
             'session_id' => $meta['session_id'],
@@ -167,92 +242,4 @@ class ProxyController extends Controller
         ]);
     }
 
-    private function elevenCredential(): ?ProviderCredential
-    {
-        return ProviderCredential::query()
-            ->where('provider', 'elevenlabs')
-            ->where('active', true)
-            ->latest()
-            ->first();
-    }
-
-    public function elevenTts(Request $request)
-    {
-        $data = $request->validate([
-            'text' => ['required', 'string'],
-            'voice_id' => ['required', 'string'],
-            'model_id' => ['nullable', 'string'],
-            'output_format' => ['nullable', 'string'],
-        ]);
-
-        $cred = $this->elevenCredential();
-        if (! $cred || ! $cred->api_key) {
-            return response()->json(['message' => 'Kein aktiver ElevenLabs-Provider im Server konfiguriert.'], 400);
-        }
-
-        $model = $data['model_id'] ?? 'eleven_multilingual_v2';
-        $fmt = $data['output_format'] ?? 'mp3_44100_128';
-        $base = rtrim($cred->base_url ?: 'https://api.elevenlabs.io', '/');
-        $url = $base.'/v1/text-to-speech/'.$data['voice_id'].'?output_format='.$fmt;
-
-        $resp = (new Client(['timeout' => 60]))->post($url, [
-            'headers' => ['xi-api-key' => $cred->api_key, 'Content-Type' => 'application/json'],
-            'json' => ['text' => $data['text'], 'model_id' => $model],
-            'http_errors' => false,
-        ]);
-
-        if ($resp->getStatusCode() !== 200) {
-            return response()->json(['message' => 'ElevenLabs TTS Fehler', 'detail' => (string) $resp->getBody()], $resp->getStatusCode());
-        }
-
-        $mime = str_starts_with($fmt, 'pcm_') ? 'audio/wav' : (str_starts_with($fmt, 'opus_') ? 'audio/ogg' : 'audio/mpeg');
-
-        return response()->json(['base64' => base64_encode((string) $resp->getBody()), 'mime' => $mime]);
-    }
-
-    public function elevenStt(Request $request)
-    {
-        $data = $request->validate([
-            'base64' => ['required', 'string'],
-            'mime' => ['nullable', 'string'],
-            'model_id' => ['nullable', 'string'],
-            'language_code' => ['nullable', 'string'],
-        ]);
-
-        $cred = $this->elevenCredential();
-        if (! $cred || ! $cred->api_key) {
-            return response()->json(['message' => 'Kein aktiver ElevenLabs-Provider im Server konfiguriert.'], 400);
-        }
-
-        $b64 = $data['base64'];
-        if (str_contains($b64, ',')) {
-            $b64 = substr($b64, strpos($b64, ',') + 1);
-        }
-        $bytes = base64_decode($b64) ?: '';
-        $mime = $data['mime'] ?? 'audio/wav';
-        $ext = str_contains($mime, 'wav') ? 'wav' : (str_contains($mime, 'mp3') ? 'mp3' : (str_contains($mime, 'webm') ? 'webm' : (str_contains($mime, 'ogg') ? 'ogg' : 'bin')));
-
-        $multipart = [
-            ['name' => 'file', 'contents' => $bytes, 'filename' => 'audio.'.$ext],
-            ['name' => 'model_id', 'contents' => $data['model_id'] ?? 'scribe_v2'],
-        ];
-        if (! empty($data['language_code'])) {
-            $multipart[] = ['name' => 'language_code', 'contents' => $data['language_code']];
-        }
-
-        $base = rtrim($cred->base_url ?: 'https://api.elevenlabs.io', '/');
-        $resp = (new Client(['timeout' => 120]))->post($base.'/v1/speech-to-text', [
-            'headers' => ['xi-api-key' => $cred->api_key],
-            'multipart' => $multipart,
-            'http_errors' => false,
-        ]);
-
-        if ($resp->getStatusCode() !== 200) {
-            return response()->json(['message' => 'ElevenLabs STT Fehler', 'detail' => (string) $resp->getBody()], $resp->getStatusCode());
-        }
-
-        $json = json_decode((string) $resp->getBody(), true) ?: [];
-
-        return response()->json(['text' => $json['text'] ?? '', 'language_code' => $json['language_code'] ?? null]);
-    }
 }

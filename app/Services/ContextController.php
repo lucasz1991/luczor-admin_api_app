@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ContextArtifact;
+use App\Models\Project;
 use Illuminate\Support\Str;
 
 /**
@@ -15,6 +16,7 @@ class ContextController
         private LuczorMemoryService $memory,
         private GitFreshnessService $gitFreshness,
         private GraphContextService $graphContext,
+        private ContextCache $cache,
     ) {
     }
 
@@ -23,6 +25,12 @@ class ContextController
      * @return array<string,mixed>
      */
     public function ask(array $req): array
+    {
+        return $this->cache->remember($req, fn () => $this->resolve($req));
+    }
+
+    /** @return array<string,mixed> */
+    private function resolve(array $req): array
     {
         $projectId = $req['project_id'] ?? null;
         $taskType = $req['task_type'] ?? 'chat.general';
@@ -127,9 +135,16 @@ class ContextController
             'explain' => $explain,
         ];
 
+        $project = $projectId ? Project::query()
+            ->where('user_id', $req['user_id'] ?? null)
+            ->where('external_id', $projectId)
+            ->first() : null;
+
         ContextArtifact::create([
+            'user_id' => $req['user_id'] ?? null,
             'context_id' => $contextId,
             'project_id' => $projectId,
+            'project_ref_id' => $project?->id,
             'task_type' => $taskType,
             'feature_key' => $featureKey,
             'repo_id' => $git['repo_id'] ?? null,

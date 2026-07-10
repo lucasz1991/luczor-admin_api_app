@@ -7,6 +7,7 @@ use App\Models\LuczorMemoryArchive;
 use App\Models\LuczorMessageArchive;
 use App\Models\LuczorProjectArchive;
 use App\Models\LuczorSummaryArchive;
+use App\Services\ApiActor;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -21,7 +22,7 @@ class SyncController extends Controller
         'summaries' => [LuczorSummaryArchive::class, 'summary'],
     ];
 
-    public function push(Request $request)
+    public function push(Request $request, ApiActor $actor)
     {
         $data = $request->validate([
             'client_id' => ['required', 'string', 'max:120'],
@@ -31,6 +32,8 @@ class SyncController extends Controller
             'summaries' => ['array'],
         ]);
 
+        $userId = $actor->userId($request);
+        $clientId = $actor->deviceId($request, $data['client_id'], true);
         $counts = [];
 
         foreach (self::ARCHIVES as $bucket => [$modelClass, $entityType]) {
@@ -44,13 +47,25 @@ class SyncController extends Controller
                 }
 
                 /** @var class-string<Model> $modelClass */
+                $projectExternalId = $entityType === 'project'
+                    ? $externalId
+                    : (string) Arr::get($item, 'projectId', Arr::get($item, 'project_id', ''));
+                $project = $actor->project(
+                    $request,
+                    $projectExternalId,
+                    (string) Arr::get($item, 'name', $projectExternalId),
+                    $entityType === 'project'
+                );
+
                 $modelClass::updateOrCreate(
                     [
-                        'client_id' => $data['client_id'],
+                        'user_id' => $userId,
+                        'client_id' => $clientId,
                         'entity_type' => $entityType,
                         'external_id' => $externalId,
                     ],
                     [
+                        'project_ref_id' => $project?->id,
                         'payload' => $item,
                         'created_at_client' => $this->clientTime(Arr::get($item, 'createdAt')),
                         'updated_at_client' => $this->clientTime(Arr::get($item, 'updatedAt', Arr::get($item, 'ts'))),
@@ -68,17 +83,18 @@ class SyncController extends Controller
         ]);
     }
 
-    public function pull(Request $request)
+    public function pull(Request $request, ApiActor $actor)
     {
         $validated = $request->validate([
             'since' => ['nullable', 'date'],
         ]);
 
+        $userId = $actor->userId($request);
         $since = isset($validated['since']) ? Carbon::parse($validated['since']) : null;
         $payload = [];
 
         foreach (self::ARCHIVES as $bucket => [$modelClass]) {
-            $query = $modelClass::query()->orderBy('updated_at');
+            $query = $modelClass::query()->where('user_id', $userId)->orderBy('updated_at');
             if ($since) {
                 $query->where('updated_at', '>', $since);
             }

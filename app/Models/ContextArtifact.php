@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 class ContextArtifact extends Model
 {
     protected $fillable = [
+        'user_id',
         'context_id',
         'project_id',
+        'project_ref_id',
         'task_type',
         'feature_key',
         'repo_id',

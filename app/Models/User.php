@@ -38,6 +38,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(ApiKey::class);
     }
 
+    public function oauthConnections()
+    {
+        return $this->hasMany(OAuthConnection::class);
+    }
+
     public function isAdmin(): bool
     {
         return in_array($this->role, ['admin', 'superadmin'], true);

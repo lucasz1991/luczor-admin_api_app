@@ -26,6 +26,12 @@ class BootstrapController extends Controller
                 'email' => $request->user()?->email,
             ],
             'runtime_settings' => $this->runtimeSettingsPayload(),
+            'realtime' => [
+                'key' => config('broadcasting.connections.pusher.key'),
+                'host' => config('luczor.realtime.public_host'),
+                'port' => (int) config('luczor.realtime.public_port'),
+                'scheme' => config('luczor.realtime.public_scheme'),
+            ],
             'model_profiles' => ModelProfile::query()
                 ->where('active', true)
                 ->orderBy('name')

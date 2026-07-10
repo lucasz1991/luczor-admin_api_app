@@ -4,15 +4,21 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
+use App\Models\AuditEvent;
+use App\Models\Device;
+use App\Models\DeviceJob;
+use App\Models\EvaluationResult;
 use App\Models\LuczorAgentEventArchive;
 use App\Models\LuczorMemoryArchive;
 use App\Models\LuczorMessageArchive;
 use App\Models\LuczorProjectArchive;
 use App\Models\LuczorSummaryArchive;
+use App\Models\LlmRun;
 use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
 use App\Models\ProviderCredential;
+use App\Models\Project;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -21,27 +27,50 @@ use Illuminate\Validation\Rule;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $user = $request->user();
+        $isAdmin = $user?->isAdmin() ?? false;
+        $clientIds = $this->ownedClientIds($user);
+
+        $apiKeys = ApiKey::with('user')
+            ->when(! $isAdmin, fn ($query) => $query->where('user_id', $user->id))
+            ->latest()
+            ->get();
+
         return view('dashboard.index', [
-            'apiKeys' => ApiKey::with('user')->latest()->get(),
+            'isAdmin' => $isAdmin,
+            'clientIds' => $clientIds,
+            'apiKeys' => $apiKeys,
             'abilities' => ApiKey::ABILITIES,
-            'providers' => ProviderCredential::latest()->get(),
-            'modelProfiles' => ModelProfile::orderBy('name')->get(),
-            'modelUseCases' => ModelUseCase::with(['entries.modelProfile'])->orderBy('slug')->get(),
+            'providers' => $isAdmin ? ProviderCredential::latest()->get() : collect(),
+            'modelProfiles' => $isAdmin ? ModelProfile::orderBy('name')->get() : collect(),
+            'modelUseCases' => $isAdmin ? ModelUseCase::with(['entries.modelProfile'])->orderBy('slug')->get() : collect(),
             'archiveCounts' => [
-                'projects' => LuczorProjectArchive::count(),
-                'messages' => LuczorMessageArchive::count(),
-                'memories' => LuczorMemoryArchive::count(),
-                'summaries' => LuczorSummaryArchive::count(),
-                'agent_events' => LuczorAgentEventArchive::count(),
+                'projects' => $this->archiveQuery(LuczorProjectArchive::class, $isAdmin, $user?->id)->count(),
+                'messages' => $this->archiveQuery(LuczorMessageArchive::class, $isAdmin, $user?->id)->count(),
+                'memories' => $this->archiveQuery(LuczorMemoryArchive::class, $isAdmin, $user?->id)->count(),
+                'summaries' => $this->archiveQuery(LuczorSummaryArchive::class, $isAdmin, $user?->id)->count(),
+                'agent_events' => $this->archiveQuery(LuczorAgentEventArchive::class, $isAdmin, $user?->id)->count(),
             ],
-            'settings' => Setting::orderBy('group')->orderBy('key')->get(),
+            'settings' => $isAdmin ? Setting::orderBy('group')->orderBy('key')->get() : collect(),
+            'userProjects' => $isAdmin ? collect() : Project::query()->where('user_id', $user->id)->latest('updated_at')->limit(8)->get(),
+            'userEvents' => $isAdmin ? collect() : $this->archiveQuery(LuczorAgentEventArchive::class, false, $user->id)->latest('created_at')->limit(10)->get(),
+            'operations' => $isAdmin ? [
+                'users' => \App\Models\User::count(),
+                'devices_online' => Device::query()->where('status', 'online')->count(),
+                'device_jobs_open' => DeviceJob::query()->whereIn('status', ['approval_required', 'queued', 'running'])->count(),
+                'llm_runs_24h' => LlmRun::query()->where('created_at', '>=', now()->subDay())->count(),
+                'evaluations_24h' => EvaluationResult::query()->where('created_at', '>=', now()->subDay())->count(),
+                'audit_events_24h' => AuditEvent::query()->where('created_at', '>=', now()->subDay())->count(),
+            ] : [],
         ]);
     }
 
     public function storeSettings(Request $request)
     {
+        $this->ensureAdmin($request);
+
         $incoming = (array) $request->input('settings', []);
 
         foreach (Setting::all() as $setting) {
@@ -92,8 +121,12 @@ class DashboardController extends Controller
         return Redirect::route('dashboard')->with('plain_api_key', $minted['plain']);
     }
 
-    public function toggleApiKey(ApiKey $apiKey)
+    public function toggleApiKey(Request $request, ApiKey $apiKey)
     {
+        if (! $request->user()?->isAdmin() && (int) $apiKey->user_id !== (int) $request->user()->id) {
+            abort(403);
+        }
+
         $apiKey->forceFill(['active' => ! $apiKey->active])->save();
 
         return Redirect::route('dashboard')->with('status', 'API key updated.');
@@ -101,6 +134,8 @@ class DashboardController extends Controller
 
     public function storeProviderCredential(Request $request)
     {
+        $this->ensureAdmin($request);
+
         $data = $request->validate([
             'provider' => ['required', 'string', 'max:80'],
             'label' => ['required', 'string', 'max:120'],
@@ -115,6 +150,8 @@ class DashboardController extends Controller
 
     public function storeModelProfile(Request $request)
     {
+        $this->ensureAdmin($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'provider' => ['required', 'string', 'max:80'],
@@ -134,6 +171,8 @@ class DashboardController extends Controller
 
     public function storeModelUseCase(Request $request)
     {
+        $this->ensureAdmin($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:1000'],
@@ -149,6 +188,8 @@ class DashboardController extends Controller
 
     public function storeModelUseCaseEntry(Request $request)
     {
+        $this->ensureAdmin($request);
+
         $data = $request->validate([
             'model_use_case_id' => ['required', 'exists:model_use_cases,id'],
             'model_profile_id' => ['required', 'exists:model_profiles,id'],
@@ -169,5 +210,34 @@ class DashboardController extends Controller
         );
 
         return Redirect::route('dashboard')->with('status', 'Fallback order updated.');
+    }
+
+    private function ownedClientIds($user)
+    {
+        if (! $user) {
+            return collect();
+        }
+
+        return ApiKey::where('user_id', $user->id)
+            ->whereNotNull('device_id')
+            ->pluck('device_id')
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    private function archiveQuery(string $modelClass, bool $isAdmin, ?int $userId)
+    {
+        $query = $modelClass::query();
+
+        // Archive rows without an owner are legacy data and must be migrated
+        // before any user can see them. Client ids are device metadata, not an
+        // authorization boundary.
+        return $isAdmin ? $query : $query->where('user_id', $userId);
+    }
+
+    private function ensureAdmin(Request $request): void
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
     }
 }

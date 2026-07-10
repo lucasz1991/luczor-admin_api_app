@@ -67,6 +67,7 @@ class LuczorMemoryService
 
         return MemoryLink::updateOrCreate(
             [
+                'user_id' => $data['user_id'] ?? null,
                 'client_id' => $data['client_id'] ?? null,
                 'external_id' => $data['external_id'] ?? (string) Str::uuid(),
             ],
@@ -74,6 +75,7 @@ class LuczorMemoryService
                 'scope' => $scope,
                 'dataset' => $dataset,
                 'project_id' => $data['project_id'] ?? null,
+                'project_ref_id' => $data['project_ref_id'] ?? null,
                 'feature_key' => $data['feature_key'] ?? null,
                 'session_id' => $data['session_id'] ?? null,
                 'cognee_memory_id' => $cogneeId,
@@ -111,7 +113,10 @@ class LuczorMemoryService
 
         // Fallback: degraded recall from the memory_links summaries.
         $q = trim($query);
-        $base = MemoryLink::query()->where('dataset', $dataset)->where('visibility', '!=', 'private');
+        $base = MemoryLink::query()
+            ->where('dataset', $dataset)
+            ->where('user_id', $ids['user_id'] ?? null)
+            ->where('visibility', '!=', 'private');
 
         $rows = (clone $base)
             ->when($q !== '', fn ($qb) => $qb->where('summary', 'like', '%'.$q.'%'))
@@ -140,6 +145,7 @@ class LuczorMemoryService
 
         $link = MemoryLink::query()
             ->where('dataset', $dataset)
+            ->where('user_id', $ids['user_id'] ?? null)
             ->where('external_id', $externalId)
             ->when($clientId, fn ($q) => $q->where('client_id', $clientId))
             ->first();

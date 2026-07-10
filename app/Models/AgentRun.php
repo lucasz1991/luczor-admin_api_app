@@ -10,6 +10,7 @@ class AgentRun extends Model
         'user_id',
         'client_id',
         'project_id',
+        'project_ref_id',
         'workflow_id',
         'task_id',
         'session_id',

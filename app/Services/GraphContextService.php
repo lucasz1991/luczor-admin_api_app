@@ -3,10 +3,34 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class GraphContextService
 {
+    /**
+     * Persist a repository snapshot after a verified webhook. Indexing is best
+     * effort: GitHub delivery processing must remain durable when a retrieval
+     * sidecar is being restarted.
+     *
+     * @param  array<string,mixed>  $snapshot
+     */
+    public function index(array $snapshot): void
+    {
+        $base = rtrim((string) config('luczor.graphify.base_url', ''), '/');
+        if ($base === '') {
+            return;
+        }
+
+        try {
+            Http::timeout((int) config('luczor.graphify.timeout', 10))
+                ->post($base.'/api/v1/index', $snapshot)
+                ->throw();
+        } catch (\Throwable $exception) {
+            Log::warning('Graph snapshot indexing failed.', ['exception' => $exception->getMessage()]);
+        }
+    }
+
     /**
      * Resolve code-context candidates. Graphify is used when configured; a
      * deterministic Git/query fallback keeps the MVP useful before Graphify is
@@ -58,12 +82,15 @@ class GraphContextService
         try {
             $res = Http::timeout((int) config('luczor.graphify.timeout', 10))
                 ->post($base.'/api/v1/impact', [
+                    'user_id' => $req['user_id'] ?? null,
                     'query' => $req['query'] ?? '',
                     'project_id' => $req['project_id'] ?? null,
                     'repo_id' => $git['repo_id'] ?? ($req['repo_id'] ?? null),
                     'branch' => $git['branch'] ?? null,
                     'commit_sha' => $git['commit_sha'] ?? null,
                     'changed_files' => $git['changed_files'] ?? [],
+                    'code' => $req['code'] ?? [],
+                    'code_limit' => $req['code_limit'] ?? 12,
                 ]);
 
             if (! $res->ok()) {
@@ -71,7 +98,7 @@ class GraphContextService
             }
 
             $json = $res->json();
-            $hits = $json['data'] ?? ($json['hits'] ?? []);
+            $hits = $json['code'] ?? ($json['data'] ?? ($json['hits'] ?? []));
             if (! is_array($hits)) {
                 return [];
             }

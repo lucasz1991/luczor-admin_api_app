@@ -9,6 +9,7 @@ use App\Models\EvaluationResult;
 use App\Models\LlmRun;
 use App\Models\MemoryLink;
 use App\Models\ModelRanking;
+use App\Models\PerformanceProfile;
 use App\Models\User;
 use App\Services\LuczorMemoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,6 +28,7 @@ class PlanningMvpApiTest extends TestCase
         ]);
 
         MemoryLink::create([
+            'user_id' => $user->id,
             'client_id' => 'desktop-a',
             'external_id' => 'm1',
             'scope' => 'project',
@@ -62,7 +64,7 @@ class PlanningMvpApiTest extends TestCase
 
     public function test_agent_run_can_create_tasks_and_update_status(): void
     {
-        [, $token] = $this->token(['brain.write', 'brain.read']);
+        [$user, $token] = $this->token(['brain.write', 'brain.read']);
 
         $runId = $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/agent-runs', [
             'client_id' => 'desktop-a',
@@ -87,9 +89,10 @@ class PlanningMvpApiTest extends TestCase
 
     public function test_llm_evaluation_updates_run_and_rankings(): void
     {
-        [, $token] = $this->token(['brain.write', 'brain.read']);
+        [$user, $token] = $this->token(['brain.write', 'brain.read']);
 
         $run = LlmRun::create([
+            'user_id' => $user->id,
             'project_id' => 'p1',
             'task_type' => 'coding.fix_bug',
             'model_id' => '@preset/luczor',
@@ -111,8 +114,10 @@ class PlanningMvpApiTest extends TestCase
         ])->assertCreated()->assertJsonPath('data.quality_score', 0.8);
 
         $this->assertSame(1, EvaluationResult::count());
+        $this->assertSame(1, PerformanceProfile::count());
         $this->assertTrue($run->fresh()->test_passed);
         $this->assertDatabaseHas('model_rankings', [
+            'user_id' => $user->id,
             'task_type' => 'coding.fix_bug',
             'model_id' => '@preset/luczor',
         ]);
