@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('oauth_connections', function (Blueprint $table) {
+        if (! Schema::hasTable('oauth_connections')) Schema::create('oauth_connections', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('provider', 60);
@@ -23,7 +23,7 @@ return new class extends Migration
             $table->index(['provider', 'provider_user_id']);
         });
 
-        Schema::create('repository_branches', function (Blueprint $table) {
+        if (! Schema::hasTable('repository_branches')) Schema::create('repository_branches', function (Blueprint $table) {
             $table->id();
             $table->foreignId('repository_id')->constrained()->cascadeOnDelete();
             $table->string('name', 160);
@@ -34,7 +34,7 @@ return new class extends Migration
             $table->unique(['repository_id', 'name']);
         });
 
-        Schema::create('repository_commits', function (Blueprint $table) {
+        if (! Schema::hasTable('repository_commits')) Schema::create('repository_commits', function (Blueprint $table) {
             $table->id();
             $table->foreignId('repository_id')->constrained()->cascadeOnDelete();
             $table->string('sha', 80);
@@ -48,7 +48,7 @@ return new class extends Migration
             $table->index(['repository_id', 'branch', 'committed_at']);
         });
 
-        Schema::create('repository_changed_files', function (Blueprint $table) {
+        if (! Schema::hasTable('repository_changed_files')) Schema::create('repository_changed_files', function (Blueprint $table) {
             $table->id();
             $table->foreignId('repository_commit_id')->constrained()->cascadeOnDelete();
             $table->string('path', 1000);
@@ -60,7 +60,7 @@ return new class extends Migration
             $table->unique(['repository_commit_id', 'path']);
         });
 
-        Schema::create('github_webhook_deliveries', function (Blueprint $table) {
+        if (! Schema::hasTable('github_webhook_deliveries')) Schema::create('github_webhook_deliveries', function (Blueprint $table) {
             $table->id();
             $table->string('delivery_id', 120)->unique();
             $table->foreignId('repository_id')->nullable()->constrained()->nullOnDelete();

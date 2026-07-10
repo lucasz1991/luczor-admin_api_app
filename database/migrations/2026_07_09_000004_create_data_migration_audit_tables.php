@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('data_migration_runs', function (Blueprint $table) {
+        if (! Schema::hasTable('data_migration_runs')) Schema::create('data_migration_runs', function (Blueprint $table) {
             $table->id();
             $table->uuid('run_id')->unique();
             $table->string('source_connection');
@@ -21,7 +21,7 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('data_migration_table_checks', function (Blueprint $table) {
+        if (! Schema::hasTable('data_migration_table_checks')) Schema::create('data_migration_table_checks', function (Blueprint $table) {
             $table->id();
             $table->foreignId('data_migration_run_id')->constrained()->cascadeOnDelete();
             $table->string('table_name');
@@ -32,7 +32,7 @@ return new class extends Migration
             $table->string('status')->default('pending');
             $table->json('details')->nullable();
             $table->timestamps();
-            $table->unique(['data_migration_run_id', 'table_name']);
+            $table->unique(['data_migration_run_id', 'table_name'], 'dm_checks_run_table_unique');
         });
     }
 
