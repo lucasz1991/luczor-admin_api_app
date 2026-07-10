@@ -9,12 +9,13 @@ use App\Models\LlmRun;
 use App\Services\EvaluationService;
 use App\Services\ApiActor;
 use App\Services\ModelRanker;
+use App\Services\ProviderPolicyService;
 use Illuminate\Http\Request;
 
 class LlmController extends Controller
 {
     /** Choose the best model for a task type (exploit ~90%, explore ~10%). */
-    public function route(Request $request, ModelRanker $ranker, ApiActor $actor)
+    public function route(Request $request, ModelRanker $ranker, ApiActor $actor, ProviderPolicyService $policy)
     {
         $data = $request->validate([
             'task_type' => ['nullable', 'string', 'max:120'],
@@ -22,42 +23,24 @@ class LlmController extends Controller
         $taskType = $data['task_type'] ?? 'chat.general';
 
         $userId = $actor->userId($request);
-        $ranker->recompute($taskType, $userId);
-        $rankings = ModelRanking::query()->where('user_id', $userId)->where('task_type', $taskType)->orderByDesc('score')->get();
-
-        if ($rankings->isNotEmpty()) {
-            $explore = $rankings->count() > 1 && random_int(1, 100) <= 10;
-            $chosen = $explore ? $rankings->slice(1)->random() : $rankings->first();
-
-            return response()->json([
-                'task_type' => $taskType,
-                'model_id' => $chosen->model_id,
-                'provider' => $chosen->provider_id,
-                'source' => $explore ? 'exploration' : 'ranking',
-                'score' => $chosen->score,
-                'sample_count' => $chosen->sample_count,
-            ]);
-        }
-
-        $slug = config('luczor.default_model_profile');
-        $profile = ModelProfile::query()->where('slug', $slug)->where('active', true)->first()
-            ?? ModelProfile::query()->where('active', true)->first();
+        $ranker->recompute($taskType);
+        $profile = $policy->candidates(null, $taskType)[0] ?? null;
 
         return response()->json([
             'task_type' => $taskType,
             'model_id' => $profile?->model_id ?? '@preset/luczor',
             'provider' => $profile?->provider ?? 'openrouter',
-            'source' => 'default',
+            'source' => 'admin_policy_and_metrics',
         ]);
     }
 
     public function rankings(Request $request, ModelRanker $ranker, ApiActor $actor)
     {
+        abort_unless($request->user()?->isAdmin(), 403);
         $taskType = $request->query('task_type');
-        $userId = $actor->userId($request);
-        $ranker->recompute($taskType ?: null, $userId);
+        $ranker->recompute($taskType ?: null);
 
-        $query = ModelRanking::query()->where('user_id', $userId)->orderBy('task_type')->orderByDesc('score');
+        $query = ModelRanking::query()->whereNull('user_id')->orderBy('task_type')->orderByDesc('score');
         if ($taskType) {
             $query->where('task_type', $taskType);
         }

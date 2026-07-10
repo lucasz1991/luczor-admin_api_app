@@ -14,6 +14,13 @@ use App\Models\LuczorMessageArchive;
 use App\Models\LuczorProjectArchive;
 use App\Models\LuczorSummaryArchive;
 use App\Models\LlmRun;
+use App\Models\LlmAttempt;
+use App\Models\ModelRanking;
+use App\Models\ProviderPriceSnapshot;
+use App\Models\PromptTemplate;
+use App\Models\ContextStrategy;
+use App\Models\NetworkPolicy;
+use App\Models\LlmExperiment;
 use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
@@ -23,6 +30,7 @@ use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class DashboardController extends Controller
@@ -64,6 +72,15 @@ class DashboardController extends Controller
                 'evaluations_24h' => EvaluationResult::query()->where('created_at', '>=', now()->subDay())->count(),
                 'audit_events_24h' => AuditEvent::query()->where('created_at', '>=', now()->subDay())->count(),
             ] : [],
+            'telemetry' => $isAdmin ? $this->telemetrySummary() : [],
+            'modelTelemetry' => $isAdmin ? $this->modelTelemetry() : collect(),
+            'recentAttempts' => $isAdmin ? LlmAttempt::query()->with('run')->latest()->limit(30)->get() : collect(),
+            'modelRankings' => $isAdmin ? ModelRanking::query()->whereNull('user_id')->orderBy('task_type')->orderByDesc('score')->get() : collect(),
+            'providerPrices' => $isAdmin ? ProviderPriceSnapshot::query()->latest('valid_from')->get() : collect(),
+            'promptTemplates' => $isAdmin ? PromptTemplate::query()->latest('version')->get() : collect(),
+            'contextStrategies' => $isAdmin ? ContextStrategy::query()->orderBy('key')->get() : collect(),
+            'networkPolicies' => $isAdmin ? NetworkPolicy::query()->orderBy('key')->get() : collect(),
+            'llmExperiments' => $isAdmin ? LlmExperiment::query()->latest()->get() : collect(),
         ]);
     }
 
@@ -148,6 +165,13 @@ class DashboardController extends Controller
         return Redirect::route('dashboard')->with('status', 'Provider credential saved.');
     }
 
+    public function toggleProviderCredential(Request $request, ProviderCredential $providerCredential)
+    {
+        $this->ensureAdmin($request);
+        $providerCredential->update(['active' => ! $providerCredential->active]);
+        return Redirect::route('dashboard')->with('status', 'Provider status updated.');
+    }
+
     public function storeModelProfile(Request $request)
     {
         $this->ensureAdmin($request);
@@ -167,6 +191,57 @@ class DashboardController extends Controller
         ModelProfile::updateOrCreate(['slug' => $data['slug']], $data);
 
         return Redirect::route('dashboard')->with('status', 'Model profile saved.');
+    }
+
+    public function toggleModelProfile(Request $request, ModelProfile $modelProfile)
+    {
+        $this->ensureAdmin($request);
+        $modelProfile->update(['active' => ! $modelProfile->active]);
+        return Redirect::route('dashboard')->with('status', 'Model status updated.');
+    }
+
+    public function storeProviderPrice(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'provider_id' => ['required', 'string', 'max:80'], 'model_id' => ['required', 'string', 'max:190'],
+            'currency' => ['required', 'string', 'max:8'], 'input_per_million' => ['required', 'numeric', 'min:0'],
+            'output_per_million' => ['required', 'numeric', 'min:0'], 'cache_read_per_million' => ['nullable', 'numeric', 'min:0'],
+            'cache_write_per_million' => ['nullable', 'numeric', 'min:0'], 'valid_from' => ['required', 'date'],
+        ]);
+        ProviderPriceSnapshot::query()->where('provider_id', $data['provider_id'])->where('model_id', $data['model_id'])->whereNull('valid_until')->update(['valid_until' => now()]);
+        ProviderPriceSnapshot::create($data + ['source' => 'admin', 'cache_read_per_million' => $data['cache_read_per_million'] ?? 0, 'cache_write_per_million' => $data['cache_write_per_million'] ?? 0]);
+        return Redirect::route('dashboard')->with('status', 'Price snapshot saved.');
+    }
+
+    public function storePromptTemplate(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate(['key' => ['required','string','max:120'], 'task_type' => ['nullable','string','max:120'], 'body' => ['required','string','max:100000']]);
+        $version = ((int) PromptTemplate::where('key', $data['key'])->max('version')) + 1;
+        PromptTemplate::create($data + ['version' => $version, 'status' => 'active']);
+        return Redirect::route('dashboard')->with('status', 'Prompt version saved.');
+    }
+
+    public function storeContextStrategy(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate(['key' => ['required','string','max:120'], 'name' => ['required','string','max:190'], 'config' => ['required','json']]);
+        ContextStrategy::updateOrCreate(['key' => $data['key']], ['name' => $data['name'], 'status' => 'active', 'config' => json_decode($data['config'], true, 512, JSON_THROW_ON_ERROR)]);
+        return Redirect::route('dashboard')->with('status', 'Context strategy saved.');
+    }
+
+    public function storeNetworkPolicy(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'key' => ['required','string','max:120'], 'name' => ['required','string','max:190'],
+            'connect_timeout_ms' => ['required','integer','min:100','max:120000'], 'request_timeout_ms' => ['required','integer','min:1000','max:600000'],
+            'max_attempts' => ['required','integer','min:1','max:10'], 'backoff_ms' => ['required','integer','min:0','max:60000'],
+            'max_cost_usd' => ['nullable','numeric','min:0'], 'max_input_tokens' => ['nullable','integer','min:1'], 'max_output_tokens' => ['nullable','integer','min:1'],
+        ]);
+        NetworkPolicy::updateOrCreate(['key' => $data['key']], $data + ['status' => 'active']);
+        return Redirect::route('dashboard')->with('status', 'Network policy saved.');
     }
 
     public function storeModelUseCase(Request $request)
@@ -239,5 +314,32 @@ class DashboardController extends Controller
     private function ensureAdmin(Request $request): void
     {
         abort_unless($request->user()?->isAdmin(), 403);
+    }
+
+    private function telemetrySummary(): array
+    {
+        $q = LlmRun::query()->where('created_at', '>=', now()->subDays(30));
+        $total = (clone $q)->count();
+        $successful = (clone $q)->where('success', true)->count();
+        $cost = (float) (clone $q)->sum('cost_total');
+        return [
+            'runs_30d' => $total,
+            'success_rate' => $total ? round($successful / $total * 100, 1) : 0,
+            'cost_30d' => round($cost, 6),
+            'cost_per_success' => $successful ? round($cost / $successful, 6) : 0,
+            'avg_latency_ms' => (int) round((float) (clone $q)->avg('latency_ms')),
+            'avg_ttft_ms' => (int) round((float) (clone $q)->avg('ttft_ms')),
+            'avg_tokens_per_second' => round((float) (clone $q)->avg('tokens_per_second'), 2),
+            'fallback_rate' => $total ? round((clone $q)->where('attempt_count', '>', 1)->count() / $total * 100, 1) : 0,
+            'input_tokens' => (int) (clone $q)->sum('input_tokens'),
+            'output_tokens' => (int) (clone $q)->sum('output_tokens'),
+        ];
+    }
+
+    private function modelTelemetry()
+    {
+        return LlmRun::query()->where('created_at', '>=', now()->subDays(30))
+            ->selectRaw('model_id, provider_id, task_type, count(*) as runs, avg(case when success then 1 else 0 end) as success_rate, avg(latency_ms) as avg_latency_ms, avg(ttft_ms) as avg_ttft_ms, avg(tokens_per_second) as avg_tps, sum(cost_total) as total_cost, avg(cost_total) as avg_cost, avg(quality_score) as avg_quality')
+            ->groupBy('model_id', 'provider_id', 'task_type')->orderByDesc('runs')->get();
     }
 }

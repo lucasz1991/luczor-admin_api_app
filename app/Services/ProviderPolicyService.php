@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ModelProfile;
+use App\Models\ModelRanking;
 use App\Models\ModelUseCase;
 
 /** Enforces the server-owned allow-list, output budget and fallback ladder. */
@@ -11,17 +12,10 @@ class ProviderPolicyService
     /** @return array<int,ModelProfile> */
     public function candidates(?string $requestedModel, string $taskType): array
     {
+        // Intentionally ignore client-supplied model identifiers. Customers
+        // describe the task; only the admin-managed use-case ladder and the
+        // measured ranking decide which model is used.
         $profiles = collect();
-        $requestedModel = trim((string) $requestedModel);
-
-        if ($requestedModel !== '') {
-            $profiles = ModelProfile::query()
-                ->where('active', true)
-                ->where('provider', 'openrouter')
-                ->where(fn ($query) => $query->where('model_id', $requestedModel)->orWhere('slug', $requestedModel))
-                ->get();
-            abort_if($profiles->isEmpty(), 422, 'The requested model is not enabled by the server policy.');
-        }
 
         $useCase = $this->useCaseFor($taskType);
         if ($useCase) {
@@ -32,7 +26,7 @@ class ProviderPolicyService
                 ->get()
                 ->pluck('modelProfile')
                 ->filter(fn ($profile) => $profile?->active && $profile->provider === 'openrouter');
-            $profiles = $profiles->concat($fallbacks);
+            $profiles = $fallbacks->values();
         }
 
         if ($profiles->isEmpty()) {
@@ -45,7 +39,24 @@ class ProviderPolicyService
 
         abort_if($profiles->isEmpty(), 503, 'No enabled OpenRouter model profile is available.');
 
-        return $profiles->unique('id')->values()->all();
+        $profiles = $profiles->unique('id')->values();
+        $ranking = ModelRanking::query()
+            ->whereNull('user_id')
+            ->where('task_type', $taskType)
+            ->whereIn('model_id', $profiles->pluck('model_id'))
+            ->where('sample_count', '>=', 5)
+            ->get()->keyBy('model_id');
+
+        if ($ranking->isNotEmpty()) {
+            $count = max(1, $profiles->count());
+            $profiles = $profiles->values()->sortByDesc(function (ModelProfile $profile, int $index) use ($ranking, $count) {
+                $measured = (float) ($ranking->get($profile->model_id)?->score ?? 0);
+                $adminPriority = 1 - ($index / $count);
+                return 0.65 * $measured + 0.35 * $adminPriority;
+            })->values();
+        }
+
+        return $profiles->all();
     }
 
     public function outputBudget(ModelProfile $profile, mixed $requested): int
@@ -63,6 +74,9 @@ class ProviderPolicyService
             'coding' => 'coding',
             'planning' => 'planner',
             'vision' => 'vision',
+            'stt' => 'stt',
+            'tts' => 'tts',
+            'verification', 'verifier' => 'verifier',
             default => 'chat',
         };
 

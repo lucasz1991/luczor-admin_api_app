@@ -32,16 +32,14 @@ class BootstrapController extends Controller
                 'port' => (int) config('luczor.realtime.public_port'),
                 'scheme' => config('luczor.realtime.public_scheme'),
             ],
-            'model_profiles' => ModelProfile::query()
-                ->where('active', true)
-                ->orderBy('name')
-                ->get(['id', 'name', 'slug', 'provider', 'model_id', 'temperature', 'max_tokens', 'purpose', 'active']),
-            'model_use_cases' => $this->modelUseCasesPayload(),
+            // Model/provider selection is an admin-only server concern.
+            'routing' => ['managed_by' => 'server', 'client_model_selection' => false],
         ]);
     }
 
-    public function modelProfiles()
+    public function modelProfiles(Request $request)
     {
+        abort_unless($request->user()?->isAdmin(), 403);
         return response()->json([
             'data' => ModelProfile::query()
                 ->where('active', true)
@@ -54,7 +52,7 @@ class BootstrapController extends Controller
     {
         return response()->json([
             'data' => $this->runtimeSettingsPayload(),
-            'model_use_cases' => $this->modelUseCasesPayload(),
+            'routing' => ['managed_by' => 'server', 'client_model_selection' => false],
         ]);
     }
 

@@ -12,9 +12,9 @@ class ModelRanker
 {
     public function recompute(?string $taskType = null, ?int $userId = null): void
     {
+        $userSelect = $userId ? 'user_id,' : 'NULL as user_id,';
         $rows = LlmRun::query()
-            ->selectRaw('
-                user_id,
+            ->selectRaw($userSelect.'
                 task_type,
                 model_id,
                 provider_id,
@@ -33,7 +33,9 @@ class ModelRanker
             ')
             ->when($taskType, fn ($q) => $q->where('task_type', $taskType))
             ->when($userId, fn ($q) => $q->where('user_id', $userId))
-            ->groupBy('user_id', 'task_type', 'model_id', 'provider_id')
+            ->groupBy(...($userId
+                ? ['user_id', 'task_type', 'model_id', 'provider_id']
+                : ['task_type', 'model_id', 'provider_id']))
             ->get();
 
         foreach ($rows as $row) {
@@ -79,7 +81,7 @@ class ModelRanker
     {
         return ModelRanking::query()
             ->where('task_type', $taskType)
-            ->when($userId, fn ($q) => $q->where('user_id', $userId))
+            ->when($userId, fn ($q) => $q->where('user_id', $userId), fn ($q) => $q->whereNull('user_id'))
             ->orderByDesc('score')
             ->orderByDesc('sample_count')
             ->first();

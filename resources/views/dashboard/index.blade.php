@@ -158,13 +158,52 @@
         </section>
     @else
 
-    <section class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+    <section id="overview" class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         @foreach ($operations as $label => $count)
             <div class="luczor-card p-4">
                 <div class="text-xs uppercase tracking-wider text-slate-500">{{ str_replace('_', ' ', $label) }}</div>
                 <div class="mt-2 text-2xl font-semibold text-cyan-100">{{ $count }}</div>
             </div>
         @endforeach
+    </section>
+
+    <section id="telemetry" class="mt-8 space-y-6">
+        <div class="flex items-end justify-between gap-4">
+            <div><h2 class="text-xl font-semibold text-white">Provider- und Modell-Telemetrie</h2><p class="mt-1 text-sm text-slate-400">30 Tage · Kosten, Nutzen, Geschwindigkeit, Fallbacks und Ergebnisqualität.</p></div>
+            <span class="rounded-full border border-cyan-400/20 bg-cyan-400/5 px-3 py-1 text-xs text-cyan-200">Admin only</span>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            @foreach ([
+                'Runs' => number_format($telemetry['runs_30d'] ?? 0),
+                'Erfolg' => number_format($telemetry['success_rate'] ?? 0, 1).' %',
+                'Kosten' => '$ '.number_format($telemetry['cost_30d'] ?? 0, 6),
+                'Kosten / Erfolg' => '$ '.number_format($telemetry['cost_per_success'] ?? 0, 6),
+                'Fallback-Rate' => number_format($telemetry['fallback_rate'] ?? 0, 1).' %',
+                'Ø Latenz' => number_format($telemetry['avg_latency_ms'] ?? 0).' ms',
+                'Ø TTFT' => number_format($telemetry['avg_ttft_ms'] ?? 0).' ms',
+                'Ø Tokens/s' => number_format($telemetry['avg_tokens_per_second'] ?? 0, 2),
+                'Input Tokens' => number_format($telemetry['input_tokens'] ?? 0),
+                'Output Tokens' => number_format($telemetry['output_tokens'] ?? 0),
+            ] as $label => $value)
+                <div class="luczor-card p-4"><div class="text-[10px] uppercase tracking-[.18em] text-slate-500">{{ $label }}</div><div class="mt-2 font-mono text-xl text-cyan-100">{{ $value }}</div></div>
+            @endforeach
+        </div>
+        <div class="luczor-card overflow-x-auto p-5">
+            <h3 class="font-semibold text-white">Leistung je Modell und Aufgabentyp</h3>
+            <table class="mt-4 min-w-full text-left text-xs">
+                <thead class="border-b border-slate-800 text-slate-500"><tr><th class="py-2">Modell / Task</th><th>Runs</th><th>Erfolg</th><th>Qualität</th><th>Latenz</th><th>TTFT</th><th>Tok/s</th><th>Kosten gesamt</th><th>Ø Kosten</th></tr></thead>
+                <tbody class="divide-y divide-slate-900">@forelse($modelTelemetry as $row)<tr>
+                    <td class="py-3"><div class="font-mono text-cyan-200">{{ $row->model_id }}</div><div class="text-slate-500">{{ $row->provider_id }} · {{ $row->task_type }}</div></td>
+                    <td>{{ $row->runs }}</td><td>{{ number_format($row->success_rate * 100, 1) }} %</td><td>{{ $row->avg_quality === null ? '—' : number_format($row->avg_quality, 3) }}</td>
+                    <td>{{ number_format($row->avg_latency_ms) }} ms</td><td>{{ number_format($row->avg_ttft_ms) }} ms</td><td>{{ number_format($row->avg_tps, 2) }}</td>
+                    <td>$ {{ number_format($row->total_cost, 6) }}</td><td>$ {{ number_format($row->avg_cost, 6) }}</td>
+                </tr>@empty<tr><td colspan="9" class="py-6 text-center text-slate-500">Noch keine LLM-Läufe. Daten entstehen automatisch über den Provider-Proxy.</td></tr>@endforelse</tbody>
+            </table>
+        </div>
+        <div class="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
+            <div class="luczor-card p-5"><h3 class="font-semibold text-white">Aktuelle Rankings</h3><div class="mt-4 space-y-2">@forelse($modelRankings as $ranking)<div class="rounded border border-slate-800 bg-slate-950/60 p-3 text-xs"><div class="flex justify-between"><span class="font-mono text-cyan-200">{{ $ranking->task_type }}</span><b>{{ number_format($ranking->score, 4) }}</b></div><div class="mt-1 text-slate-400">{{ $ranking->model_id }} · {{ $ranking->sample_count }} Samples · ${{ number_format($ranking->avg_cost_total, 6) }}</div></div>@empty<p class="text-sm text-slate-500">Rankings werden ab fünf Messwerten je Modell aktiv.</p>@endforelse</div></div>
+            <div class="luczor-card overflow-x-auto p-5"><h3 class="font-semibold text-white">Letzte Provider-Versuche</h3><table class="mt-4 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Run</th><th>Versuch</th><th>Modell</th><th>Status</th><th>TTFT / Gesamt</th><th>Tokens</th><th>Kosten</th></tr></thead><tbody class="divide-y divide-slate-900">@foreach($recentAttempts as $attempt)<tr><td class="py-2 font-mono">#{{ $attempt->llm_run_id }}</td><td>{{ $attempt->attempt_no }}</td><td class="max-w-52 truncate text-cyan-200">{{ $attempt->model_id }}</td><td class="{{ $attempt->status === 'completed' ? 'text-emerald-300' : 'text-rose-300' }}">{{ $attempt->status }}</td><td>{{ $attempt->ttft_ms ?? '—' }} / {{ $attempt->total_ms ?? '—' }} ms</td><td>{{ $attempt->input_tokens ?? 0 }} → {{ $attempt->output_tokens ?? 0 }}</td><td>${{ number_format($attempt->effective_cost ?? 0, 8) }}</td></tr>@endforeach</tbody></table></div>
+        </div>
     </section>
 
     <section id="archives" class="grid gap-4 md:grid-cols-5">
@@ -242,6 +281,22 @@
                 <button class="luczor-btn" type="submit">Credential speichern</button>
             </form>
         </div>
+    </section>
+
+    <section class="mt-8 grid gap-6 xl:grid-cols-2">
+        <div class="luczor-card p-5">
+            <h2 class="text-lg font-semibold text-white">Provider-Preissnapshot</h2>
+            <p class="mt-1 text-sm text-slate-400">Fallback, falls der Provider keine Kosten meldet. Historische Läufe behalten ihren Snapshot.</p>
+            <form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.provider-prices.store') }}">@csrf
+                <input class="luczor-input" name="provider_id" value="openrouter" required><input class="luczor-input" name="model_id" placeholder="provider/model-id" required>
+                <input class="luczor-input" name="input_per_million" type="number" min="0" step="0.00000001" placeholder="Input $ / 1M" required><input class="luczor-input" name="output_per_million" type="number" min="0" step="0.00000001" placeholder="Output $ / 1M" required>
+                <input class="luczor-input" name="cache_read_per_million" type="number" min="0" step="0.00000001" placeholder="Cache read $ / 1M"><input class="luczor-input" name="cache_write_per_million" type="number" min="0" step="0.00000001" placeholder="Cache write $ / 1M">
+                <input type="hidden" name="currency" value="USD"><input class="luczor-input" name="valid_from" type="datetime-local" value="{{ now()->format('Y-m-d\TH:i') }}" required>
+                <button class="luczor-btn" type="submit">Preisversion speichern</button>
+            </form>
+            <div class="mt-4 space-y-2">@foreach($providerPrices->take(10) as $price)<div class="rounded border border-slate-800 p-2 text-xs"><span class="font-mono text-cyan-200">{{ $price->model_id }}</span><span class="ml-2 text-slate-500">in ${{ $price->input_per_million }} · out ${{ $price->output_per_million }} / 1M · ab {{ $price->valid_from }}</span></div>@endforeach</div>
+        </div>
+        <div class="luczor-card p-5"><h2 class="text-lg font-semibold text-white">Provider-Status</h2><div class="mt-4 space-y-3">@forelse($providers as $provider)<div class="flex items-center justify-between rounded border border-slate-800 bg-slate-950/50 p-3 text-sm"><div><b>{{ $provider->label }}</b><div class="text-slate-500">{{ $provider->provider }} · {{ $provider->maskedKey() }}</div></div><form method="POST" action="{{ route('dashboard.provider-credentials.toggle', $provider) }}">@csrf<button class="luczor-btn-secondary">{{ $provider->active ? 'Deaktivieren' : 'Aktivieren' }}</button></form></div>@empty<p class="text-slate-500">Keine Provider.</p>@endforelse</div></div>
     </section>
 
     <section id="models" class="mt-8 grid gap-6 lg:grid-cols-2">
@@ -326,6 +381,14 @@
             @endforeach
         </div>
     </section>
+
+    <section id="optimizer" class="mt-8 grid gap-6 xl:grid-cols-3">
+        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Prompt-Version</h2><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.prompt-templates.store') }}">@csrf<input class="luczor-input" name="key" placeholder="luczor.coding" required><input class="luczor-input" name="task_type" placeholder="coding.fix_bug"><textarea class="luczor-input" name="body" rows="6" placeholder="System-/Prompt-Template" required></textarea><button class="luczor-btn">Neue Version</button></form><div class="mt-4 text-xs text-slate-500">{{ $promptTemplates->count() }} Versionen gespeichert</div></div>
+        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Kontextstrategie</h2><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.context-strategies.store') }}">@csrf<input class="luczor-input" name="key" value="context.memory_code_budgeted" required><input class="luczor-input" name="name" value="Memory + Code budgetiert" required><textarea class="luczor-input font-mono text-xs" name="config" rows="6" required>{"git_tokens":250,"graph_tokens":1000,"memory_tokens":600,"raw_file_tokens":3500,"deduplicate":true}</textarea><button class="luczor-btn">Strategie speichern</button></form></div>
+        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Netzwerk-/Kostenpolicy</h2><form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.network-policies.store') }}">@csrf<input class="luczor-input md:col-span-2" name="key" value="proxy.openrouter.default" required><input class="luczor-input md:col-span-2" name="name" value="OpenRouter Default" required><input class="luczor-input" name="connect_timeout_ms" type="number" value="10000" required><input class="luczor-input" name="request_timeout_ms" type="number" value="90000" required><input class="luczor-input" name="max_attempts" type="number" value="3" required><input class="luczor-input" name="backoff_ms" type="number" value="250" required><input class="luczor-input" name="max_cost_usd" type="number" step="0.000001" placeholder="Max $ / Run"><input class="luczor-input" name="max_input_tokens" type="number" placeholder="Max Input"><input class="luczor-input" name="max_output_tokens" type="number" value="8192"><button class="luczor-btn">Policy speichern</button></form></div>
+    </section>
+
+    <section class="mt-8 luczor-card p-5"><h2 class="font-semibold text-white">Aktive Modellprofile (nur Admin)</h2><div class="mt-4 grid gap-3 lg:grid-cols-2">@foreach($modelProfiles as $profile)<div class="flex items-center justify-between rounded border border-slate-800 bg-slate-950/50 p-3 text-sm"><div><b class="text-cyan-100">{{ $profile->name }}</b><div class="font-mono text-xs text-slate-500">{{ $profile->model_id }} · {{ $profile->purpose }}</div></div><form method="POST" action="{{ route('dashboard.model-profiles.toggle', $profile) }}">@csrf<button class="luczor-btn-secondary">{{ $profile->active ? 'Deaktivieren' : 'Aktivieren' }}</button></form></div>@endforeach</div></section>
 
     <section class="mt-8 grid gap-6 lg:grid-cols-2">
         <div class="luczor-card p-5">

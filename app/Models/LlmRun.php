@@ -7,18 +7,24 @@ use Illuminate\Database\Eloquent\Model;
 class LlmRun extends Model
 {
     protected $fillable = [
+        'request_id',
         'user_id', 'client_id', 'project_id', 'project_ref_id', 'workflow_id', 'task_id', 'session_id',
         'task_type', 'feature_key', 'context_id',
-        'model_id', 'provider_id', 'prompt_template_id', 'context_strategy_id',
+        'model_id', 'selected_by', 'provider_id', 'prompt_template_id', 'context_strategy_id',
         'network_policy_id', 'repo_id', 'branch', 'commit_sha',
-        'status', 'success', 'latency_ms', 'input_tokens', 'output_tokens',
-        'cost_total', 'quality_score', 'test_passed', 'tool_call_count', 'retry_count',
+        'status', 'finish_reason', 'request_hash', 'response_hash', 'success', 'latency_ms',
+        'ttft_ms', 'tokens_per_second', 'input_tokens', 'output_tokens', 'cost_total',
+        'provider_cost', 'calculated_cost', 'cost_source', 'quality_score', 'test_passed',
+        'tool_call_count', 'retry_count', 'attempt_count',
     ];
 
     protected $casts = [
         'success' => 'boolean',
         'cost_total' => 'float',
         'quality_score' => 'float',
+        'provider_cost' => 'float',
+        'calculated_cost' => 'float',
+        'tokens_per_second' => 'float',
         'test_passed' => 'boolean',
     ];
 
@@ -30,5 +36,10 @@ class LlmRun extends Model
     public function evaluations()
     {
         return $this->hasMany(EvaluationResult::class);
+    }
+
+    public function attempts()
+    {
+        return $this->hasMany(LlmAttempt::class);
     }
 }

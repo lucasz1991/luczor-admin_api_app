@@ -21,22 +21,36 @@ class EvaluationService
             'output_tokens' => $this->nullableInt($metrics['output_tokens'] ?? null),
             'context_tokens' => $this->nullableInt($metrics['context_tokens'] ?? null),
             'latency_ms' => $this->nullableInt($metrics['latency_ms'] ?? null),
+            'ttft_ms' => $this->nullableInt($metrics['ttft_ms'] ?? null),
+            'tokens_per_second' => $this->nullableFloatUnbounded($metrics['tokens_per_second'] ?? null),
+            'reasoning_tokens' => $this->nullableInt($metrics['reasoning_tokens'] ?? null),
+            'cache_read_tokens' => $this->nullableInt($metrics['cache_read_tokens'] ?? null),
+            'cache_write_tokens' => $this->nullableInt($metrics['cache_write_tokens'] ?? null),
             'tool_call_count' => (int) ($metrics['tool_call_count'] ?? 0),
             'retry_count' => (int) ($metrics['retry_count'] ?? 0),
             'cost_total' => (float) ($metrics['cost_total'] ?? 0),
+            'provider_cost' => $this->nullableFloatUnbounded($metrics['provider_cost'] ?? null),
+            'calculated_cost' => $this->nullableFloatUnbounded($metrics['calculated_cost'] ?? null),
+            'cost_source' => $metrics['cost_source'] ?? null,
             'prompt_template_id' => $metrics['prompt_template_id'] ?? $run->prompt_template_id,
             'context_strategy_id' => $metrics['context_strategy_id'] ?? $run->context_strategy_id,
             'network_policy_id' => $metrics['network_policy_id'] ?? $run->network_policy_id,
             'raw_usage' => $metrics['raw_usage'] ?? null,
+            'provider_meta' => $metrics['provider_meta'] ?? null,
         ];
 
         $run->fill([
             'input_tokens' => $payload['input_tokens'] ?? $run->input_tokens,
             'output_tokens' => $payload['output_tokens'] ?? $run->output_tokens,
             'latency_ms' => $payload['latency_ms'] ?? $run->latency_ms,
+            'ttft_ms' => $payload['ttft_ms'] ?? $run->ttft_ms,
+            'tokens_per_second' => $payload['tokens_per_second'] ?? $run->tokens_per_second,
             'tool_call_count' => $payload['tool_call_count'],
             'retry_count' => $payload['retry_count'],
             'cost_total' => $payload['cost_total'],
+            'provider_cost' => $payload['provider_cost'],
+            'calculated_cost' => $payload['calculated_cost'],
+            'cost_source' => $payload['cost_source'],
         ])->save();
 
         return $run->metrics()->create($payload);
@@ -127,5 +141,10 @@ class EvaluationService
         }
 
         return max(0.0, min(1.0, (float) $value));
+    }
+
+    private function nullableFloatUnbounded(mixed $value): ?float
+    {
+        return $value === null || $value === '' ? null : (float) $value;
     }
 }

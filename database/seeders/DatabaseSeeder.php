@@ -6,6 +6,9 @@ use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
 use App\Models\Setting;
+use App\Models\ContextStrategy;
+use App\Models\NetworkPolicy;
+use App\Models\PromptTemplate;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -93,5 +96,25 @@ class DatabaseSeeder extends Seeder
                 ['value' => ['v' => $s['value']], 'group' => $s['group'], 'label' => $s['label'], 'type' => $s['type']]
             );
         }
+
+        PromptTemplate::updateOrCreate(
+            ['key' => 'luczor.system', 'version' => 1],
+            ['task_type' => null, 'body' => 'Du bist Luczor. Nutze den bereitgestellten Kontext sparsam, beachte Policies und dokumentiere Tool-Aktionen.', 'status' => 'active']
+        );
+
+        ContextStrategy::updateOrCreate(
+            ['key' => 'context.memory_code_budgeted'],
+            ['name' => 'Memory + Code budgetiert', 'status' => 'active', 'config' => [
+                'git_tokens' => 250, 'graph_tokens' => 1000, 'memory_tokens' => 600,
+                'raw_file_tokens' => 3500, 'tool_output_tokens' => 1000, 'deduplicate' => true,
+            ]]
+        );
+
+        NetworkPolicy::updateOrCreate(
+            ['key' => 'proxy.openrouter.default'],
+            ['name' => 'OpenRouter Default', 'status' => 'active', 'connect_timeout_ms' => 10000,
+                'request_timeout_ms' => 90000, 'max_attempts' => 3, 'backoff_ms' => 250,
+                'max_output_tokens' => 8192, 'config' => ['retry_statuses' => [408, 429, 500, 502, 503, 504]]]
+        );
     }
 }
