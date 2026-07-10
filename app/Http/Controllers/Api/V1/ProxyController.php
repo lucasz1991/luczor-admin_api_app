@@ -15,6 +15,7 @@ use App\Services\ProviderPolicyService;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /** Provider-key isolation, admin-owned model routing and full attempt telemetry. */
@@ -47,6 +48,13 @@ class ProxyController extends Controller
             'messages' => ['required', 'array', 'min:1', 'max:100'],
             'messages.*.role' => ['required', 'string', 'in:system,user,assistant,tool'],
             'messages.*.content' => ['nullable', 'string', 'max:100000'],
+            'messages.*.name' => ['nullable', 'string', 'max:160'],
+            'messages.*.tool_call_id' => ['nullable', 'string', 'max:200'],
+            'messages.*.tool_calls' => ['nullable', 'array', 'max:64'],
+            'messages.*.tool_calls.*.id' => ['required_with:messages.*.tool_calls', 'string', 'max:200'],
+            'messages.*.tool_calls.*.type' => ['required_with:messages.*.tool_calls', 'in:function'],
+            'messages.*.tool_calls.*.function.name' => ['required_with:messages.*.tool_calls', 'string', 'max:160'],
+            'messages.*.tool_calls.*.function.arguments' => ['required_with:messages.*.tool_calls', 'string', 'max:100000'],
             'tools' => ['nullable', 'array', 'max:64'],
             'tool_choice' => ['nullable'],
             'temperature' => ['nullable', 'numeric', 'min:0', 'max:2'],
@@ -75,6 +83,7 @@ class ProxyController extends Controller
 
         $providerPayload = $validated;
         foreach ($this->internalKeys() as $key) unset($providerPayload[$key]);
+        $providerPayload['messages'] = $this->normalizeToolMessages($providerPayload['messages']);
         // Client values are accepted only for backward wire compatibility.
         // Routing, sampling and token limits are exclusively server-owned.
         unset($providerPayload['model'], $providerPayload['temperature'], $providerPayload['max_tokens']);
@@ -292,4 +301,23 @@ class ProxyController extends Controller
     }
 
     private function elapsedMs(float $started): int { return max(0, (int) round((microtime(true) - $started) * 1000)); }
+
+    /** Keep the OpenAI tool protocol intact after Laravel validation. */
+    private function normalizeToolMessages(array $messages): array
+    {
+        foreach ($messages as $index => &$message) {
+            if (($message['role'] ?? null) === 'tool' && blank($message['tool_call_id'] ?? null) && blank($message['name'] ?? null)) {
+                throw ValidationException::withMessages(["messages.$index" => 'Tool messages require tool_call_id or name.']);
+            }
+            if (($message['role'] ?? null) === 'assistant' && ! empty($message['tool_calls'])) {
+                foreach ($message['tool_calls'] as $toolIndex => $toolCall) {
+                    if (blank($toolCall['id'] ?? null) || blank($toolCall['function']['name'] ?? null)) {
+                        throw ValidationException::withMessages(["messages.$index.tool_calls.$toolIndex" => 'Assistant tool calls require id and function name.']);
+                    }
+                }
+            }
+        }
+        unset($message);
+        return $messages;
+    }
 }

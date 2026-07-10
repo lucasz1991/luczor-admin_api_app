@@ -4,12 +4,11 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\DeviceJobSigner;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 
 class VoiceManifestController extends Controller
 {
-    public function __invoke(Request $request, DeviceJobSigner $signer)
+    public function __invoke(DeviceJobSigner $signer)
     {
         $manifest = config('luczor.voice.manifest', []);
         $path = (string) config('luczor.voice.manifest_file', '');
@@ -21,9 +20,9 @@ class VoiceManifestController extends Controller
             }
         }
         abort_unless(is_array($manifest) && ! empty($manifest['version']) && ! empty($manifest['assets']), 503, 'No signed voice release manifest is published.');
-        // Bind assets to the same trusted origin that served the signed manifest.
-        // This makes localhost development and the production domain use one release file.
-        $origin = rtrim($request->getSchemeAndHttpHost(), '/');
+        // Voice releases are production-only and always originate from the configured HTTPS domain.
+        $origin = rtrim((string) config('app.url'), '/');
+        abort_unless(str_starts_with($origin, 'https://'), 503, 'Voice release origin must use HTTPS.');
         foreach ($manifest['assets'] as &$asset) {
             if (is_array($asset) && isset($asset['file_name'])) {
                 $asset['url'] = $origin.'/api/v1/voice/releases/'.rawurlencode((string) $manifest['version']).'/'.rawurlencode((string) $asset['file_name']);

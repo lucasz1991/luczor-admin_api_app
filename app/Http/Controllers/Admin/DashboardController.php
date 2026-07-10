@@ -41,6 +41,7 @@ class DashboardController extends Controller
     {
         $user = $request->user();
         $isAdmin = $user?->isAdmin() ?? false;
+        if ($isAdmin) return view('admin.page', $this->adminData('overview'));
         $clientIds = $this->ownedClientIds($user);
 
         $apiKeys = ApiKey::with('user')
@@ -87,6 +88,13 @@ class DashboardController extends Controller
             'devices' => $isAdmin ? Device::query()->with('user')->latest('last_seen_at')->get() : collect(),
             'debugRequests' => $isAdmin ? DeviceDebugRequest::query()->with('device')->latest()->limit(50)->get() : collect(),
         ]);
+    }
+
+    public function page(Request $request, string $page)
+    {
+        $this->ensureAdmin($request);
+        abort_unless(in_array($page, ['overview', 'providers', 'models', 'telemetry', 'optimizer', 'experiments', 'devices', 'api-keys', 'archives', 'settings'], true), 404);
+        return view('admin.page', $this->adminData($page));
     }
 
     public function requestDeviceDebug(Request $request, Device $device)
@@ -226,14 +234,36 @@ class DashboardController extends Controller
 
         ModelProfile::updateOrCreate(['slug' => $data['slug']], $data);
 
-        return Redirect::route('dashboard')->with('status', 'Model profile saved.');
+        return Redirect::route('admin.page', 'models')->with('status', 'Model profile saved.');
     }
 
     public function toggleModelProfile(Request $request, ModelProfile $modelProfile)
     {
         $this->ensureAdmin($request);
         $modelProfile->update(['active' => ! $modelProfile->active]);
-        return Redirect::route('dashboard')->with('status', 'Model status updated.');
+        return Redirect::route('admin.page', 'models')->with('status', 'Model status updated.');
+    }
+
+    public function updateModelProfile(Request $request, ModelProfile $modelProfile)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'], 'provider' => ['required', 'string', 'max:80'],
+            'model_id' => ['required', 'string', 'max:180'], 'temperature' => ['required', 'numeric', 'min:0', 'max:2'],
+            'max_tokens' => ['required', 'integer', 'min:1', 'max:200000'], 'purpose' => ['nullable', 'string', 'max:120'],
+        ]);
+        $modelProfile->update($data + ['slug' => Str::slug($data['name'])]);
+        return Redirect::route('admin.page', 'models')->with('status', 'Model profile updated.');
+    }
+
+    public function destroyModelProfile(Request $request, ModelProfile $modelProfile)
+    {
+        $this->ensureAdmin($request);
+        DB::transaction(function () use ($modelProfile) {
+            $modelProfile->fallbackEntries()->delete();
+            $modelProfile->delete();
+        });
+        return Redirect::route('admin.page', 'models')->with('status', 'Model profile deleted and removed from fallback chains.');
     }
 
     public function storeProviderPrice(Request $request)
@@ -428,6 +458,19 @@ class DashboardController extends Controller
     private function ensureAdmin(Request $request): void
     {
         abort_unless($request->user()?->isAdmin(), 403);
+    }
+
+    private function adminData(string $page): array
+    {
+        return [
+            'page' => $page,
+            'operations' => ['users' => \App\Models\User::count(), 'devices_online' => Device::where('status', 'online')->count(), 'device_jobs_open' => DeviceJob::whereIn('status', ['approval_required', 'queued', 'running'])->count(), 'llm_runs_24h' => LlmRun::where('created_at', '>=', now()->subDay())->count(), 'evaluations_24h' => EvaluationResult::where('created_at', '>=', now()->subDay())->count(), 'audit_events_24h' => AuditEvent::where('created_at', '>=', now()->subDay())->count()],
+            'providers' => ProviderCredential::latest()->get(), 'modelProfiles' => ModelProfile::orderBy('purpose')->orderBy('name')->get(), 'modelUseCases' => ModelUseCase::with(['entries.modelProfile'])->orderBy('slug')->get(),
+            'telemetry' => $this->telemetrySummary(), 'modelTelemetry' => $this->modelTelemetry(), 'recentAttempts' => LlmAttempt::with('run')->latest()->limit(50)->get(), 'modelRankings' => ModelRanking::whereNull('user_id')->orderBy('task_type')->orderByDesc('score')->get(),
+            'providerPrices' => ProviderPriceSnapshot::latest('valid_from')->get(), 'promptTemplates' => PromptTemplate::latest('version')->get(), 'contextStrategies' => ContextStrategy::orderBy('key')->get(), 'networkPolicies' => NetworkPolicy::orderBy('key')->get(), 'llmExperiments' => LlmExperiment::latest()->get(),
+            'devices' => Device::with('user')->latest('last_seen_at')->get(), 'debugRequests' => DeviceDebugRequest::with('device')->latest()->limit(50)->get(), 'apiKeys' => ApiKey::with('user')->latest()->get(), 'abilities' => ApiKey::ABILITIES,
+            'archiveCounts' => ['projects' => LuczorProjectArchive::count(), 'messages' => LuczorMessageArchive::count(), 'memories' => LuczorMemoryArchive::count(), 'summaries' => LuczorSummaryArchive::count(), 'agent_events' => LuczorAgentEventArchive::count()], 'settings' => Setting::orderBy('group')->orderBy('key')->get(),
+        ];
     }
 
     private function telemetrySummary(): array

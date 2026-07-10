@@ -14,10 +14,13 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     Route::get('/github/callback', [GithubOAuthController::class, 'callback'])->name('github.callback');
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/{page}', [DashboardController::class, 'page'])->name('admin.page');
         Route::post('/dashboard/provider-credentials', [DashboardController::class, 'storeProviderCredential'])->name('dashboard.provider-credentials.store');
         Route::post('/dashboard/provider-credentials/{providerCredential}/toggle', [DashboardController::class, 'toggleProviderCredential'])->name('dashboard.provider-credentials.toggle');
         Route::post('/dashboard/model-profiles', [DashboardController::class, 'storeModelProfile'])->name('dashboard.model-profiles.store');
         Route::post('/dashboard/model-profiles/{modelProfile}/toggle', [DashboardController::class, 'toggleModelProfile'])->name('dashboard.model-profiles.toggle');
+        Route::put('/dashboard/model-profiles/{modelProfile}', [DashboardController::class, 'updateModelProfile'])->name('dashboard.model-profiles.update');
+        Route::delete('/dashboard/model-profiles/{modelProfile}', [DashboardController::class, 'destroyModelProfile'])->name('dashboard.model-profiles.destroy');
         Route::post('/dashboard/model-use-cases', [DashboardController::class, 'storeModelUseCase'])->name('dashboard.model-use-cases.store');
         Route::post('/dashboard/model-use-case-entries', [DashboardController::class, 'storeModelUseCaseEntry'])->name('dashboard.model-use-case-entries.store');
         Route::post('/dashboard/provider-prices', [DashboardController::class, 'storeProviderPrice'])->name('dashboard.provider-prices.store');

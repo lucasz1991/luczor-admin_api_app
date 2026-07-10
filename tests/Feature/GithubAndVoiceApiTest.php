@@ -44,7 +44,7 @@ class GithubAndVoiceApiTest extends TestCase
         $this->assertStringNotContainsString('binary_path', $payload);
         $this->assertStringNotContainsString('api_key', $payload);
         $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame('http://localhost/api/v1/voice/releases/2026.07.09/whisper.exe', $decoded['assets'][0]['url']);
+        $this->assertSame(rtrim((string) config('app.url'), '/').'/api/v1/voice/releases/2026.07.09/whisper.exe', $decoded['assets'][0]['url']);
     }
 
     public function test_only_manifest_listed_voice_assets_are_publicly_downloadable(): void

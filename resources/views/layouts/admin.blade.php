@@ -12,17 +12,18 @@
             <span class="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-400/10 font-mono font-bold text-cyan-200">LZ</span>
             <span><b class="block uppercase tracking-[.25em]">Luczor</b><small class="text-cyan-300/60">Admin Control Plane</small></span>
         </a>
+        @php($navigation = ['System'=>['Overview'=>'overview','Provider & Preise'=>'providers','Modelle & Routing'=>'models'],'Optimierung'=>['Telemetry & Kosten'=>'telemetry','Prompt & Kontext'=>'optimizer','Experimente'=>'experiments'],'Operations'=>['Geraete-Debug'=>'devices','Geraete & Keys'=>'api-keys','Archive & Audit'=>'archives','Server Settings'=>'settings']])
         <nav class="flex-1 space-y-6 overflow-y-auto px-4 py-6 text-sm">
-            @foreach (['System'=>['Übersicht'=>'#overview','Provider & Preise'=>'#providers','Modelle & Routing'=>'#models'],'Optimierung'=>['Telemetry & Kosten'=>'#telemetry','Prompt & Kontext'=>'#optimizer','Experimente'=>'#experiments'],'Operations'=>['Geräte-Debug'=>'#devices','Geräte & Keys'=>'#api-keys','Archive & Audit'=>'#archives','Server Settings'=>'#settings']] as $group=>$items)
+            @foreach ($navigation as $group => $items)
                 <div><div class="px-3 text-[10px] font-semibold uppercase tracking-[.22em] text-slate-600">{{ $group }}</div>
-                    <div class="mt-2 space-y-1">@foreach($items as $label=>$hash)<a href="{{ route('dashboard').$hash }}" class="block rounded-md px-3 py-2 text-slate-300 hover:bg-cyan-400/10 hover:text-cyan-100">{{ $label }}</a>@endforeach</div>
+                    <div class="mt-2 space-y-1">@foreach($items as $label => $page)<a href="{{ route('admin.page', $page) }}" class="block rounded-md px-3 py-2 text-slate-300 hover:bg-cyan-400/10 hover:text-cyan-100">{{ $label }}</a>@endforeach</div>
                 </div>
             @endforeach
         </nav>
         <div class="border-t border-cyan-400/10 p-4 text-xs text-slate-500">Administrator · Modellwahl serverseitig</div>
     </aside>
     <header class="sticky top-0 z-20 flex min-h-[72px] items-center justify-between border-b border-cyan-400/10 bg-slate-950/85 px-5 backdrop-blur lg:px-8">
-        <div><div class="text-xs uppercase tracking-[.24em] text-cyan-300/70">Systemsteuerung</div><div class="text-sm text-slate-500">Provider · Routing · Kosten · Qualität</div></div>
+        <div><div class="text-xs uppercase tracking-[.24em] text-cyan-300/70">Systemsteuerung</div><div class="text-sm text-slate-500">Provider · Routing · Kosten · Qualitaet</div></div>
         <div class="flex items-center gap-3 text-sm"><a href="{{ route('profile.show') }}" class="text-slate-300">{{ auth()->user()->name }}</a><form method="POST" action="{{ route('logout') }}">@csrf<button class="rounded border border-rose-400/20 px-3 py-2 text-rose-200">Logout</button></form></div>
     </header>
     <main class="px-4 py-7 sm:px-6 lg:px-8">{{ $slot ?? '' }} @yield('content')</main>

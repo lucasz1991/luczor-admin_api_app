@@ -33,12 +33,18 @@ class DatabaseSeeder extends Seeder
         );
         if (! $admin->tenant_id) $admin->update(['tenant_id' => $tenant->id]);
 
+        // Current free OpenRouter models. The policy service ranks these candidates
+        // from observed cost, latency, quality and success data after enough samples.
         $profiles = [
-            ['name' => 'Chat Fast', 'slug' => 'chat-fast', 'provider' => 'openrouter', 'model_id' => 'google/gemini-3-flash-preview', 'purpose' => 'chat', 'temperature' => 0.25, 'max_tokens' => 1400],
-            ['name' => 'Coding Agent Primary', 'slug' => 'coding-agent-primary', 'provider' => 'openrouter', 'model_id' => 'anthropic/claude-sonnet-5', 'purpose' => 'coding', 'temperature' => 0.15, 'max_tokens' => 2400],
-            ['name' => 'Planner Deep', 'slug' => 'planner-deep', 'provider' => 'openrouter', 'model_id' => 'google/gemini-3-pro-preview', 'purpose' => 'planner', 'temperature' => 0.20, 'max_tokens' => 2600],
-            ['name' => 'Verifier Strict', 'slug' => 'verifier-strict', 'provider' => 'openrouter', 'model_id' => 'openai/gpt-5.1', 'purpose' => 'verifier', 'temperature' => 0.05, 'max_tokens' => 1600],
-            ['name' => 'Vision Reasoner', 'slug' => 'vision-reasoner', 'provider' => 'openrouter', 'model_id' => 'google/gemini-3-pro-preview', 'purpose' => 'vision', 'temperature' => 0.15, 'max_tokens' => 2200],
+            ['name' => 'NVIDIA Nemotron Super Free', 'slug' => 'nvidia-nemotron-super-free', 'provider' => 'openrouter', 'model_id' => 'nvidia/nemotron-3-super-120b-a12b:free', 'purpose' => 'chat', 'temperature' => 0.20, 'max_tokens' => 2200],
+            ['name' => 'NVIDIA Nemotron Ultra Free', 'slug' => 'nvidia-nemotron-ultra-free', 'provider' => 'openrouter', 'model_id' => 'nvidia/nemotron-3-ultra-550b-a55b:free', 'purpose' => 'planner', 'temperature' => 0.15, 'max_tokens' => 2800],
+            ['name' => 'NVIDIA Nemotron Nano Omni Free', 'slug' => 'nvidia-nemotron-nano-omni-free', 'provider' => 'openrouter', 'model_id' => 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', 'purpose' => 'chat', 'temperature' => 0.20, 'max_tokens' => 1800],
+            ['name' => 'NVIDIA Nemotron Vision Free', 'slug' => 'nvidia-nemotron-vision-free', 'provider' => 'openrouter', 'model_id' => 'nvidia/nemotron-nano-12b-v2-vl:free', 'purpose' => 'vision', 'temperature' => 0.10, 'max_tokens' => 1800],
+            ['name' => 'Qwen3 Coder Free', 'slug' => 'qwen3-coder-free', 'provider' => 'openrouter', 'model_id' => 'qwen/qwen3-coder:free', 'purpose' => 'coding', 'temperature' => 0.10, 'max_tokens' => 2800],
+            ['name' => 'Cohere North Mini Code Free', 'slug' => 'cohere-north-mini-code-free', 'provider' => 'openrouter', 'model_id' => 'cohere/north-mini-code:free', 'purpose' => 'coding', 'temperature' => 0.10, 'max_tokens' => 2200],
+            ['name' => 'OpenAI GPT-OSS 120B Free', 'slug' => 'gpt-oss-120b-free', 'provider' => 'openrouter', 'model_id' => 'openai/gpt-oss-120b:free', 'purpose' => 'verifier', 'temperature' => 0.05, 'max_tokens' => 2200],
+            ['name' => 'Meta Llama 3.3 70B Free', 'slug' => 'llama-33-70b-free', 'provider' => 'openrouter', 'model_id' => 'meta-llama/llama-3.3-70b-instruct:free', 'purpose' => 'chat', 'temperature' => 0.20, 'max_tokens' => 1800],
+            ['name' => 'Google Gemma 4 31B Free', 'slug' => 'gemma-4-31b-free', 'provider' => 'openrouter', 'model_id' => 'google/gemma-4-31b-it:free', 'purpose' => 'verifier', 'temperature' => 0.10, 'max_tokens' => 1800],
             ['name' => 'Local Speech To Text', 'slug' => 'local-stt-whisper', 'provider' => 'local', 'model_id' => 'whisper.cpp', 'purpose' => 'stt', 'temperature' => 0.00, 'max_tokens' => 1],
             ['name' => 'Local Text To Speech', 'slug' => 'local-tts-piper', 'provider' => 'local', 'model_id' => 'piper', 'purpose' => 'tts', 'temperature' => 0.00, 'max_tokens' => 1],
         ];
@@ -46,6 +52,8 @@ class DatabaseSeeder extends Seeder
         foreach ($profiles as $profile) {
             ModelProfile::updateOrCreate(['slug' => $profile['slug']], $profile + ['active' => true]);
         }
+        ModelProfile::whereIn('slug', ['chat-fast', 'coding-agent-primary', 'planner-deep', 'verifier-strict', 'vision-reasoner'])
+            ->update(['active' => false]);
 
         $useCases = [
             ['name' => 'Chat', 'slug' => 'chat', 'description' => 'Normale Assistenzantworten und Mini-Chat.'],
@@ -58,11 +66,11 @@ class DatabaseSeeder extends Seeder
         ];
 
         $fallbacks = [
-            'chat' => ['chat-fast', 'verifier-strict'],
-            'coding' => ['coding-agent-primary', 'verifier-strict', 'planner-deep'],
-            'planner' => ['planner-deep', 'coding-agent-primary', 'verifier-strict'],
-            'verifier' => ['verifier-strict', 'coding-agent-primary'],
-            'vision' => ['vision-reasoner', 'verifier-strict'],
+            'chat' => ['nvidia-nemotron-super-free', 'nvidia-nemotron-nano-omni-free', 'llama-33-70b-free'],
+            'coding' => ['qwen3-coder-free', 'cohere-north-mini-code-free', 'nvidia-nemotron-super-free'],
+            'planner' => ['nvidia-nemotron-ultra-free', 'nvidia-nemotron-super-free', 'gpt-oss-120b-free'],
+            'verifier' => ['gpt-oss-120b-free', 'nvidia-nemotron-super-free', 'gemma-4-31b-free'],
+            'vision' => ['nvidia-nemotron-vision-free', 'nvidia-nemotron-super-free'],
             'stt' => ['local-stt-whisper'],
             'tts' => ['local-tts-piper'],
         ];
