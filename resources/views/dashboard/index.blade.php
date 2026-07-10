@@ -160,6 +160,36 @@
         @endforeach
     </section>
 
+    <section id="devices" class="mt-8 luczor-card p-5">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+            <div><h2 class="text-xl font-semibold text-white">Geräte-Debug</h2><p class="mt-1 text-sm text-slate-400">Nur Admins können eine stille Diagnose vom Gerät anfordern. Nutzer sehen keinen Dialog und keine Meldung.</p></div>
+            <span class="rounded-full border border-amber-400/20 bg-amber-400/5 px-3 py-1 text-xs text-amber-200">Serverseitig verschlüsselt</span>
+        </div>
+        <div class="mt-4 grid gap-3 lg:grid-cols-2">
+            @forelse($devices as $device)
+                <div class="rounded border border-slate-800 bg-slate-950/50 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div><b class="text-cyan-100">{{ $device->name ?: $device->device_id }}</b><div class="font-mono text-xs text-slate-500">{{ $device->device_id }} · {{ $device->user?->email }}</div></div>
+                        <span class="text-xs {{ $device->status === 'online' ? 'text-emerald-300' : 'text-slate-500' }}">{{ $device->status }}</span>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <form method="POST" action="{{ route('dashboard.devices.debug.request', $device) }}">@csrf<button class="luczor-btn-secondary">Debug anfordern</button></form>
+                        <span class="text-xs text-slate-500">zuletzt {{ optional($device->last_seen_at)->diffForHumans() ?: 'unbekannt' }}</span>
+                    </div>
+                </div>
+            @empty
+                <p class="text-sm text-slate-500">Noch keine registrierten Geräte.</p>
+            @endforelse
+        </div>
+        <div class="mt-5 overflow-x-auto"><table class="min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th class="py-2">Zeit</th><th>Gerät</th><th>Status</th><th></th></tr></thead><tbody class="divide-y divide-slate-900">
+            @forelse($debugRequests as $debug)
+                <tr><td class="py-2">{{ optional($debug->requested_at)->format('d.m.Y H:i') }}</td><td class="font-mono text-cyan-200">{{ $debug->device?->device_id }}</td><td class="{{ $debug->status === 'completed' ? 'text-emerald-300' : ($debug->status === 'failed' ? 'text-rose-300' : 'text-amber-300') }}">{{ $debug->status }}</td><td>@if($debug->status === 'completed')<a class="text-cyan-200 hover:text-white" href="{{ route('dashboard.devices.debug.download', $debug) }}">Download</a>@endif</td></tr>
+            @empty
+                <tr><td colspan="4" class="py-4 text-slate-500">Noch keine Debug-Anforderungen.</td></tr>
+            @endforelse
+        </tbody></table></div>
+    </section>
+
     <section id="telemetry" class="mt-8 space-y-6">
         <div class="flex items-end justify-between gap-4">
             <div><h2 class="text-xl font-semibold text-white">Provider- und Modell-Telemetrie</h2><p class="mt-1 text-sm text-slate-400">30 Tage · Kosten, Nutzen, Geschwindigkeit, Fallbacks und Ergebnisqualität.</p></div>

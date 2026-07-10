@@ -13,7 +13,7 @@
             <span><b class="block uppercase tracking-[.25em]">Luczor</b><small class="text-cyan-300/60">Admin Control Plane</small></span>
         </a>
         <nav class="flex-1 space-y-6 overflow-y-auto px-4 py-6 text-sm">
-            @foreach (['System'=>['Übersicht'=>'#overview','Provider & Preise'=>'#providers','Modelle & Routing'=>'#models'],'Optimierung'=>['Telemetry & Kosten'=>'#telemetry','Prompt & Kontext'=>'#optimizer','Experimente'=>'#experiments'],'Operations'=>['Geräte & Keys'=>'#api-keys','Archive & Audit'=>'#archives','Server Settings'=>'#settings']] as $group=>$items)
+            @foreach (['System'=>['Übersicht'=>'#overview','Provider & Preise'=>'#providers','Modelle & Routing'=>'#models'],'Optimierung'=>['Telemetry & Kosten'=>'#telemetry','Prompt & Kontext'=>'#optimizer','Experimente'=>'#experiments'],'Operations'=>['Geräte-Debug'=>'#devices','Geräte & Keys'=>'#api-keys','Archive & Audit'=>'#archives','Server Settings'=>'#settings']] as $group=>$items)
                 <div><div class="px-3 text-[10px] font-semibold uppercase tracking-[.22em] text-slate-600">{{ $group }}</div>
                     <div class="mt-2 space-y-1">@foreach($items as $label=>$hash)<a href="{{ route('dashboard').$hash }}" class="block rounded-md px-3 py-2 text-slate-300 hover:bg-cyan-400/10 hover:text-cyan-100">{{ $label }}</a>@endforeach</div>
                 </div>

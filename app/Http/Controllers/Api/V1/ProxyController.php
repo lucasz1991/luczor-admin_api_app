@@ -179,13 +179,27 @@ class ProxyController extends Controller
         $usage = is_array($json['usage'] ?? null) ? $json['usage'] : [];
         $finishReason = $json['choices'][0]['finish_reason'] ?? null;
         $generationId = $json['id'] ?? ($upstream->getHeaderLine('X-Generation-Id') ?: null);
-        $attempt = $telemetry->finishAttempt($attempt, $upstream->getStatusCode(), $this->elapsedMs($started), $usage, [
+        $attemptMeta = [
             'generation_id' => $generationId,
             'connect_ms' => $connectMs,
             'finish_reason' => $finishReason,
             'response_hash' => hash('sha256', $body),
-        ]);
+        ];
+        if (in_array($upstream->getStatusCode(), [401, 403], true)) {
+            $attemptMeta['error_type'] = 'provider_auth_failed';
+            $attemptMeta['error_message'] = 'Provider rejected the configured credential.';
+        }
+        $attempt = $telemetry->finishAttempt($attempt, $upstream->getStatusCode(), $this->elapsedMs($started), $usage, $attemptMeta);
         $run = $telemetry->finishRun($run, $attempt);
+
+        if (in_array($upstream->getStatusCode(), [401, 403], true)) {
+            return response()->json([
+                'message' => 'Provider authentication failed. Bitte den OpenRouter-Key im Adminbereich prüfen oder neu speichern.',
+                'code' => 'provider_auth_failed',
+                'provider_status' => $upstream->getStatusCode(),
+                'request_id' => $run->request_id,
+            ], 502)->header('X-Luczor-Request-Id', $run->request_id);
+        }
 
         return response($body, $upstream->getStatusCode())
             ->header('Content-Type', 'application/json')

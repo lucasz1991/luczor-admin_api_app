@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\BootstrapController;
 use App\Http\Controllers\Api\V1\ContextController;
 use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\DeviceJobController;
+use App\Http\Controllers\Api\V1\DeviceDebugController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\GithubController;
 use App\Http\Controllers\Api\V1\LlmController;
@@ -19,10 +20,14 @@ use App\Http\Controllers\Api\V1\ReverbAuthController;
 use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\VoiceManifestController;
+use App\Http\Controllers\Api\V1\VoiceAssetController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthController::class)->name('api.v1.health');
+    Route::get('/voice/releases/{version}/{file}', VoiceAssetController::class)
+        ->where(['version' => '[A-Za-z0-9._-]+', 'file' => '[A-Za-z0-9._-]+'])
+        ->name('api.v1.voice.asset');
     Route::get('/agents', [AgentController::class, 'index'])->middleware('luczor.api:brain.read')->name('api.v1.agents.index');
     Route::post('/agents', [AgentController::class, 'store'])->middleware('luczor.api:brain.write')->name('api.v1.agents.store');
     Route::post('/github/webhook', [GithubController::class, 'webhook'])->name('api.v1.github.webhook');
@@ -51,6 +56,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/devices/heartbeat', [DeviceController::class, 'heartbeat'])->name('api.v1.devices.heartbeat');
         Route::get('/devices/signing-key', [DeviceController::class, 'signingKey'])->name('api.v1.devices.signing-key');
         Route::get('/devices/jobs/next', [DeviceController::class, 'nextJob'])->name('api.v1.devices.jobs.next');
+        Route::get('/devices/debug/poll', [DeviceDebugController::class, 'poll'])->name('api.v1.devices.debug.poll');
+        Route::post('/devices/debug/{publicId}/complete', [DeviceDebugController::class, 'complete'])->name('api.v1.devices.debug.complete');
         Route::post('/devices/jobs/{publicId}/approve', [DeviceController::class, 'approveJob'])->name('api.v1.devices.jobs.approve');
         Route::post('/devices/jobs/{publicId}/start', [DeviceController::class, 'startJob'])->name('api.v1.devices.jobs.start');
         Route::post('/devices/jobs/{publicId}/complete', [DeviceController::class, 'completeJob'])->name('api.v1.devices.jobs.complete');

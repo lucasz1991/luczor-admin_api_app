@@ -27,6 +27,8 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/llm-experiments', [DashboardController::class, 'storeLlmExperiment'])->name('dashboard.llm-experiments.store');
         Route::post('/dashboard/agent-profiles', [DashboardController::class, 'storeAgentProfile'])->name('dashboard.agent-profiles.store');
         Route::get('/dashboard/telemetry/export', [DashboardController::class, 'exportTelemetry'])->name('dashboard.telemetry.export');
+        Route::post('/dashboard/devices/{device}/debug', [DashboardController::class, 'requestDeviceDebug'])->name('dashboard.devices.debug.request');
+        Route::get('/dashboard/device-debug/{debugRequest}/download', [DashboardController::class, 'downloadDeviceDebug'])->name('dashboard.devices.debug.download');
         Route::post('/dashboard/settings', [DashboardController::class, 'storeSettings'])->name('dashboard.settings.store');
     });
 });

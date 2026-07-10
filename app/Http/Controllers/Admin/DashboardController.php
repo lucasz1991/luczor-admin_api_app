@@ -7,6 +7,7 @@ use App\Models\ApiKey;
 use App\Models\AuditEvent;
 use App\Models\Device;
 use App\Models\DeviceJob;
+use App\Models\DeviceDebugRequest;
 use App\Models\EvaluationResult;
 use App\Models\LuczorAgentEventArchive;
 use App\Models\LuczorMemoryArchive;
@@ -83,7 +84,34 @@ class DashboardController extends Controller
             'networkPolicies' => $isAdmin ? NetworkPolicy::query()->orderBy('key')->get() : collect(),
             'llmExperiments' => $isAdmin ? LlmExperiment::query()->latest()->get() : collect(),
             'agentProfiles' => $isAdmin ? AgentProfile::query()->orderBy('type')->get() : collect(),
+            'devices' => $isAdmin ? Device::query()->with('user')->latest('last_seen_at')->get() : collect(),
+            'debugRequests' => $isAdmin ? DeviceDebugRequest::query()->with('device')->latest()->limit(50)->get() : collect(),
         ]);
+    }
+
+    public function requestDeviceDebug(Request $request, Device $device)
+    {
+        $this->ensureAdmin($request);
+        DeviceDebugRequest::create([
+            'device_id' => $device->id,
+            'user_id' => $device->user_id,
+            'requested_by' => $request->user()->id,
+            'status' => 'pending',
+            'meta' => ['source' => 'admin_dashboard'],
+        ]);
+
+        return Redirect::route('dashboard')->with('status', 'Debug-Anforderung an das Gerät gesendet.');
+    }
+
+    public function downloadDeviceDebug(Request $request, DeviceDebugRequest $debugRequest)
+    {
+        $this->ensureAdmin($request);
+        abort_unless($debugRequest->status === 'completed' && is_array($debugRequest->payload), 404);
+
+        $filename = 'luczor-debug-'.$debugRequest->device_id.'-'.now()->format('Ymd-His').'.json';
+        return response()->streamDownload(function () use ($debugRequest) {
+            echo json_encode($debugRequest->payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }, $filename, ['Content-Type' => 'application/json; charset=UTF-8']);
     }
 
     public function storeSettings(Request $request)

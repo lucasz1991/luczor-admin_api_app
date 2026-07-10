@@ -152,6 +152,36 @@ class ProxyRoutingPolicyTest extends TestCase
         $this->assertSame('completed', $attempts[1]->status);
     }
 
+    public function test_provider_auth_failure_is_returned_as_actionable_server_error_without_upstream_body(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles();
+        NetworkPolicy::create([
+            'key' => 'proxy.openrouter.default', 'name' => 'Auth failure', 'status' => 'active',
+            'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
+            'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 100,
+        ]);
+
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('post')->once()->andReturn(new Response(401, [], 'User not found: upstream-secret-detail'));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $response = $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [['role' => 'user', 'content' => 'Bitte teste den Provider-Key.']], 'task_type' => 'chat.general',
+        ]);
+
+        $response->assertStatus(502)
+            ->assertJsonPath('code', 'provider_auth_failed')
+            ->assertJsonPath('provider_status', 401)
+            ->assertHeader('X-Luczor-Request-Id');
+        $this->assertStringNotContainsString('upstream-secret-detail', $response->getContent());
+        $this->assertDatabaseHas('llm_runs', ['user_id' => $user->id, 'status' => 'error']);
+        $this->assertDatabaseHas('llm_attempts', ['error_type' => 'provider_auth_failed', 'http_status' => 401]);
+    }
+
     public function test_streaming_response_persists_final_usage_after_the_stream_finishes(): void
     {
         [$user, $token] = $this->deviceToken(['proxy.use']);

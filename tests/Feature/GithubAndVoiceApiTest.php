@@ -23,6 +23,7 @@ class GithubAndVoiceApiTest extends TestCase
         $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
         openssl_pkey_export($key, $privateKey);
         $this->privateKey = $privateKey;
+        Config::set('luczor.device_jobs.private_key_file', '');
         Config::set('luczor.device_jobs.private_key', $this->privateKey);
     }
 
@@ -42,6 +43,31 @@ class GithubAndVoiceApiTest extends TestCase
         $this->assertSame(1, openssl_verify($payload, $signature, $public, OPENSSL_ALGO_SHA256));
         $this->assertStringNotContainsString('binary_path', $payload);
         $this->assertStringNotContainsString('api_key', $payload);
+        $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('http://localhost/api/v1/voice/releases/2026.07.09/whisper.exe', $decoded['assets'][0]['url']);
+    }
+
+    public function test_only_manifest_listed_voice_assets_are_publicly_downloadable(): void
+    {
+        $root = storage_path('framework/testing/voice-release-'.uniqid());
+        File::ensureDirectoryExists($root.'/2026.07.10');
+        File::put($root.'/2026.07.10/voice.bin', 'signed-voice-asset');
+        File::put($root.'/manifest.json', json_encode([
+            'version' => '2026.07.10',
+            'assets' => [['file_name' => 'voice.bin']],
+        ], JSON_THROW_ON_ERROR));
+        Config::set('luczor.voice.manifest_file', $root.'/manifest.json');
+        Config::set('luczor.voice.release_root', $root);
+
+        try {
+            $response = $this->get('/api/v1/voice/releases/2026.07.10/voice.bin')
+                ->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+            $this->assertSame('voice.bin', basename($response->baseResponse->getFile()->getPathname()));
+            $this->get('/api/v1/voice/releases/2026.07.10/not-listed.bin')->assertNotFound();
+            $this->get('/api/v1/voice/releases/2026.07.10/..%2F.env')->assertNotFound();
+        } finally {
+            File::deleteDirectory($root);
+        }
     }
 
     public function test_github_webhook_requires_signature_and_updates_only_registered_repository(): void

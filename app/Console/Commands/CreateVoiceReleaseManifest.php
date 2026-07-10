@@ -17,6 +17,9 @@ class CreateVoiceReleaseManifest extends Command
         {--stt-model= : Whisper GGML model}
         {--tts-binary= : Piper executable}
         {--tts-model= : Piper ONNX model}
+        {--tts-config= : Optional Piper ONNX JSON config, stored next to the model}
+        {--stt-binary-runtime-path= : Executable path inside a ZIP runtime archive}
+        {--tts-binary-runtime-path= : Executable path inside a ZIP runtime archive}
         {--manifest-output= : JSON envelope output path, relative to the Laravel base path}';
 
     protected $description = 'Create a SHA-256 verified Whisper.cpp/Piper release manifest signed with the server job key.';
@@ -32,9 +35,9 @@ class CreateVoiceReleaseManifest extends Command
 
         $assets = [];
         foreach ([
-            ['id' => 'whisper-cli', 'kind' => 'stt_binary', 'option' => 'stt-binary', 'executable' => true],
+            ['id' => 'whisper-cli', 'kind' => 'stt_binary', 'option' => 'stt-binary', 'runtime_option' => 'stt-binary-runtime-path', 'executable' => true],
             ['id' => 'whisper-model', 'kind' => 'stt_model', 'option' => 'stt-model', 'executable' => false],
-            ['id' => 'piper', 'kind' => 'tts_binary', 'option' => 'tts-binary', 'executable' => true],
+            ['id' => 'piper', 'kind' => 'tts_binary', 'option' => 'tts-binary', 'runtime_option' => 'tts-binary-runtime-path', 'executable' => true],
             ['id' => 'piper-model', 'kind' => 'tts_model', 'option' => 'tts-model', 'executable' => false],
         ] as $asset) {
             $source = $this->file((string) $this->option($asset['option']));
@@ -42,7 +45,13 @@ class CreateVoiceReleaseManifest extends Command
                 return self::INVALID;
             }
             $fileName = basename($source);
-            $assets[] = [
+            $archive = str_ends_with(strtolower($fileName), '.zip');
+            $runtimePath = isset($asset['runtime_option']) ? trim((string) $this->option($asset['runtime_option'])) : '';
+            if ($archive && $runtimePath === '') {
+                $this->error('ZIP runtime assets require --'.$asset['runtime_option'].'.');
+                return self::INVALID;
+            }
+            $entry = [
                 'id' => $asset['id'],
                 'kind' => $asset['kind'],
                 'platform' => (string) $this->option('platform'),
@@ -50,6 +59,22 @@ class CreateVoiceReleaseManifest extends Command
                 'sha256' => hash_file('sha256', $source),
                 'file_name' => $fileName,
                 'executable' => $asset['executable'],
+            ];
+            if ($archive) {
+                $entry['archive'] = true;
+                $entry['runtime_path'] = str_replace('\\', '/', $runtimePath);
+            }
+            $assets[] = $entry;
+        }
+        $config = trim((string) $this->option('tts-config'));
+        if ($config !== '') {
+            $source = $this->file($config);
+            if (! $source) return self::INVALID;
+            $fileName = basename($source);
+            $assets[] = [
+                'id' => 'piper-config', 'kind' => 'tts_config', 'platform' => (string) $this->option('platform'),
+                'url' => $baseUrl.'/'.rawurlencode($fileName), 'sha256' => hash_file('sha256', $source),
+                'file_name' => $fileName, 'executable' => false,
             ];
         }
 

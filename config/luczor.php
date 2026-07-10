@@ -19,6 +19,9 @@ return [
     'voice' => [
         // Release pipeline value: version + per-platform binary/model URLs and SHA-256 hashes.
         'manifest' => json_decode((string) env('LUCZOR_VOICE_MANIFEST_JSON', '{}'), true) ?: [],
+        // Prefer a signed envelope file so manifests do not have to be kept in .env.
+        'manifest_file' => env('LUCZOR_VOICE_MANIFEST_FILE', ''),
+        'release_root' => storage_path('app/voice/releases'),
     ],
     'realtime' => [
         'public_host' => env('LUCZOR_REVERB_PUBLIC_HOST', parse_url(env('APP_URL', ''), PHP_URL_HOST)),

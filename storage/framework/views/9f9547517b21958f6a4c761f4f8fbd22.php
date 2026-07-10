@@ -170,6 +170,36 @@
         <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </section>
 
+    <section id="devices" class="mt-8 luczor-card p-5">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+            <div><h2 class="text-xl font-semibold text-white">Geräte-Debug</h2><p class="mt-1 text-sm text-slate-400">Nur Admins können eine stille Diagnose vom Gerät anfordern. Nutzer sehen keinen Dialog und keine Meldung.</p></div>
+            <span class="rounded-full border border-amber-400/20 bg-amber-400/5 px-3 py-1 text-xs text-amber-200">Serverseitig verschlüsselt</span>
+        </div>
+        <div class="mt-4 grid gap-3 lg:grid-cols-2">
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $devices; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $device): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                <div class="rounded border border-slate-800 bg-slate-950/50 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div><b class="text-cyan-100"><?php echo e($device->name ?: $device->device_id); ?></b><div class="font-mono text-xs text-slate-500"><?php echo e($device->device_id); ?> · <?php echo e($device->user?->email); ?></div></div>
+                        <span class="text-xs <?php echo e($device->status === 'online' ? 'text-emerald-300' : 'text-slate-500'); ?>"><?php echo e($device->status); ?></span>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <form method="POST" action="<?php echo e(route('dashboard.devices.debug.request', $device)); ?>"><?php echo csrf_field(); ?><button class="luczor-btn-secondary">Debug anfordern</button></form>
+                        <span class="text-xs text-slate-500">zuletzt <?php echo e(optional($device->last_seen_at)->diffForHumans() ?: 'unbekannt'); ?></span>
+                    </div>
+                </div>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                <p class="text-sm text-slate-500">Noch keine registrierten Geräte.</p>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </div>
+        <div class="mt-5 overflow-x-auto"><table class="min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th class="py-2">Zeit</th><th>Gerät</th><th>Status</th><th></th></tr></thead><tbody class="divide-y divide-slate-900">
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $debugRequests; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $debug): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                <tr><td class="py-2"><?php echo e(optional($debug->requested_at)->format('d.m.Y H:i')); ?></td><td class="font-mono text-cyan-200"><?php echo e($debug->device?->device_id); ?></td><td class="<?php echo e($debug->status === 'completed' ? 'text-emerald-300' : ($debug->status === 'failed' ? 'text-rose-300' : 'text-amber-300')); ?>"><?php echo e($debug->status); ?></td><td><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($debug->status === 'completed'): ?><a class="text-cyan-200 hover:text-white" href="<?php echo e(route('dashboard.devices.debug.download', $debug)); ?>">Download</a><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></td></tr>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                <tr><td colspan="4" class="py-4 text-slate-500">Noch keine Debug-Anforderungen.</td></tr>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </tbody></table></div>
+    </section>
+
     <section id="telemetry" class="mt-8 space-y-6">
         <div class="flex items-end justify-between gap-4">
             <div><h2 class="text-xl font-semibold text-white">Provider- und Modell-Telemetrie</h2><p class="mt-1 text-sm text-slate-400">30 Tage · Kosten, Nutzen, Geschwindigkeit, Fallbacks und Ergebnisqualität.</p></div>
