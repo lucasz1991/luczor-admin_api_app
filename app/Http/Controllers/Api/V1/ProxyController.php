@@ -10,8 +10,8 @@ use App\Models\PromptTemplate;
 use App\Services\ApiActor;
 use App\Services\LlmTelemetryService;
 use App\Services\NetworkOptimizer;
+use App\Services\ProviderHttpClientFactory;
 use App\Services\ProviderPolicyService;
-use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -26,6 +26,7 @@ class ProxyController extends Controller
         ProviderPolicyService $providerPolicy,
         NetworkOptimizer $networkOptimizer,
         LlmTelemetryService $telemetry,
+        ProviderHttpClientFactory $httpClients,
     ) {
         $userId = $actor->userId($request);
         $rateKey = 'proxy:'.$userId.':'.($request->attributes->get('apiKey')?->id ?? 'unknown');
@@ -93,10 +94,7 @@ class ProxyController extends Controller
             return response()->json(['message' => 'Context exceeds the server input-token budget.', 'request_id' => $run->request_id], 422);
         }
         $baseUrl = rtrim($credential->base_url ?: 'https://openrouter.ai/api/v1', '/');
-        $client = new Client([
-            'connect_timeout' => max(1, $networkPolicy->connect_timeout_ms / 1000),
-            'timeout' => max(1, $networkPolicy->request_timeout_ms / 1000),
-        ]);
+        $client = $httpClients->make($networkPolicy);
 
         $winner = null;
         $winnerStarted = null;
