@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ModelProfile;
-use App\Models\ModelUseCase;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 
@@ -59,7 +58,6 @@ class BootstrapController extends Controller
     private function runtimeSettingsPayload(): array
     {
         return [
-            'default_model_profile' => config('luczor.default_model_profile'),
             'api_prefix' => config('luczor.api_prefix'),
             'registration_enabled' => (bool) config('luczor.allow_registration'),
             // Server-managed client defaults, editable in the admin dashboard.
@@ -67,34 +65,4 @@ class BootstrapController extends Controller
         ];
     }
 
-    private function modelUseCasesPayload()
-    {
-        return ModelUseCase::query()
-            ->where('active', true)
-            ->with(['entries' => function ($query) {
-                $query->where('active', true)->orderBy('sort_order')->with('modelProfile');
-            }])
-            ->orderBy('slug')
-            ->get()
-            ->map(fn (ModelUseCase $useCase) => [
-                'name' => $useCase->name,
-                'slug' => $useCase->slug,
-                'description' => $useCase->description,
-                'fallbacks' => $useCase->entries
-                    ->filter(fn ($entry) => $entry->modelProfile?->active)
-                    ->map(fn ($entry) => [
-                        'order' => $entry->sort_order,
-                        'model_profile' => [
-                            'slug' => $entry->modelProfile->slug,
-                            'name' => $entry->modelProfile->name,
-                            'provider' => $entry->modelProfile->provider,
-                            'model_id' => $entry->modelProfile->model_id,
-                            'temperature' => $entry->modelProfile->temperature,
-                            'max_tokens' => $entry->modelProfile->max_tokens,
-                        ],
-                    ])
-                    ->values(),
-            ])
-            ->values();
-    }
 }

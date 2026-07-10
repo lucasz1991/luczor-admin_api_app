@@ -120,6 +120,7 @@ class EvaluationService
         ]);
 
         $this->ranker->recompute($run->task_type, $run->user_id ? (int) $run->user_id : null);
+        $this->ranker->recompute($run->task_type);
 
         return $result;
     }

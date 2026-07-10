@@ -8,6 +8,18 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::create('tenants', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->string('plan', 60)->default('standard');
+            $table->string('status', 30)->default('active')->index();
+            $table->json('settings')->nullable();
+            $table->timestamps();
+        });
+        Schema::table('users', fn (Blueprint $table) => $table->foreignId('tenant_id')->nullable()->after('id')->constrained()->nullOnDelete());
+        Schema::table('projects', fn (Blueprint $table) => $table->foreignId('tenant_id')->nullable()->after('id')->constrained()->nullOnDelete());
+
         Schema::create('provider_price_snapshots', function (Blueprint $table) {
             $table->id();
             $table->string('provider_id', 80)->index();
@@ -23,6 +35,19 @@ return new class extends Migration
             $table->json('meta')->nullable();
             $table->timestamps();
             $table->index(['provider_id', 'model_id', 'valid_from']);
+        });
+
+        Schema::create('agent_profiles', function (Blueprint $table) {
+            $table->id();
+            $table->string('key', 120)->unique();
+            $table->string('name');
+            $table->string('type', 80)->index();
+            $table->string('status', 30)->default('active')->index();
+            $table->string('prompt_template_key', 120)->nullable();
+            $table->json('capabilities')->nullable();
+            $table->json('required_sources')->nullable();
+            $table->json('config')->nullable();
+            $table->timestamps();
         });
 
         Schema::create('llm_attempts', function (Blueprint $table) {
@@ -115,6 +140,38 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('graph_snapshots', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('repository_id')->constrained()->cascadeOnDelete();
+            $table->string('commit_sha', 80)->index();
+            $table->string('graph_version', 80);
+            $table->string('status', 30)->default('ready')->index();
+            $table->string('path', 1000)->nullable();
+            $table->unsignedInteger('node_count')->nullable();
+            $table->unsignedInteger('edge_count')->nullable();
+            $table->json('meta')->nullable();
+            $table->timestamps();
+            $table->unique(['repository_id', 'commit_sha', 'graph_version']);
+        });
+
+        Schema::create('retrieval_cache_entries', function (Blueprint $table) {
+            $table->id();
+            $table->string('cache_type', 40)->index();
+            $table->char('cache_key', 64)->unique();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('project_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('repository_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('commit_sha', 80)->nullable()->index();
+            $table->string('model_id', 190)->nullable();
+            $table->char('content_hash', 64)->nullable()->index();
+            $table->string('storage_ref', 1000)->nullable();
+            $table->json('payload')->nullable();
+            $table->unsignedInteger('hit_count')->default(0);
+            $table->timestamp('last_hit_at')->nullable();
+            $table->timestamp('expires_at')->nullable()->index();
+            $table->timestamps();
+        });
+
         Schema::table('llm_runs', function (Blueprint $table) {
             $table->string('request_id', 120)->nullable()->after('id')->unique();
             $table->string('selected_by', 40)->nullable()->after('model_id');
@@ -140,21 +197,47 @@ return new class extends Migration
             $table->string('cost_source', 40)->nullable()->after('calculated_cost');
             $table->json('provider_meta')->nullable()->after('raw_usage');
         });
+
+        Schema::table('tool_calls', function (Blueprint $table) {
+            $table->foreignId('llm_run_id')->nullable()->after('workflow_step_id')->constrained()->nullOnDelete();
+            $table->unsignedInteger('duration_ms')->nullable()->after('status');
+            $table->text('error')->nullable()->after('output');
+            $table->timestamp('started_at')->nullable()->after('error');
+            $table->timestamp('finished_at')->nullable()->after('started_at');
+        });
+
+        Schema::table('model_rankings', function (Blueprint $table) {
+            $table->unsignedInteger('avg_ttft_ms')->nullable()->after('avg_latency_ms');
+            $table->decimal('avg_tokens_per_second', 12, 4)->nullable()->after('avg_ttft_ms');
+            $table->decimal('cost_per_success', 14, 8)->nullable()->after('avg_cost_total');
+            $table->decimal('fallback_rate', 5, 4)->nullable()->after('context_efficiency_score');
+        });
     }
 
     public function down(): void
     {
+        Schema::table('tool_calls', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('llm_run_id');
+            $table->dropColumn(['duration_ms', 'error', 'started_at', 'finished_at']);
+        });
+        Schema::table('model_rankings', fn (Blueprint $table) => $table->dropColumn(['avg_ttft_ms', 'avg_tokens_per_second', 'cost_per_success', 'fallback_rate']));
         Schema::table('llm_run_metrics', function (Blueprint $table) {
             $table->dropColumn(['ttft_ms', 'tokens_per_second', 'reasoning_tokens', 'cache_read_tokens', 'cache_write_tokens', 'provider_cost', 'calculated_cost', 'cost_source', 'provider_meta']);
         });
         Schema::table('llm_runs', function (Blueprint $table) {
             $table->dropColumn(['request_id', 'selected_by', 'attempt_count', 'ttft_ms', 'tokens_per_second', 'provider_cost', 'calculated_cost', 'cost_source', 'finish_reason', 'request_hash', 'response_hash']);
         });
+        Schema::dropIfExists('retrieval_cache_entries');
+        Schema::dropIfExists('graph_snapshots');
         Schema::dropIfExists('llm_experiments');
         Schema::dropIfExists('network_policies');
         Schema::dropIfExists('context_strategies');
         Schema::dropIfExists('prompt_templates');
         Schema::dropIfExists('llm_attempts');
+        Schema::dropIfExists('agent_profiles');
         Schema::dropIfExists('provider_price_snapshots');
+        Schema::table('projects', fn (Blueprint $table) => $table->dropConstrainedForeignId('tenant_id'));
+        Schema::table('users', fn (Blueprint $table) => $table->dropConstrainedForeignId('tenant_id'));
+        Schema::dropIfExists('tenants');
     }
 };

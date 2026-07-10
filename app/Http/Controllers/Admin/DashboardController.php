@@ -27,6 +27,7 @@ use App\Models\ModelUseCaseEntry;
 use App\Models\ProviderCredential;
 use App\Models\Project;
 use App\Models\Setting;
+use App\Models\AgentProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Str;
@@ -81,6 +82,7 @@ class DashboardController extends Controller
             'contextStrategies' => $isAdmin ? ContextStrategy::query()->orderBy('key')->get() : collect(),
             'networkPolicies' => $isAdmin ? NetworkPolicy::query()->orderBy('key')->get() : collect(),
             'llmExperiments' => $isAdmin ? LlmExperiment::query()->latest()->get() : collect(),
+            'agentProfiles' => $isAdmin ? AgentProfile::query()->orderBy('type')->get() : collect(),
         ]);
     }
 
@@ -116,21 +118,27 @@ class DashboardController extends Controller
 
     public function storeApiKey(Request $request)
     {
-        $data = $request->validate([
+        $rules = [
             'name' => ['required', 'string', 'max:120'],
             'device_id' => ['nullable', 'string', 'max:120'],
             'device_name' => ['nullable', 'string', 'max:120'],
-            'abilities' => ['required', 'array', 'min:1'],
-            'abilities.*' => [Rule::in(ApiKey::ABILITIES)],
             'expires_at' => ['nullable', 'date'],
-        ]);
+        ];
+        if ($request->user()?->isAdmin()) {
+            $rules['abilities'] = ['required', 'array', 'min:1'];
+            $rules['abilities.*'] = [Rule::in(ApiKey::ABILITIES)];
+        }
+        $data = $request->validate($rules);
+        $abilities = $request->user()?->isAdmin()
+            ? $data['abilities']
+            : ['sync.read', 'sync.write', 'settings.read', 'brain.read', 'brain.write', 'proxy.use', 'device.connect', 'device.jobs.read', 'device.jobs.write'];
 
         $minted = ApiKey::mint([
             'user_id' => $request->user()->id,
             'name' => $data['name'],
             'device_id' => $data['device_id'] ?? null,
             'device_name' => $data['device_name'] ?? null,
-            'abilities' => $data['abilities'],
+            'abilities' => $abilities,
             'expires_at' => $data['expires_at'] ?? null,
             'active' => true,
         ]);
@@ -242,6 +250,84 @@ class DashboardController extends Controller
         ]);
         NetworkPolicy::updateOrCreate(['key' => $data['key']], $data + ['status' => 'active']);
         return Redirect::route('dashboard')->with('status', 'Network policy saved.');
+    }
+
+    public function storeLlmExperiment(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'key' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:190'],
+            'task_type' => ['required', 'string', 'max:120'],
+            'status' => ['required', Rule::in(['draft', 'active', 'paused', 'completed'])],
+            'traffic_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'variants' => ['required', 'json'],
+            'success_criteria' => ['nullable', 'json'],
+        ]);
+        $data['variants'] = json_decode($data['variants'], true, 512, JSON_THROW_ON_ERROR);
+        $data['success_criteria'] = filled($data['success_criteria'] ?? null)
+            ? json_decode($data['success_criteria'], true, 512, JSON_THROW_ON_ERROR)
+            : null;
+        LlmExperiment::updateOrCreate(['key' => $data['key']], $data);
+
+        return Redirect::route('dashboard')->with('status', 'LLM experiment saved.');
+    }
+
+    public function storeAgentProfile(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'key' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:190'],
+            'type' => ['required', 'string', 'max:80'],
+            'status' => ['required', Rule::in(['active', 'disabled', 'draft'])],
+            'prompt_template_key' => ['nullable', 'string', 'max:120'],
+            'capabilities' => ['nullable', 'json'],
+            'required_sources' => ['nullable', 'json'],
+            'config' => ['nullable', 'json'],
+        ]);
+        foreach (['capabilities', 'required_sources', 'config'] as $field) {
+            $data[$field] = filled($data[$field] ?? null)
+                ? json_decode($data[$field], true, 512, JSON_THROW_ON_ERROR)
+                : [];
+        }
+        AgentProfile::updateOrCreate(['key' => $data['key']], $data);
+
+        return Redirect::route('dashboard')->with('status', 'Agent profile saved.');
+    }
+
+    public function exportTelemetry(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'format' => ['nullable', Rule::in(['jsonl', 'csv'])],
+            'days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+        ]);
+        $format = $data['format'] ?? 'jsonl';
+        $days = (int) ($data['days'] ?? 30);
+        $filename = 'luczor-telemetry-'.now()->format('Ymd-His').'.'.$format;
+
+        return response()->streamDownload(function () use ($format, $days) {
+            $output = fopen('php://output', 'wb');
+            if ($format === 'csv') {
+                fputcsv($output, ['request_id', 'created_at', 'task_type', 'selected_by', 'attempt', 'provider', 'model', 'status', 'http_status', 'ttft_ms', 'total_ms', 'input_tokens', 'output_tokens', 'tokens_per_second', 'cost_usd', 'cost_source', 'quality_score', 'test_passed']);
+            }
+
+            LlmRun::query()->with(['attempts', 'metrics', 'evaluations', 'toolCalls'])
+                ->where('created_at', '>=', now()->subDays($days))->orderBy('id')
+                ->chunkById(100, function ($runs) use ($format, $output) {
+                    foreach ($runs as $run) {
+                        if ($format === 'jsonl') {
+                            fwrite($output, json_encode($run->toArray(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+                            continue;
+                        }
+                        foreach ($run->attempts as $attempt) {
+                            fputcsv($output, [$run->request_id, $run->created_at?->toIso8601String(), $run->task_type, $run->selected_by, $attempt->attempt_no, $attempt->provider_id, $attempt->model_id, $attempt->status, $attempt->http_status, $attempt->ttft_ms, $attempt->total_ms, $attempt->input_tokens, $attempt->output_tokens, $attempt->tokens_per_second, $attempt->effective_cost, $attempt->cost_source, $run->quality_score, $run->test_passed]);
+                        }
+                    }
+                });
+            fclose($output);
+        }, $filename, ['Content-Type' => $format === 'csv' ? 'text/csv; charset=UTF-8' : 'application/x-ndjson']);
     }
 
     public function storeModelUseCase(Request $request)

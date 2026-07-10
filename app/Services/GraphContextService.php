@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\GraphSnapshot;
+use App\Models\Repository;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -18,15 +20,24 @@ class GraphContextService
     public function index(array $snapshot): void
     {
         $base = rtrim((string) config('luczor.graphify.base_url', ''), '/');
+        $repository = Repository::query()->whereKey($snapshot['repo_id'] ?? null)->where('user_id', $snapshot['user_id'] ?? null)->first();
+        $record = $repository && ! empty($snapshot['commit_sha']) ? GraphSnapshot::updateOrCreate([
+            'repository_id' => $repository->id,
+            'commit_sha' => $snapshot['commit_sha'],
+            'graph_version' => 'graphify.v1',
+        ], ['status' => $base === '' ? 'disabled' : 'indexing', 'meta' => ['branch' => $snapshot['branch'] ?? null, 'changed_files' => $snapshot['changed_files'] ?? []]]) : null;
         if ($base === '') {
             return;
         }
 
         try {
-            Http::timeout((int) config('luczor.graphify.timeout', 10))
+            $response = Http::timeout((int) config('luczor.graphify.timeout', 10))
                 ->post($base.'/api/v1/index', $snapshot)
                 ->throw();
+            $json = $response->json();
+            $record?->update(['status' => 'ready', 'path' => $json['path'] ?? null, 'node_count' => $json['node_count'] ?? null, 'edge_count' => $json['edge_count'] ?? null]);
         } catch (\Throwable $exception) {
+            $record?->update(['status' => 'failed', 'meta' => array_merge($record->meta ?? [], ['error' => mb_substr($exception->getMessage(), 0, 1000)])]);
             Log::warning('Graph snapshot indexing failed.', ['exception' => $exception->getMessage()]);
         }
     }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AgentEventController;
 use App\Http\Controllers\Api\V1\AgentRunController;
+use App\Http\Controllers\Api\V1\AgentController;
 use App\Http\Controllers\Api\V1\BootstrapController;
 use App\Http\Controllers\Api\V1\ContextController;
 use App\Http\Controllers\Api\V1\DeviceController;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthController::class)->name('api.v1.health');
+    Route::get('/agents', [AgentController::class, 'index'])->middleware('luczor.api:brain.read')->name('api.v1.agents.index');
+    Route::post('/agents', [AgentController::class, 'store'])->middleware('luczor.api:brain.write')->name('api.v1.agents.store');
     Route::post('/github/webhook', [GithubController::class, 'webhook'])->name('api.v1.github.webhook');
 
     Route::middleware('luczor.api:settings.read')->group(function () {
@@ -139,8 +142,15 @@ Route::prefix('v1')->group(function () {
     Route::middleware('luczor.api:brain.read')->group(function () {
         Route::post('/llm/route', [LlmController::class, 'route'])->name('api.v1.llm.route');
         Route::get('/llm/rankings', [LlmController::class, 'rankings'])->name('api.v1.llm.rankings');
+        Route::get('/llm/runs', [LlmController::class, 'runs'])->name('api.v1.llm.runs');
+        Route::get('/llm/telemetry', [LlmController::class, 'telemetry'])->name('api.v1.llm.telemetry');
+        Route::get('/llm/experiments', [LlmController::class, 'experiments'])->name('api.v1.llm.experiments');
+        Route::get('/llm/prompts', [LlmController::class, 'prompts'])->name('api.v1.llm.prompts');
     });
     Route::post('/llm/runs/{llmRun}/evaluate', [LlmController::class, 'evaluate'])
         ->middleware('luczor.api:brain.write')
         ->name('api.v1.llm.runs.evaluate');
+    Route::post('/llm/runs/request/{requestId}/evaluate', [LlmController::class, 'evaluateByRequest'])
+        ->middleware('luczor.api:brain.write')
+        ->name('api.v1.llm.runs.evaluate-request');
 });

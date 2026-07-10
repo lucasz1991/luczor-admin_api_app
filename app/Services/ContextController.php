@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ContextArtifact;
 use App\Models\Project;
+use App\Models\ContextStrategy;
 use Illuminate\Support\Str;
 
 /**
@@ -36,8 +37,16 @@ class ContextController
         $taskType = $req['task_type'] ?? 'chat.general';
         $featureKey = $req['feature_key'] ?? null;
         $query = trim((string) ($req['query'] ?? ''));
-        $maxInputTokens = (int) ($req['budget']['max_input_tokens'] ?? 800);
-        $maxItems = (int) ($req['budget']['max_items'] ?? 6);
+        $strategy = ContextStrategy::query()->where('key', $req['context_strategy_id'] ?? 'context.memory_code_budgeted')->where('status', 'active')->first();
+        $strategyConfig = $strategy?->config ?? [];
+        $memoryBudget = (int) ($strategyConfig['memory_tokens'] ?? 800);
+        $maxInputTokens = min((int) ($req['budget']['max_input_tokens'] ?? $memoryBudget), $memoryBudget);
+        $maxItems = min(12, (int) ($req['budget']['max_items'] ?? 6));
+        $weights = array_merge([
+            'freshness' => 0.30, 'task_scope' => 0.25, 'graph_proximity' => 0.20,
+            'memory_quality' => 0.10, 'source_authority' => 0.10,
+            'token_cost' => -0.05, 'duplicate' => -0.10,
+        ], is_array($strategyConfig['weights'] ?? null) ? $strategyConfig['weights'] : []);
 
         $ids = ['user_id' => $req['user_id'] ?? null, 'project_id' => $projectId];
         $git = $this->gitFreshness->inspect($req);
@@ -66,13 +75,13 @@ class ContextController
             $sourceAuthority = (($m['source'] ?? 'links') === 'cognee') ? 1.0 : 0.6;
             $tokenCost = min(1.0, mb_strlen($content) / 2000);
 
-            $score = 0.30 * $freshness
-                + 0.25 * $taskScope
-                + 0.20 * $graphProximity
-                + 0.10 * $memoryQuality
-                + 0.10 * $sourceAuthority
-                - 0.05 * $tokenCost
-                - 0.10 * $duplicate;
+            $score = $weights['freshness'] * $freshness
+                + $weights['task_scope'] * $taskScope
+                + $weights['graph_proximity'] * $graphProximity
+                + $weights['memory_quality'] * $memoryQuality
+                + $weights['source_authority'] * $sourceAuthority
+                + $weights['token_cost'] * $tokenCost
+                + $weights['duplicate'] * $duplicate;
 
             $scored[] = [
                 'm' => $m,
@@ -122,6 +131,7 @@ class ContextController
             'commit_sha' => $git['commit_sha'] ?? null,
             'task_type' => $taskType,
             'feature_key' => $featureKey,
+            'context_strategy_id' => $strategy?->key ?? 'context.memory_code_budgeted',
             'budget' => $budget,
             'git' => $git,
             'code' => $code,

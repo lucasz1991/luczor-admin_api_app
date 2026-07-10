@@ -9,7 +9,9 @@ use App\Models\Setting;
 use App\Models\ContextStrategy;
 use App\Models\NetworkPolicy;
 use App\Models\PromptTemplate;
+use App\Models\AgentProfile;
 use App\Models\User;
+use App\Models\Tenant;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -17,9 +19,11 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        User::firstOrCreate(
+        $tenant = Tenant::firstOrCreate(['slug' => 'luczor-system'], ['name' => 'Luczor System', 'plan' => 'internal', 'status' => 'active']);
+        $admin = User::firstOrCreate(
             ['email' => 'admin@luczor.local'],
             [
+                'tenant_id' => $tenant->id,
                 'name' => 'Luczor Admin',
                 'password' => Hash::make('password'),
                 'role' => 'admin',
@@ -27,6 +31,7 @@ class DatabaseSeeder extends Seeder
                 'email_verified_at' => now(),
             ]
         );
+        if (! $admin->tenant_id) $admin->update(['tenant_id' => $tenant->id]);
 
         $profiles = [
             ['name' => 'Chat Fast', 'slug' => 'chat-fast', 'provider' => 'openrouter', 'model_id' => 'google/gemini-3-flash-preview', 'purpose' => 'chat', 'temperature' => 0.25, 'max_tokens' => 1400],
@@ -85,9 +90,13 @@ class DatabaseSeeder extends Seeder
             ['key' => 'ui_accent', 'value' => 'cyan', 'group' => 'client', 'label' => 'Akzentfarbe', 'type' => 'string'],
             ['key' => 'memory_inject', 'value' => true, 'group' => 'client', 'label' => 'Erinnerungen einblenden', 'type' => 'bool'],
             ['key' => 'memory_inject_count', 'value' => 5, 'group' => 'client', 'label' => 'Anzahl Erinnerungen', 'type' => 'number'],
+            ['key' => 'client_history_token_budget', 'value' => 2400, 'group' => 'context', 'label' => 'Chat-Historie Tokenbudget', 'type' => 'number'],
             ['key' => 'sync_auto', 'value' => false, 'group' => 'client', 'label' => 'Auto-Sync', 'type' => 'bool'],
             ['key' => 'sync_auto_threshold', 'value' => 20, 'group' => 'client', 'label' => 'Auto-Sync Schwelle', 'type' => 'number'],
             ['key' => 'chat_auto_speech', 'value' => false, 'group' => 'voice', 'label' => 'Antworten automatisch vorlesen', 'type' => 'bool'],
+            ['key' => 'voice_mode', 'value' => 'wakeword', 'group' => 'voice', 'label' => 'Lokaler Eingabemodus', 'type' => 'string'],
+            ['key' => 'voice_wake_word', 'value' => 'luczor', 'group' => 'voice', 'label' => 'Wake-Word', 'type' => 'string'],
+            ['key' => 'voice_local_stt_language', 'value' => 'de', 'group' => 'voice', 'label' => 'STT-Sprache', 'type' => 'string'],
         ];
 
         foreach ($settings as $s) {
@@ -114,7 +123,25 @@ class DatabaseSeeder extends Seeder
             ['key' => 'proxy.openrouter.default'],
             ['name' => 'OpenRouter Default', 'status' => 'active', 'connect_timeout_ms' => 10000,
                 'request_timeout_ms' => 90000, 'max_attempts' => 3, 'backoff_ms' => 250,
-                'max_output_tokens' => 8192, 'config' => ['retry_statuses' => [408, 429, 500, 502, 503, 504]]]
+                'max_input_tokens' => 24000, 'max_output_tokens' => 8192,
+                'config' => ['retry_statuses' => [408, 429, 500, 502, 503, 504]]]
         );
+
+        foreach ([
+            ['planner', 'Planner Agent', ['cognee', 'project']],
+            ['code_research', 'Code Research Agent', ['graphify', 'github']],
+            ['backend', 'Backend Agent', ['graphify', 'github', 'mcp']],
+            ['frontend', 'Frontend Agent', ['graphify', 'github', 'browser']],
+            ['review', 'Review Agent', ['git_diff', 'tests', 'cognee']],
+            ['admin', 'Admin Agent', ['mcp', 'server_logs', 'cognee']],
+            ['research', 'Research Agent', ['web', 'docs', 'cognee']],
+            ['optimizer', 'Optimizer Agent', ['llm_runs', 'evaluations', 'rankings']],
+        ] as [$key, $name, $sources]) {
+            AgentProfile::updateOrCreate(['key' => $key], [
+                'name' => $name, 'type' => $key, 'status' => 'active',
+                'prompt_template_key' => 'luczor.system', 'required_sources' => $sources,
+                'capabilities' => [], 'config' => ['parallel_safe' => in_array($key, ['review', 'research', 'optimizer'], true)],
+            ]);
+        }
     }
 }

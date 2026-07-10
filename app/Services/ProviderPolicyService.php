@@ -5,10 +5,14 @@ namespace App\Services;
 use App\Models\ModelProfile;
 use App\Models\ModelRanking;
 use App\Models\ModelUseCase;
+use App\Models\ProviderPriceSnapshot;
+use App\Models\LlmExperiment;
 
 /** Enforces the server-owned allow-list, output budget and fallback ladder. */
 class ProviderPolicyService
 {
+    private string $selectionSource = 'admin_policy';
+
     /** @return array<int,ModelProfile> */
     public function candidates(?string $requestedModel, string $taskType): array
     {
@@ -48,6 +52,7 @@ class ProviderPolicyService
             ->get()->keyBy('model_id');
 
         if ($ranking->isNotEmpty()) {
+            $this->selectionSource = 'admin_policy_ranked';
             $count = max(1, $profiles->count());
             $profiles = $profiles->values()->sortByDesc(function (ModelProfile $profile, int $index) use ($ranking, $count) {
                 $measured = (float) ($ranking->get($profile->model_id)?->score ?? 0);
@@ -56,8 +61,29 @@ class ProviderPolicyService
             })->values();
         }
 
+
+        $experimentTask = explode('.', $taskType)[0] ?? $taskType;
+        $experiment = LlmExperiment::query()->where('status', 'active')->whereIn('task_type', [$taskType, $experimentTask])
+            ->where(fn ($q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+            ->where(fn ($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>', now()))->first();
+        if ($experiment && random_int(1, 100) <= $experiment->traffic_percent) {
+            $variants = collect($experiment->variants)->filter(fn ($item) => is_array($item));
+            $weighted = $variants->flatMap(function (array $item) {
+                $identity = $item['model_profile_slug'] ?? $item['model_id'] ?? null;
+                return $identity ? array_fill(0, max(1, min(100, (int) ($item['weight'] ?? 1))), $identity) : [];
+            })->values();
+            $chosen = $weighted->isNotEmpty() ? $weighted->get(random_int(0, $weighted->count() - 1)) : null;
+            $variant = $profiles->first(fn (ModelProfile $profile) => $profile->slug === $chosen || $profile->model_id === $chosen);
+            if ($variant) {
+                $profiles = collect([$variant])->concat($profiles->reject(fn (ModelProfile $p) => $p->id === $variant->id))->values();
+                $this->selectionSource = 'experiment:'.$experiment->key;
+            }
+        }
+
         return $profiles->all();
     }
+
+    public function selectionSource(): string { return $this->selectionSource; }
 
     public function outputBudget(ModelProfile $profile, mixed $requested): int
     {
@@ -65,6 +91,23 @@ class ProviderPolicyService
         $hardLimit = (int) config('luczor.proxy.max_output_tokens', 8192);
 
         return max(1, min($requested, (int) $profile->max_tokens, $hardLimit));
+    }
+
+    /** @param array<string,mixed> $payload */
+    public function estimatedInputTokens(array $payload): int
+    {
+        $characters = collect($payload['messages'] ?? [])->sum(fn ($message) => mb_strlen((string) ($message['content'] ?? '')));
+        $characters += mb_strlen(json_encode($payload['tools'] ?? [], JSON_UNESCAPED_UNICODE));
+        return max(1, (int) ceil($characters / 4));
+    }
+
+    /** @param array<string,mixed> $payload */
+    public function estimatedCost(ModelProfile $profile, array $payload, int $outputTokens): ?float
+    {
+        $price = ProviderPriceSnapshot::current($profile->provider, $profile->model_id);
+        if (! $price) return null;
+        return round(($this->estimatedInputTokens($payload) / 1_000_000) * $price->input_per_million
+            + ($outputTokens / 1_000_000) * $price->output_per_million, 8);
     }
 
     private function useCaseFor(string $taskType): ?ModelUseCase

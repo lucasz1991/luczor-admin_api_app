@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LlmAttempt;
 use App\Models\LlmRun;
 use App\Models\ProviderCredential;
+use App\Models\PromptTemplate;
 use App\Services\ApiActor;
 use App\Services\LlmTelemetryService;
 use App\Services\NetworkOptimizer;
@@ -58,9 +59,6 @@ class ProxyController extends Controller
             'session_id' => ['nullable', 'string', 'max:120'],
             'feature_key' => ['nullable', 'string', 'max:160'],
             'context_id' => ['nullable', 'string', 'max:120'],
-            'prompt_template_id' => ['nullable', 'string', 'max:120'],
-            'context_strategy_id' => ['nullable', 'string', 'max:120'],
-            'network_policy_id' => ['nullable', 'string', 'max:120'],
             'repo_id' => ['nullable', 'string', 'max:120'],
             'branch' => ['nullable', 'string', 'max:160'],
             'commit_sha' => ['nullable', 'string', 'max:80'],
@@ -72,15 +70,28 @@ class ProxyController extends Controller
         $meta['client_id'] = $actor->deviceId($request, $validated['client_id'] ?? null);
         $meta['project_ref_id'] = $actor->project($request, $validated['project_id'] ?? null)?->id;
         $taskType = $meta['task_type'];
-        $networkPolicy = $networkOptimizer->policy($meta['network_policy_id']);
+        $networkPolicy = $networkOptimizer->policy('proxy.openrouter.default');
 
         $providerPayload = $validated;
         foreach ($this->internalKeys() as $key) unset($providerPayload[$key]);
-        unset($providerPayload['model']);
+        // Client values are accepted only for backward wire compatibility.
+        // Routing, sampling and token limits are exclusively server-owned.
+        unset($providerPayload['model'], $providerPayload['temperature'], $providerPayload['max_tokens']);
+        $adminPrompt = PromptTemplate::query()->where('key', 'luczor.system')->where('status', 'active')
+            ->orderByDesc('version')->first();
+        if ($adminPrompt) {
+            array_unshift($providerPayload['messages'], ['role' => 'system', 'content' => $adminPrompt->body]);
+            $meta['prompt_template_id'] = $adminPrompt->key.'@'.$adminPrompt->version;
+        }
 
         $profiles = $providerPolicy->candidates(null, $taskType);
         $providerPayload['stream'] = (bool) ($providerPayload['stream'] ?? false);
-        $run = $telemetry->startRun($meta, $taskType, $providerPayload);
+        $run = $telemetry->startRun($meta, $taskType, $providerPayload, $providerPolicy->selectionSource());
+        $estimatedInputTokens = $providerPolicy->estimatedInputTokens($providerPayload);
+        if ($networkPolicy->max_input_tokens && $estimatedInputTokens > $networkPolicy->max_input_tokens) {
+            $run->update(['status' => 'budget_rejected', 'success' => false, 'input_tokens' => $estimatedInputTokens]);
+            return response()->json(['message' => 'Context exceeds the server input-token budget.', 'request_id' => $run->request_id], 422);
+        }
         $baseUrl = rtrim($credential->base_url ?: 'https://openrouter.ai/api/v1', '/');
         $client = new Client([
             'connect_timeout' => max(1, $networkPolicy->connect_timeout_ms / 1000),
@@ -93,7 +104,9 @@ class ProxyController extends Controller
         $upstream = null;
         foreach ($profiles as $index => $profile) {
             $attemptNo = $index + 1;
+            if ($attemptNo > (int) $networkPolicy->max_attempts) break;
             $providerPayload['model'] = $profile->model_id;
+            $providerPayload['temperature'] = $profile->temperature;
             $providerPayload['max_tokens'] = $providerPolicy->outputBudget($profile, $providerPayload['max_tokens'] ?? $networkPolicy->max_output_tokens);
             $attempt = $telemetry->startAttempt($run, $profile, $credential, $attemptNo, [
                 'task_type' => $taskType,
@@ -102,6 +115,11 @@ class ProxyController extends Controller
                 'network_policy' => $networkPolicy->key,
             ]);
             $attemptStarted = microtime(true);
+            $estimatedCost = $providerPolicy->estimatedCost($profile, $providerPayload, (int) $providerPayload['max_tokens']);
+            if ($networkPolicy->max_cost_usd !== null && $estimatedCost !== null && $estimatedCost > $networkPolicy->max_cost_usd) {
+                $telemetry->failAttempt($attempt, 'cost_budget', 'Estimated request cost exceeds the active network policy.', 0, 0);
+                continue;
+            }
 
             try {
                 $upstream = $client->post($baseUrl.'/chat/completions', [
@@ -244,9 +262,9 @@ class ProxyController extends Controller
             'task_type' => is_string($payload['task_type'] ?? null) ? $payload['task_type'] : 'chat.general',
             'feature_key' => $payload['feature_key'] ?? null,
             'context_id' => $payload['context_id'] ?? null,
-            'prompt_template_id' => $payload['prompt_template_id'] ?? 'luczor.system.v1',
-            'context_strategy_id' => $payload['context_strategy_id'] ?? 'context.memory_code_budgeted',
-            'network_policy_id' => $payload['network_policy_id'] ?? 'proxy.openrouter.default',
+            'prompt_template_id' => 'luczor.system@1',
+            'context_strategy_id' => 'context.memory_code_budgeted',
+            'network_policy_id' => 'proxy.openrouter.default',
             'repo_id' => $payload['repo_id'] ?? null,
             'branch' => $payload['branch'] ?? null,
             'commit_sha' => $payload['commit_sha'] ?? null,

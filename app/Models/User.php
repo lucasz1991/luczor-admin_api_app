@@ -15,12 +15,18 @@ class User extends Authenticatable implements MustVerifyEmail
     use Notifiable;
 
     protected $fillable = [
+        'tenant_id',
         'name',
         'email',
         'password',
         'role',
         'status',
     ];
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class);
+    }
 
     protected $hidden = [
         'password',

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ModelProfile;
 use App\Models\ModelRanking;
 use App\Models\LlmRun;
+use App\Models\LlmExperiment;
+use App\Models\PromptTemplate;
 use App\Services\EvaluationService;
 use App\Services\ApiActor;
 use App\Services\ModelRanker;
@@ -17,6 +19,7 @@ class LlmController extends Controller
     /** Choose the best model for a task type (exploit ~90%, explore ~10%). */
     public function route(Request $request, ModelRanker $ranker, ApiActor $actor, ProviderPolicyService $policy)
     {
+        abort_unless($request->user()?->isAdmin(), 403);
         $data = $request->validate([
             'task_type' => ['nullable', 'string', 'max:120'],
         ]);
@@ -76,5 +79,47 @@ class LlmController extends Controller
         $result = $evaluator->evaluateRun($llmRun, $data);
 
         return response()->json(['data' => $result->load('llmRun')], 201);
+    }
+
+    public function evaluateByRequest(Request $request, string $requestId, EvaluationService $evaluator, ApiActor $actor)
+    {
+        $run = LlmRun::query()->where('request_id', $requestId)->firstOrFail();
+        return $this->evaluate($request, $run, $evaluator, $actor);
+    }
+
+    public function runs(Request $request)
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
+        return response()->json(['data' => LlmRun::query()->with(['attempts', 'metrics', 'evaluations'])->latest()->paginate(min(100, max(10, (int) $request->query('per_page', 25))))]);
+    }
+
+    public function telemetry(Request $request)
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
+        $days = min(365, max(1, (int) $request->query('days', 30)));
+        $query = LlmRun::query()->where('created_at', '>=', now()->subDays($days));
+        $total = (clone $query)->count();
+        $success = (clone $query)->where('success', true)->count();
+        return response()->json(['data' => [
+            'window_days' => $days, 'runs' => $total, 'success_rate' => $total ? $success / $total : 0,
+            'total_cost' => (float) (clone $query)->sum('cost_total'),
+            'cost_per_success' => $success ? (float) (clone $query)->sum('cost_total') / $success : null,
+            'avg_latency_ms' => (float) (clone $query)->avg('latency_ms'), 'avg_ttft_ms' => (float) (clone $query)->avg('ttft_ms'),
+            'avg_tokens_per_second' => (float) (clone $query)->avg('tokens_per_second'),
+            'fallback_rate' => $total ? (clone $query)->where('attempt_count', '>', 1)->count() / $total : 0,
+            'input_tokens' => (int) (clone $query)->sum('input_tokens'), 'output_tokens' => (int) (clone $query)->sum('output_tokens'),
+        ]]);
+    }
+
+    public function experiments(Request $request)
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
+        return response()->json(['data' => LlmExperiment::query()->latest()->get()]);
+    }
+
+    public function prompts(Request $request)
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
+        return response()->json(['data' => PromptTemplate::query()->orderBy('key')->orderByDesc('version')->get()]);
     }
 }

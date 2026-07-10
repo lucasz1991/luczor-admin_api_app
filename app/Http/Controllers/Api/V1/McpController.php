@@ -22,6 +22,7 @@ class McpController extends Controller
 
     public function call(Request $request, ApiActor $actor, McpToolRegistry $registry, McpToolService $tools, AuditLogger $audit)
     {
+        $started = microtime(true);
         $data = $request->validate([
             'server' => ['required', 'string', 'max:80'],
             'tool' => ['required', 'string', 'max:120'],
@@ -37,6 +38,7 @@ class McpController extends Controller
             'tool' => $descriptor['tool'],
             'risk_level' => $descriptor['risk'],
             'status' => 'running',
+            'started_at' => now(),
             'input' => $data['input'] ?? [],
         ]);
 
@@ -46,6 +48,8 @@ class McpController extends Controller
                 'project_id' => $result['project_id'],
                 'device_job_id' => $result['device_job_id'],
                 'status' => $result['status'],
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                'finished_at' => now(),
                 'output' => $result['output'],
                 'result_hash' => $audit->hash($result['output']),
             ]);
@@ -67,7 +71,7 @@ class McpController extends Controller
             return response()->json(['data' => $call->fresh()]);
         } catch (Throwable $error) {
             $message = $error instanceof HttpExceptionInterface ? $error->getMessage() : 'MCP tool execution failed.';
-            $call->update(['status' => 'failed', 'output' => ['error' => $message], 'result_hash' => $audit->hash(['error' => $message])]);
+            $call->update(['status' => 'failed', 'duration_ms' => (int) round((microtime(true) - $started) * 1000), 'error' => $message, 'finished_at' => now(), 'output' => ['error' => $message], 'result_hash' => $audit->hash(['error' => $message])]);
             $audit->record([
                 'actor_user_id' => $actor->userId($request),
                 'tool_call_id' => $call->id,

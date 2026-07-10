@@ -19,6 +19,7 @@ class NetworkOptimizer
                 'request_timeout_ms' => config('luczor.proxy.timeout') * 1000,
                 'max_attempts' => 3,
                 'backoff_ms' => 250,
+                'max_input_tokens' => config('luczor.proxy.max_input_tokens', 24000),
                 'max_output_tokens' => config('luczor.proxy.max_output_tokens'),
             ]);
     }

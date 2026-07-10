@@ -39,7 +39,7 @@ class AuthViewsTest extends TestCase
         $this->actingAs($admin)
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('Luczor Admin API')
+            ->assertSee('Luczor Admin Control')
             ->assertSee('Modell-Fallbacks pro Use-Case');
     }
 

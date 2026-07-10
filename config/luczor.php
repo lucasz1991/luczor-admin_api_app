@@ -8,6 +8,7 @@ return [
         'connect_timeout' => (int) env('LUCZOR_PROXY_CONNECT_TIMEOUT', 10),
         'timeout' => (int) env('LUCZOR_PROXY_TIMEOUT', 90),
         'max_output_tokens' => (int) env('LUCZOR_PROXY_MAX_OUTPUT_TOKENS', 8192),
+        'max_input_tokens' => (int) env('LUCZOR_PROXY_MAX_INPUT_TOKENS', 24000),
         'requests_per_minute' => (int) env('LUCZOR_PROXY_REQUESTS_PER_MINUTE', 60),
     ],
     'device_jobs' => [

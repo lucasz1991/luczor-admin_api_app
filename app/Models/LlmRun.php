@@ -42,4 +42,9 @@ class LlmRun extends Model
     {
         return $this->hasMany(LlmAttempt::class);
     }
+
+    public function toolCalls()
+    {
+        return $this->hasMany(ToolCall::class);
+    }
 }

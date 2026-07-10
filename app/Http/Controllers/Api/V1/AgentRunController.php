@@ -21,8 +21,6 @@ class AgentRunController extends Controller
             'feature_key' => ['nullable', 'string', 'max:160'],
             'status' => ['nullable', 'string', 'max:40'],
             'context_id' => ['nullable', 'string', 'max:120'],
-            'model_id' => ['nullable', 'string', 'max:180'],
-            'provider_id' => ['nullable', 'string', 'max:120'],
             'goal' => ['nullable', 'string', 'max:8000'],
             'meta' => ['nullable', 'array'],
         ]);
@@ -52,8 +50,6 @@ class AgentRunController extends Controller
         $data = $request->validate([
             'status' => ['nullable', 'string', 'max:40'],
             'context_id' => ['nullable', 'string', 'max:120'],
-            'model_id' => ['nullable', 'string', 'max:180'],
-            'provider_id' => ['nullable', 'string', 'max:120'],
             'meta' => ['nullable', 'array'],
         ]);
 

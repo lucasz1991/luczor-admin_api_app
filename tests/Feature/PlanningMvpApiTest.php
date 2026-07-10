@@ -7,6 +7,7 @@ use App\Models\ApiKey;
 use App\Models\ContextArtifact;
 use App\Models\EvaluationResult;
 use App\Models\LlmRun;
+use App\Models\LlmAttempt;
 use App\Models\MemoryLink;
 use App\Models\ModelRanking;
 use App\Models\PerformanceProfile;
@@ -103,6 +104,18 @@ class PlanningMvpApiTest extends TestCase
             'input_tokens' => 800,
             'output_tokens' => 120,
             'cost_total' => 0.001,
+        ]);
+        LlmAttempt::create([
+            'llm_run_id' => $run->id,
+            'attempt_no' => 1,
+            'provider_id' => 'openrouter',
+            'model_id' => '@preset/luczor',
+            'status' => 'completed',
+            'http_status' => 200,
+            'total_ms' => 1000,
+            'input_tokens' => 800,
+            'output_tokens' => 120,
+            'effective_cost' => 0.001,
         ]);
 
         $this->withHeader('X-Api-Key', $token)->postJson("/api/v1/llm/runs/{$run->id}/evaluate", [

@@ -7,6 +7,7 @@ use App\Models\LlmRun;
 use App\Models\ModelProfile;
 use App\Models\ProviderCredential;
 use App\Models\ProviderPriceSnapshot;
+use App\Models\ContextArtifact;
 use Illuminate\Support\Str;
 
 class LlmTelemetryService
@@ -16,7 +17,7 @@ class LlmTelemetryService
     }
 
     /** @param array<string,mixed> $meta @param array<string,mixed> $requestPayload */
-    public function startRun(array $meta, string $taskType, array $requestPayload): LlmRun
+    public function startRun(array $meta, string $taskType, array $requestPayload, string $selectedBy = 'admin_policy'): LlmRun
     {
         return LlmRun::create([
             ...$meta,
@@ -24,7 +25,7 @@ class LlmTelemetryService
             'task_type' => $taskType,
             'model_id' => 'pending',
             'provider_id' => 'openrouter',
-            'selected_by' => 'admin_policy',
+            'selected_by' => $selectedBy,
             'status' => 'running',
             'success' => false,
             'request_hash' => $this->stableHash($this->redactRequest($requestPayload)),
@@ -109,6 +110,19 @@ class LlmTelemetryService
     public function finishRun(LlmRun $run, LlmAttempt $attempt): LlmRun
     {
         $ok = $attempt->status === 'completed';
+        $attempts = $run->attempts();
+        $providerCost = (clone $attempts)->whereNotNull('provider_cost')->exists()
+            ? (float) (clone $attempts)->sum('provider_cost') : null;
+        $calculatedCost = (clone $attempts)->whereNotNull('calculated_cost')->exists()
+            ? (float) (clone $attempts)->sum('calculated_cost') : null;
+        $contextTokens = null;
+        if ($run->context_id) {
+            $artifact = ContextArtifact::query()->where('context_id', $run->context_id)
+                ->when($run->user_id, fn ($query) => $query->where('user_id', $run->user_id))
+                ->latest()->first();
+            $budget = $artifact?->budget ?? [];
+            $contextTokens = $budget['estimated_tokens'] ?? $budget['total_tokens'] ?? null;
+        }
         $run->fill([
             'model_id' => $attempt->model_id,
             'provider_id' => $attempt->provider_id,
@@ -122,9 +136,10 @@ class LlmTelemetryService
             'tokens_per_second' => $attempt->tokens_per_second,
             'input_tokens' => $attempt->input_tokens,
             'output_tokens' => $attempt->output_tokens,
+            'context_tokens' => $contextTokens,
             'cost_total' => $run->attempts()->sum('effective_cost'),
-            'provider_cost' => $run->attempts()->sum('provider_cost'),
-            'calculated_cost' => $run->attempts()->sum('calculated_cost'),
+            'provider_cost' => $providerCost,
+            'calculated_cost' => $calculatedCost,
             'cost_source' => $attempt->cost_source,
             'response_hash' => $attempt->response_hash,
         ])->save();
@@ -156,6 +171,11 @@ class LlmTelemetryService
                 'price_snapshot_id' => $attempt->price_snapshot_id,
             ],
         ]);
+        // Keep the hot response path lean. Evaluations recalculate immediately;
+        // unevaluated traffic refreshes aggregate rankings in small batches.
+        if ($run->id % 5 === 0) {
+            app(ModelRanker::class)->recompute($run->task_type);
+        }
 
         return $run->refresh();
     }

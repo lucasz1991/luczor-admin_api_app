@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\RetrievalCacheEntry;
 use Illuminate\Support\Facades\Cache;
 
 /** Commit-scoped cache keys: advancing the repo version invalidates every dependent context deterministically. */
@@ -25,7 +26,22 @@ class ContextCache
             'version' => $version,
         ], JSON_THROW_ON_ERROR));
 
-        return Cache::remember('context:'.$fingerprint, now()->addMinutes(10), $resolver);
+        $cacheKey = 'context:'.$fingerprint;
+        $hit = Cache::has($cacheKey);
+        $result = Cache::remember($cacheKey, now()->addMinutes(10), $resolver);
+        $entry = RetrievalCacheEntry::firstOrNew(['cache_key' => $fingerprint]);
+        $entry->fill([
+            'cache_type' => 'context',
+            'user_id' => $request['user_id'] ?? null,
+            'repository_id' => is_numeric($request['repo_id'] ?? null) ? (int) $request['repo_id'] : null,
+            'commit_sha' => $request['commit_sha'] ?? null,
+            'content_hash' => hash('sha256', json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
+            'payload' => ['task_type' => $request['task_type'] ?? null, 'feature_key' => $request['feature_key'] ?? null],
+            'hit_count' => (int) ($entry->hit_count ?? 0) + ($hit ? 1 : 0),
+            'last_hit_at' => $hit ? now() : $entry->last_hit_at,
+            'expires_at' => now()->addMinutes(10),
+        ])->save();
+        return $result;
     }
 
     public function invalidate(int $userId, ?string $repoId, ?string $branch): void

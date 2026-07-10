@@ -3,10 +3,13 @@
 namespace App\Actions\Fortify;
 
 use App\Models\User;
+use App\Models\Tenant;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Laravel\Jetstream\Jetstream;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class CreateNewUser implements CreatesNewUsers
 {
@@ -26,10 +29,21 @@ class CreateNewUser implements CreatesNewUsers
             'terms' => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '',
         ])->validate();
 
-        return User::create([
-            'name' => $input['name'],
-            'email' => $input['email'],
-            'password' => Hash::make($input['password']),
-        ]);
+        return DB::transaction(function () use ($input) {
+            $tenant = Tenant::create([
+                'name' => $input['name'].' Workspace',
+                'slug' => Str::slug($input['name']).'-'.Str::lower(Str::random(8)),
+                'plan' => 'standard',
+                'status' => 'active',
+            ]);
+            return User::create([
+                'tenant_id' => $tenant->id,
+                'name' => $input['name'],
+                'email' => $input['email'],
+                'password' => Hash::make($input['password']),
+                'role' => 'user',
+                'status' => true,
+            ]);
+        });
     }
 }
