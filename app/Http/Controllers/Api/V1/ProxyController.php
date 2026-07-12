@@ -146,6 +146,14 @@ class ProxyController extends Controller
             $providerPayload['model'] = $profile->model_id;
             $providerPayload['temperature'] = $profile->temperature;
             $providerPayload['max_tokens'] = $providerPolicy->outputBudget($profile, $providerPayload['max_tokens'] ?? $networkPolicy->max_output_tokens);
+            // OpenRouter models may reason internally by default. Keep that
+            // reasoning available to the model, but never stream it into the
+            // user-visible assistant response.
+            if ($providerName === 'openrouter') {
+                $providerPayload['reasoning'] = ['exclude' => true];
+            } else {
+                unset($providerPayload['reasoning']);
+            }
             $attempt = $telemetry->startAttempt($run, $profile, $profileCredential, $attemptNo, [
                 'task_type' => $taskType,
                 'admin_order' => $attemptNo,

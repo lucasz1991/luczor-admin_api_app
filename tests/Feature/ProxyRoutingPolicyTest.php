@@ -76,6 +76,7 @@ class ProxyRoutingPolicyTest extends TestCase
             $this->assertSame($primary->model_id, $options['json']['model']);
             $this->assertSame($primary->temperature, $options['json']['temperature']);
             $this->assertSame(50, $options['json']['max_tokens']);
+            $this->assertSame(['exclude' => true], $options['json']['reasoning']);
             $this->assertArrayNotHasKey('network_policy_id', $options['json']);
             $this->assertSame('Bearer test-secret', $options['headers']['Authorization']);
             return true;
