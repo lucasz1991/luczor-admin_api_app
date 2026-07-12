@@ -492,6 +492,15 @@ class DashboardController extends Controller
         return Redirect::route('admin.page', 'models')->with('status', 'Modell-Reihenfolge gespeichert.');
     }
 
+    /** Toggle one fallback entry without changing its model profile or position. */
+    public function toggleModelUseCaseEntry(Request $request, ModelUseCaseEntry $modelUseCaseEntry)
+    {
+        $this->ensureAdmin($request);
+        $modelUseCaseEntry->update(['active' => ! $modelUseCaseEntry->active]);
+
+        return Redirect::route('admin.page', 'models')->with('status', 'Eintrag-Status aktualisiert.');
+    }
+
     /** Remove a single fallback entry and close the gap in its use-case chain. */
     public function destroyModelUseCaseEntry(Request $request, ModelUseCaseEntry $modelUseCaseEntry)
     {

@@ -24,6 +24,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/model-use-cases', [DashboardController::class, 'storeModelUseCase'])->name('dashboard.model-use-cases.store');
         Route::post('/dashboard/model-use-case-entries', [DashboardController::class, 'storeModelUseCaseEntry'])->name('dashboard.model-use-case-entries.store');
         Route::post('/dashboard/model-use-case-entries/reorder', [DashboardController::class, 'reorderModelUseCaseEntries'])->name('dashboard.model-use-case-entries.reorder');
+        Route::post('/dashboard/model-use-case-entries/{modelUseCaseEntry}/toggle', [DashboardController::class, 'toggleModelUseCaseEntry'])->name('dashboard.model-use-case-entries.toggle');
         Route::delete('/dashboard/model-use-case-entries/{modelUseCaseEntry}', [DashboardController::class, 'destroyModelUseCaseEntry'])->name('dashboard.model-use-case-entries.destroy');
         Route::post('/dashboard/model-profiles/reorder', [DashboardController::class, 'reorderModelProfiles'])->name('dashboard.model-profiles.reorder');
         Route::post('/dashboard/provider-prices', [DashboardController::class, 'storeProviderPrice'])->name('dashboard.provider-prices.store');
