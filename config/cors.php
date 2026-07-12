@@ -25,7 +25,15 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    'exposed_headers' => [
+        'X-Luczor-Request-Id',
+        'X-Luczor-Use-Case',
+        'X-Luczor-Model-Profile',
+        'X-Luczor-Model-Id',
+        'X-Luczor-Provider',
+        'X-Luczor-Review-Enabled',
+        'Retry-After',
+    ],
 
     'max_age' => 0,
 

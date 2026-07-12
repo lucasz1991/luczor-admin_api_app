@@ -206,14 +206,14 @@ class DashboardController extends Controller
 
         ProviderCredential::create($data + ['active' => true]);
 
-        return Redirect::route('dashboard')->with('status', 'Provider credential saved.');
+        return Redirect::route('admin.page', 'providers')->with('status', 'Provider credential saved.');
     }
 
     public function toggleProviderCredential(Request $request, ProviderCredential $providerCredential)
     {
         $this->ensureAdmin($request);
         $providerCredential->update(['active' => ! $providerCredential->active]);
-        return Redirect::route('dashboard')->with('status', 'Provider status updated.');
+        return Redirect::route('admin.page', 'providers')->with('status', 'Provider status updated.');
     }
 
     public function storeModelProfile(Request $request)
@@ -402,7 +402,7 @@ class DashboardController extends Controller
 
         ModelUseCase::updateOrCreate(['slug' => $data['slug']], $data);
 
-        return Redirect::route('dashboard')->with('status', 'Model use case saved.');
+        return Redirect::route('admin.page', 'models')->with('status', 'Model use case saved.');
     }
 
     public function storeModelUseCaseEntry(Request $request)
@@ -428,7 +428,7 @@ class DashboardController extends Controller
             ]
         );
 
-        return Redirect::route('dashboard')->with('status', 'Fallback order updated.');
+        return Redirect::route('admin.page', 'models')->with('status', 'Fallback order updated.');
     }
 
     private function ownedClientIds($user)

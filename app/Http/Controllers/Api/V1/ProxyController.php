@@ -283,7 +283,8 @@ class ProxyController extends Controller
             'task_type' => is_string($payload['task_type'] ?? null) ? $payload['task_type'] : 'chat.general',
             'feature_key' => $payload['feature_key'] ?? null,
             'context_id' => $payload['context_id'] ?? null,
-            'prompt_template_id' => 'luczor.system@1',
+            // Set only when a system prompt is actually injected (see chat()).
+            'prompt_template_id' => null,
             'context_strategy_id' => 'context.memory_code_budgeted',
             'network_policy_id' => 'proxy.openrouter.default',
             'repo_id' => $payload['repo_id'] ?? null,
