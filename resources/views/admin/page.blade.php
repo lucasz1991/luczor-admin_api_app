@@ -30,7 +30,10 @@
                     <div class="rounded border border-slate-800 p-4" data-chain-card>
                         <div class="flex items-center justify-between gap-3">
                             <b class="text-cyan-100">{{ $case->name }}</b>
-                            <span class="text-xs text-slate-500">Einträge ziehen zum Sortieren</span>
+                            <div class="flex items-center gap-2 text-xs">
+                                <span class="text-slate-500">Einträge ziehen zum Sortieren</span>
+                                <span class="text-slate-500" data-chain-status role="status"></span>
+                            </div>
                         </div>
 
                         <ul class="mt-3 space-y-1 text-sm" data-chain>
@@ -76,15 +79,18 @@
             <script>
 document.querySelectorAll('[data-chain]').forEach(function(list){
   var dragEl = null;
+  var previousOrder = [];
 
   list.querySelectorAll('li[draggable]').forEach(function(li){
     li.addEventListener('dragstart', function(e){
-      if (e.target.closest('[data-entry-actions]')) {
+      var isAction = e.target instanceof Element && e.target.closest('[data-entry-actions]');
+      if (list.dataset.saving === 'true' || isAction) {
         e.preventDefault();
         return;
       }
 
       dragEl = li;
+      previousOrder = Array.from(list.querySelectorAll('li[data-entry-id]'));
       li.style.opacity = '.4';
     });
 
@@ -92,7 +98,10 @@ document.querySelectorAll('[data-chain]').forEach(function(list){
       if (!dragEl) return;
 
       li.style.opacity = '';
-      submitChain(list);
+      var currentOrder = Array.from(list.querySelectorAll('li[data-entry-id]'));
+      if (!previousOrder.every(function(entry, index){ return entry === currentOrder[index]; })) {
+        submitChain(list, previousOrder);
+      }
       dragEl = null;
     });
 
@@ -108,7 +117,7 @@ document.querySelectorAll('[data-chain]').forEach(function(list){
   });
 });
 
-function submitChain(list){
+function submitChain(list, previousOrder){
   var card = list.closest('[data-chain-card]');
   var form = card && card.querySelector('[data-chain-form]');
   if (!form) return;
@@ -122,7 +131,42 @@ function submitChain(list){
     form.appendChild(input);
   });
 
-  form.submit();
+  list.dataset.saving = 'true';
+  setChainStatus(list, 'Speichern…', 'pending');
+
+  fetch(form.action, {
+    method: 'POST',
+    body: new FormData(form),
+    credentials: 'same-origin',
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+    .then(function(response){
+      if (!response.ok) throw new Error('reorder_failed');
+      return response.json();
+    })
+    .then(function(payload){
+      setChainStatus(list, payload.message || 'Reihenfolge gespeichert.', 'success');
+    })
+    .catch(function(){
+      previousOrder.forEach(function(entry){ list.appendChild(entry); });
+      setChainStatus(list, 'Reihenfolge konnte nicht gespeichert werden.', 'error');
+    })
+    .finally(function(){
+      delete list.dataset.saving;
+    });
+}
+
+function setChainStatus(list, message, state){
+  var card = list.closest('[data-chain-card]');
+  var status = card && card.querySelector('[data-chain-status]');
+  if (!status) return;
+
+  status.textContent = message;
+  status.classList.remove('text-slate-500', 'text-emerald-300', 'text-rose-300');
+  status.classList.add(state === 'success' ? 'text-emerald-300' : state === 'error' ? 'text-rose-300' : 'text-slate-500');
 }
 </script>
         </section>

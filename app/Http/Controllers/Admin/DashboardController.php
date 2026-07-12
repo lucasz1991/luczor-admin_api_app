@@ -463,6 +463,10 @@ class DashboardController extends Controller
             }
         });
 
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'Reihenfolge gespeichert.']);
+        }
+
         return Redirect::route('admin.page', 'models')->with('status', 'Reihenfolge gespeichert.');
     }
 

@@ -36,6 +36,27 @@ class ModelReorderTest extends TestCase
         $this->assertSame(3, $eb->fresh()->sort_order);
     }
 
+    public function test_background_reorder_returns_json_without_a_redirect(): void
+    {
+        $admin = User::factory()->create(['email_verified_at' => now(), 'role' => 'admin']);
+        $case = ModelUseCase::create(['name' => 'Chat', 'slug' => 'chat-json', 'active' => true]);
+        $a = ModelProfile::create(['name' => 'A', 'slug' => 'json-a', 'provider' => 'openrouter', 'model_id' => 'm/a']);
+        $b = ModelProfile::create(['name' => 'B', 'slug' => 'json-b', 'provider' => 'openrouter', 'model_id' => 'm/b']);
+        $ea = ModelUseCaseEntry::create(['model_use_case_id' => $case->id, 'model_profile_id' => $a->id, 'sort_order' => 1]);
+        $eb = ModelUseCaseEntry::create(['model_use_case_id' => $case->id, 'model_profile_id' => $b->id, 'sort_order' => 2]);
+
+        $this->actingAs($admin)
+            ->postJson(route('dashboard.model-use-case-entries.reorder'), [
+                'model_use_case_id' => $case->id,
+                'entry_ids' => [$eb->id, $ea->id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Reihenfolge gespeichert.');
+
+        $this->assertSame(1, $eb->fresh()->sort_order);
+        $this->assertSame(2, $ea->fresh()->sort_order);
+    }
+
     public function test_deleting_entry_closes_the_gap(): void
     {
         $admin = User::factory()->create(['email_verified_at' => now(), 'role' => 'admin']);
@@ -83,7 +104,9 @@ class ModelReorderTest extends TestCase
             ->assertOk()
             ->assertSee('data-entry-actions', false)
             ->assertSee(route('dashboard.model-use-case-entries.toggle', $entry), false)
-            ->assertSee('Aus Anwendungsfall entfernen');
+            ->assertSee('Aus Anwendungsfall entfernen')
+            ->assertSee('fetch(form.action', false)
+            ->assertDontSee('form.submit()', false);
 
         $document = new \DOMDocument;
         $previousErrors = libxml_use_internal_errors(true);
