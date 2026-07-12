@@ -23,6 +23,9 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::delete('/dashboard/model-profiles/{modelProfile}', [DashboardController::class, 'destroyModelProfile'])->name('dashboard.model-profiles.destroy');
         Route::post('/dashboard/model-use-cases', [DashboardController::class, 'storeModelUseCase'])->name('dashboard.model-use-cases.store');
         Route::post('/dashboard/model-use-case-entries', [DashboardController::class, 'storeModelUseCaseEntry'])->name('dashboard.model-use-case-entries.store');
+        Route::post('/dashboard/model-use-case-entries/reorder', [DashboardController::class, 'reorderModelUseCaseEntries'])->name('dashboard.model-use-case-entries.reorder');
+        Route::delete('/dashboard/model-use-case-entries/{modelUseCaseEntry}', [DashboardController::class, 'destroyModelUseCaseEntry'])->name('dashboard.model-use-case-entries.destroy');
+        Route::post('/dashboard/model-profiles/reorder', [DashboardController::class, 'reorderModelProfiles'])->name('dashboard.model-profiles.reorder');
         Route::post('/dashboard/provider-prices', [DashboardController::class, 'storeProviderPrice'])->name('dashboard.provider-prices.store');
         Route::post('/dashboard/prompt-templates', [DashboardController::class, 'storePromptTemplate'])->name('dashboard.prompt-templates.store');
         Route::post('/dashboard/context-strategies', [DashboardController::class, 'storeContextStrategy'])->name('dashboard.context-strategies.store');

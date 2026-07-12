@@ -41,7 +41,9 @@ class DashboardController extends Controller
     {
         $user = $request->user();
         $isAdmin = $user?->isAdmin() ?? false;
-        if ($isAdmin) return view('admin.page', $this->adminData('overview'));
+        // H5-Fix: admins render the full dashboard.index (settings + model/use-case
+        // forms). The admin.page UI stays reachable via GET /admin/{page}. Without
+        // this, the rich admin forms below were unreachable (redirect-before-render).
         $clientIds = $this->ownedClientIds($user);
 
         $apiKeys = ApiKey::with('user')
@@ -429,6 +431,81 @@ class DashboardController extends Controller
         );
 
         return Redirect::route('admin.page', 'models')->with('status', 'Fallback order updated.');
+    }
+
+    /**
+     * SOLL §3 — transactional drag&drop reorder of a use-case's fallback chain.
+     * Only entries belonging to the given use case are renumbered, gapless from 1.
+     */
+    public function reorderModelUseCaseEntries(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'model_use_case_id' => ['required', 'exists:model_use_cases,id'],
+            'entry_ids' => ['required', 'array', 'min:1'],
+            'entry_ids.*' => ['integer'],
+        ]);
+
+        DB::transaction(function () use ($data) {
+            $entries = ModelUseCaseEntry::where('model_use_case_id', $data['model_use_case_id'])
+                ->lockForUpdate()->get()->keyBy('id');
+            $order = 1;
+            // Apply the requested order first (only ids that belong to this use case).
+            foreach ($data['entry_ids'] as $id) {
+                if ($entry = $entries->get($id)) {
+                    $entry->update(['sort_order' => $order++]);
+                    $entries->forget($id);
+                }
+            }
+            // Any entry not named in the payload keeps a stable tail position.
+            foreach ($entries->sortBy('sort_order') as $entry) {
+                $entry->update(['sort_order' => $order++]);
+            }
+        });
+
+        return Redirect::route('admin.page', 'models')->with('status', 'Reihenfolge gespeichert.');
+    }
+
+    /** SOLL §3 — global drag&drop reorder of the model library. */
+    public function reorderModelProfiles(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'profile_ids' => ['required', 'array', 'min:1'],
+            'profile_ids.*' => ['integer'],
+        ]);
+
+        DB::transaction(function () use ($data) {
+            $profiles = ModelProfile::lockForUpdate()->get()->keyBy('id');
+            $order = 1;
+            foreach ($data['profile_ids'] as $id) {
+                if ($profile = $profiles->get($id)) {
+                    $profile->update(['sort_order' => $order++]);
+                    $profiles->forget($id);
+                }
+            }
+            foreach ($profiles->sortBy('sort_order') as $profile) {
+                $profile->update(['sort_order' => $order++]);
+            }
+        });
+
+        return Redirect::route('admin.page', 'models')->with('status', 'Modell-Reihenfolge gespeichert.');
+    }
+
+    /** Remove a single fallback entry and close the gap in its use-case chain. */
+    public function destroyModelUseCaseEntry(Request $request, ModelUseCaseEntry $modelUseCaseEntry)
+    {
+        $this->ensureAdmin($request);
+        $useCaseId = $modelUseCaseEntry->model_use_case_id;
+        DB::transaction(function () use ($modelUseCaseEntry, $useCaseId) {
+            $modelUseCaseEntry->delete();
+            $order = 1;
+            foreach (ModelUseCaseEntry::where('model_use_case_id', $useCaseId)->orderBy('sort_order')->lockForUpdate()->get() as $entry) {
+                $entry->update(['sort_order' => $order++]);
+            }
+        });
+
+        return Redirect::route('admin.page', 'models')->with('status', 'Eintrag entfernt.');
     }
 
     private function ownedClientIds($user)

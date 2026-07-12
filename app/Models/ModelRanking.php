@@ -8,7 +8,7 @@ class ModelRanking extends Model
 {
     protected $fillable = [
         'user_id',
-        'task_type', 'model_id', 'provider_id',
+        'task_type', 'model_id', 'model_profile_id', 'provider_id',
         'sample_count', 'success_rate', 'test_pass_rate', 'quality_score',
         'avg_latency_ms', 'avg_cost_total', 'avg_input_tokens',
         'avg_ttft_ms', 'avg_tokens_per_second', 'cost_per_success',

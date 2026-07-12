@@ -14,10 +14,18 @@ class ModelUseCase extends Model
         'slug',
         'description',
         'active',
+        'routing_strategy',
+        'max_attempts',
+        'prompt_template_key',
+        'network_policy_key',
+        'review_enabled',
+        'review_use_case_id',
     ];
 
     protected $casts = [
         'active' => 'boolean',
+        'max_attempts' => 'integer',
+        'review_enabled' => 'boolean',
     ];
 
     public function entries()

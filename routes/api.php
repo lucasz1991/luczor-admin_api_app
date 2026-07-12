@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\PolicyController;
 use App\Http\Controllers\Api\V1\ReverbAuthController;
 use App\Http\Controllers\Api\V1\SyncController;
+use App\Http\Controllers\Api\V1\PreferenceController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\VoiceManifestController;
 use App\Http\Controllers\Api\V1\VoiceAssetController;
@@ -46,6 +47,12 @@ Route::prefix('v1')->group(function () {
     Route::get('/sync/pull', [SyncController::class, 'pull'])
         ->middleware('luczor.api:sync.read')
         ->name('api.v1.sync.pull');
+
+    // Account-synced client preferences (voice + external agents), LWW + allowlist.
+    Route::get('/preferences', [PreferenceController::class, 'index'])
+        ->middleware('luczor.api:settings.read')->name('api.v1.preferences.index');
+    Route::put('/preferences', [PreferenceController::class, 'update'])
+        ->middleware('luczor.api:sync.write')->name('api.v1.preferences.update');
 
     Route::post('/agent-events', [AgentEventController::class, 'store'])
         ->middleware('luczor.api:brain.write')
@@ -83,6 +90,18 @@ Route::prefix('v1')->group(function () {
         ->middleware('luczor.api:brain.read')->name('api.v1.projects.show');
     Route::patch('/projects/{project}', [ProjectController::class, 'update'])
         ->middleware('luczor.api:brain.write')->name('api.v1.projects.update');
+    // Agent/user task + conversation management (SOLL §8).
+    Route::get('/tasks', [\App\Http\Controllers\Api\V1\TaskController::class, 'index'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.tasks.index');
+    Route::post('/tasks', [\App\Http\Controllers\Api\V1\TaskController::class, 'store'])
+        ->middleware('luczor.api:brain.write')->name('api.v1.tasks.store');
+    Route::patch('/tasks/{externalId}', [\App\Http\Controllers\Api\V1\TaskController::class, 'update'])
+        ->middleware('luczor.api:brain.write')->name('api.v1.tasks.update');
+    Route::get('/conversations', [\App\Http\Controllers\Api\V1\ConversationController::class, 'index'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.conversations.index');
+    Route::post('/conversations', [\App\Http\Controllers\Api\V1\ConversationController::class, 'store'])
+        ->middleware('luczor.api:brain.write')->name('api.v1.conversations.store');
+
     Route::get('/mcp/tools', [McpController::class, 'tools'])
         ->middleware('luczor.api:brain.read')->name('api.v1.mcp.tools');
     // The controller enforces the descriptor-specific API-key ability. Do not

@@ -60,6 +60,7 @@ class ProxyController extends Controller
             'temperature' => ['nullable', 'numeric', 'min:0', 'max:2'],
             'max_tokens' => ['nullable', 'integer', 'min:1', 'max:200000'],
             'stream' => ['nullable', 'boolean'],
+            'input_source' => ['nullable', 'string', 'in:keyboard,push_to_talk,hands_free'],
             'task_type' => ['nullable', 'string', 'max:120'],
             'client_id' => ['nullable', 'string', 'max:120'],
             'project_id' => ['nullable', 'string', 'max:120'],
@@ -94,6 +95,29 @@ class ProxyController extends Controller
             $meta['prompt_template_id'] = $adminPrompt->key.'@'.$adminPrompt->version;
         }
 
+        // SOLL §10 — prompt order: luczor.system -> use-case supplement -> history.
+        $useCase = $providerPolicy->useCaseFor($taskType);
+        if ($useCase && $useCase->prompt_template_key) {
+            $useCasePrompt = PromptTemplate::query()->where('key', $useCase->prompt_template_key)
+                ->where('status', 'active')->orderByDesc('version')->first();
+            if ($useCasePrompt) {
+                array_splice($providerPayload['messages'], $adminPrompt ? 1 : 0, 0,
+                    [['role' => 'system', 'content' => $useCasePrompt->body]]);
+            }
+        }
+
+        // SOLL §10 — mark spoken input so the model treats STT text as fallible.
+        $inputSource = $validated['input_source'] ?? 'keyboard';
+        if (in_array($inputSource, ['push_to_talk', 'hands_free'], true)) {
+            for ($i = count($providerPayload['messages']) - 1; $i >= 0; $i--) {
+                if (($providerPayload['messages'][$i]['role'] ?? null) === 'user') {
+                    $providerPayload['messages'][$i]['content'] = trim((string) ($providerPayload['messages'][$i]['content'] ?? ''))
+                        ."\n\n[Eingabemodus: Sprache; STT-Transkript kann Erkennungsfehler enthalten.]";
+                    break;
+                }
+            }
+        }
+
         $profiles = $providerPolicy->candidates(null, $taskType);
         $providerPayload['stream'] = (bool) ($providerPayload['stream'] ?? false);
         $run = $telemetry->startRun($meta, $taskType, $providerPayload, $providerPolicy->selectionSource());
@@ -102,20 +126,27 @@ class ProxyController extends Controller
             $run->update(['status' => 'budget_rejected', 'success' => false, 'input_tokens' => $estimatedInputTokens]);
             return response()->json(['message' => 'Context exceeds the server input-token budget.', 'request_id' => $run->request_id], 422);
         }
-        $baseUrl = rtrim($credential->base_url ?: 'https://openrouter.ai/api/v1', '/');
         $client = $httpClients->make($networkPolicy);
 
         $winner = null;
+        $winnerProfile = null;
+        $winnerCredential = null;
         $winnerStarted = null;
         $winnerConnectMs = null;
         $upstream = null;
         foreach ($profiles as $index => $profile) {
             $attemptNo = $index + 1;
             if ($attemptNo > (int) $networkPolicy->max_attempts) break;
+            // SOLL §2 — resolve the credential from the profile; fall back to the
+            // default openrouter credential so legacy profiles keep working.
+            $profileCredential = ($profile->provider_credential_id
+                ? ProviderCredential::find($profile->provider_credential_id) : null) ?: $credential;
+            $providerName = $profileCredential->provider ?: 'openrouter';
+            $profileBaseUrl = rtrim($profileCredential->base_url ?: $this->defaultBaseUrl($providerName), '/');
             $providerPayload['model'] = $profile->model_id;
             $providerPayload['temperature'] = $profile->temperature;
             $providerPayload['max_tokens'] = $providerPolicy->outputBudget($profile, $providerPayload['max_tokens'] ?? $networkPolicy->max_output_tokens);
-            $attempt = $telemetry->startAttempt($run, $profile, $credential, $attemptNo, [
+            $attempt = $telemetry->startAttempt($run, $profile, $profileCredential, $attemptNo, [
                 'task_type' => $taskType,
                 'admin_order' => $attemptNo,
                 'candidate_count' => count($profiles),
@@ -129,14 +160,17 @@ class ProxyController extends Controller
             }
 
             try {
-                $upstream = $client->post($baseUrl.'/chat/completions', [
-                    'headers' => [
-                        'Authorization' => 'Bearer '.$credential->api_key,
-                        'Content-Type' => 'application/json',
-                        'HTTP-Referer' => config('app.url'),
-                        'X-OpenRouter-Title' => 'Luczor',
-                        'Accept' => $providerPayload['stream'] ? 'text/event-stream' : 'application/json',
-                    ],
+                $headers = [
+                    'Authorization' => 'Bearer '.$profileCredential->api_key,
+                    'Content-Type' => 'application/json',
+                    'Accept' => $providerPayload['stream'] ? 'text/event-stream' : 'application/json',
+                ];
+                if ($providerName === 'openrouter') {
+                    $headers['HTTP-Referer'] = config('app.url');
+                    $headers['X-OpenRouter-Title'] = 'Luczor';
+                }
+                $upstream = $client->post($profileBaseUrl.'/chat/completions', [
+                    'headers' => $headers,
                     'json' => $providerPayload,
                     'stream' => $providerPayload['stream'],
                     'http_errors' => false,
@@ -166,22 +200,49 @@ class ProxyController extends Controller
             }
 
             $winner = $attempt;
+            $winnerProfile = $profile;
+            $winnerCredential = $profileCredential;
             $winnerStarted = $attemptStarted;
             $winnerConnectMs = $connectMs;
             break;
         }
 
         if (! $winner || ! $upstream) {
-            $run->update(['status' => 'error', 'success' => false, 'attempt_count' => $run->attempts()->count()]);
+            // Finalize telemetry consistently even when every candidate was rejected.
+            $last = $run->attempts()->orderByDesc('attempt_no')->first();
+            if ($last) $telemetry->finishRun($run, $last);
+            else $run->update(['status' => 'error', 'success' => false, 'attempt_count' => 0]);
             return response()->json(['message' => 'No provider candidate completed.', 'request_id' => $run->request_id], 503);
         }
 
+        $luczorHeaders = [
+            'X-Luczor-Use-Case' => $useCase?->slug ?? '',
+            'X-Luczor-Model-Profile' => $winnerProfile->slug,
+            'X-Luczor-Model-Id' => $winnerProfile->model_id,
+            'X-Luczor-Provider' => $winnerCredential->provider ?: 'openrouter',
+            'X-Luczor-Review-Enabled' => $useCase?->review_enabled ? '1' : '0',
+        ];
+
+        // SOLL §2 — classify upstream errors on BOTH paths (stream previously
+        // leaked the raw 401/403 body as text/event-stream).
+        if ($upstream->getStatusCode() >= 400) {
+            return $this->jsonResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders);
+        }
+
         return $providerPayload['stream']
-            ? $this->streamResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs)
-            : $this->jsonResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs);
+            ? $this->streamResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders)
+            : $this->jsonResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders);
     }
 
-    private function jsonResponse($upstream, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs)
+    private function defaultBaseUrl(string $provider): string
+    {
+        return match ($provider) {
+            'openai' => 'https://api.openai.com/v1',
+            default => 'https://openrouter.ai/api/v1',
+        };
+    }
+
+    private function jsonResponse($upstream, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs, array $luczorHeaders = [])
     {
         $body = $upstream->getBody()->getContents();
         $json = json_decode($body, true) ?: [];
@@ -203,19 +264,20 @@ class ProxyController extends Controller
 
         if (in_array($upstream->getStatusCode(), [401, 403], true)) {
             return response()->json([
-                'message' => 'Provider authentication failed. Bitte den OpenRouter-Key im Adminbereich prüfen oder neu speichern.',
+                'message' => 'Provider authentication failed. Bitte den Provider-Key im Adminbereich prüfen oder neu speichern.',
                 'code' => 'provider_auth_failed',
                 'provider_status' => $upstream->getStatusCode(),
                 'request_id' => $run->request_id,
-            ], 502)->header('X-Luczor-Request-Id', $run->request_id);
+            ], 502)->withHeaders($luczorHeaders)->header('X-Luczor-Request-Id', $run->request_id);
         }
 
         return response($body, $upstream->getStatusCode())
             ->header('Content-Type', 'application/json')
+            ->withHeaders($luczorHeaders)
             ->header('X-Luczor-Request-Id', $run->request_id);
     }
 
-    private function streamResponse($upstream, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs): StreamedResponse
+    private function streamResponse($upstream, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs, array $luczorHeaders = []): StreamedResponse
     {
         $body = $upstream->getBody();
         $status = $upstream->getStatusCode();
@@ -261,12 +323,12 @@ class ProxyController extends Controller
                 'response_hash' => hash_final($hash),
             ]);
             $telemetry->finishRun($run, $attempt);
-        }, $status, [
+        }, $status, array_merge($luczorHeaders, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
             'X-Accel-Buffering' => 'no',
             'X-Luczor-Request-Id' => $run->request_id,
-        ]);
+        ]));
     }
 
     /** @param array<string,mixed> $payload */
@@ -298,7 +360,7 @@ class ProxyController extends Controller
     /** @return array<int,string> */
     private function internalKeys(): array
     {
-        return ['task_type', 'client_id', 'project_id', 'workflow_id', 'task_id', 'session_id', 'feature_key', 'context_id', 'prompt_template_id', 'context_strategy_id', 'network_policy_id', 'repo_id', 'branch', 'commit_sha', 'tool_call_count'];
+        return ['task_type', 'input_source', 'client_id', 'project_id', 'workflow_id', 'task_id', 'session_id', 'feature_key', 'context_id', 'prompt_template_id', 'context_strategy_id', 'network_policy_id', 'repo_id', 'branch', 'commit_sha', 'tool_call_count'];
     }
 
     private function elapsedMs(float $started): int { return max(0, (int) round((microtime(true) - $started) * 1000)); }

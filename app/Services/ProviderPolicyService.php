@@ -29,7 +29,9 @@ class ProviderPolicyService
                 ->with('modelProfile')
                 ->get()
                 ->pluck('modelProfile')
-                ->filter(fn ($profile) => $profile?->active && $profile->provider === 'openrouter');
+                // openrouter + openai share the /chat/completions wire; anthropic
+                // needs its own driver (full P2) and is excluded here for now.
+                ->filter(fn ($profile) => $profile?->active && in_array($profile->provider, ['openrouter', 'openai'], true));
             $profiles = $fallbacks->values();
         }
 
@@ -110,7 +112,7 @@ class ProviderPolicyService
             + ($outputTokens / 1_000_000) * $price->output_per_million, 8);
     }
 
-    private function useCaseFor(string $taskType): ?ModelUseCase
+    public function useCaseFor(string $taskType): ?ModelUseCase
     {
         $prefix = explode('.', $taskType)[0] ?? 'chat';
         $slug = match ($prefix) {

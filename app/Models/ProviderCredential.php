@@ -16,12 +16,17 @@ class ProviderCredential extends Model
         'base_url',
         'active',
         'meta',
+        'last_tested_at',
+        'last_test_status',
+        'last_error_code',
+        'request_format',
     ];
 
     protected $casts = [
         'api_key' => 'encrypted',
         'active' => 'boolean',
         'meta' => 'array',
+        'last_tested_at' => 'datetime',
     ];
 
     protected $hidden = [
