@@ -4,14 +4,17 @@ End users never configure Whisper.cpp, Piper, model paths, or provider keys. The
 
 ## Windows bootstrap (recommended)
 
-The repository includes a complete bootstrap for Windows x64. It downloads the official whisper.cpp runtime, Piper runtime, a multilingual Whisper base model, and the German Thorsten Piper voice. It creates the signing key once, writes a signed manifest, configures Laravel for the production domain, and generates the Tauri **public-key-only** file `app/.env.voice`.
+The repository includes a complete bootstrap for Windows x64. It downloads the official whisper.cpp runtime, Piper runtime, the multilingual Whisper **small** model (the default, for more reliable German recognition), and the German Thorsten Piper voice. It creates the signing key once, writes a signed manifest, configures Laravel for the production domain, and generates the Tauri **public-key-only** file `app/.env.voice`.
 
 ```powershell
 cd E:\projekte\luczor\admin_api_app
-.\scripts\bootstrap-voice-release.ps1
+.\scripts\bootstrap-voice-release.ps1 -ReleaseVersion 2026.07.12
 cd ..\app
 pnpm.cmd tauri build
 ```
+
+`small` is the default. On resource-constrained devices, use `-WhisperModel base` deliberately; that trades recognition quality for a smaller download.
+Voice release versions are immutable: publish a new version when changing a model or runtime, then rebuild the Tauri app so it receives the current public signing key.
 
 Voice assets are served only through `https://luczor.follow-flow.de`. The private signing key remains under `storage/app/keys` and must never be copied to `app/.env.voice` or the Tauri app.
 

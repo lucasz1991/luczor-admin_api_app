@@ -6,7 +6,9 @@ use App\Models\ApiKey;
 use App\Models\GithubWebhookDelivery;
 use App\Models\Repository;
 use App\Models\User;
+use App\Services\DeviceJobSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -45,6 +47,87 @@ class GithubAndVoiceApiTest extends TestCase
         $this->assertStringNotContainsString('api_key', $payload);
         $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame(rtrim((string) config('app.url'), '/').'/api/v1/voice/releases/2026.07.09/whisper.exe', $decoded['assets'][0]['url']);
+    }
+
+    public function test_voice_manifest_reuses_only_an_immutable_envelope_and_rotates_with_the_signing_key(): void
+    {
+        Cache::flush();
+        Config::set('luczor.voice.manifest', [
+            'version' => 'cache-test-'.uniqid(),
+            'assets' => [['id' => 'whisper', 'kind' => 'stt_binary', 'platform' => 'windows-x86_64', 'sha256' => str_repeat('b', 64), 'file_name' => 'whisper.exe']],
+        ]);
+        [, $token] = $this->token(['settings.read']);
+        $firstSigner = $this->countingSigner($this->privateKey);
+        $this->app->instance(DeviceJobSigner::class, $firstSigner);
+
+        try {
+            $first = $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/voice/manifest')->assertOk();
+            $second = $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/voice/manifest')->assertOk();
+            $this->assertSame(1, $firstSigner->signCalls);
+            $this->assertSame($first->json(), $second->json());
+
+            $changedManifest = config('luczor.voice.manifest');
+            $changedManifest['assets'][0]['sha256'] = str_repeat('c', 64);
+            Config::set('luczor.voice.manifest', $changedManifest);
+            $changed = $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/voice/manifest')->assertOk();
+            $this->assertSame(2, $firstSigner->signCalls);
+            $this->assertNotSame($first->json('payload_json'), $changed->json('payload_json'));
+
+            $rotatedKey = $this->newPrivateKey();
+            $rotatedSigner = $this->countingSigner($rotatedKey);
+            $this->app->instance(DeviceJobSigner::class, $rotatedSigner);
+            $rotated = $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/voice/manifest')->assertOk();
+
+            $this->assertSame(1, $rotatedSigner->signCalls);
+            $public = openssl_pkey_get_details(openssl_pkey_get_private($rotatedKey))['key'];
+            $this->assertSame(1, openssl_verify($rotated->json('payload_json'), base64_decode($rotated->json('signature')), $public, OPENSSL_ALGO_SHA256));
+        } finally {
+            Cache::flush();
+        }
+    }
+
+    public function test_device_job_signer_resolves_relative_and_absolute_private_key_file_paths(): void
+    {
+        $relativeDirectory = 'storage/framework/testing/device-job-key-'.uniqid();
+        $relativePath = $relativeDirectory.'/private.pem';
+        $absolutePath = base_path($relativePath);
+        File::ensureDirectoryExists(dirname($absolutePath));
+        File::put($absolutePath, $this->privateKey);
+        Config::set('luczor.device_jobs.private_key', '');
+
+        try {
+            foreach ([$relativePath, $absolutePath] as $configuredPath) {
+                Config::set('luczor.device_jobs.private_key_file', $configuredPath);
+                $signature = app(DeviceJobSigner::class)->signMessage('voice-manifest');
+                $public = openssl_pkey_get_details(openssl_pkey_get_private($this->privateKey))['key'];
+                $this->assertSame(1, openssl_verify('voice-manifest', base64_decode($signature), $public, OPENSSL_ALGO_SHA256));
+            }
+        } finally {
+            File::deleteDirectory(base_path($relativeDirectory));
+        }
+    }
+
+    public function test_voice_manifest_resolves_a_relative_manifest_file_path(): void
+    {
+        $relativeDirectory = 'storage/framework/testing/voice-manifest-'.uniqid();
+        $relativePath = $relativeDirectory.'/manifest.json';
+        $absolutePath = base_path($relativePath);
+        File::ensureDirectoryExists(dirname($absolutePath));
+        File::put($absolutePath, json_encode([
+            'version' => 'relative-manifest',
+            'assets' => [['file_name' => 'whisper.exe']],
+        ], JSON_THROW_ON_ERROR));
+        Config::set('luczor.voice.manifest', []);
+        Config::set('luczor.voice.manifest_file', $relativePath);
+        [, $token] = $this->token(['settings.read']);
+
+        try {
+            $response = $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/voice/manifest')->assertOk();
+            $payload = json_decode($response->json('payload_json'), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame('relative-manifest', $payload['version']);
+        } finally {
+            File::deleteDirectory(base_path($relativeDirectory));
+        }
     }
 
     public function test_only_manifest_listed_voice_assets_are_publicly_downloadable(): void
@@ -142,6 +225,40 @@ class GithubAndVoiceApiTest extends TestCase
     {
         $user = User::factory()->create();
         $minted = ApiKey::mint(['user_id' => $user->id, 'name' => 'Device', 'abilities' => $abilities, 'active' => true]);
+
         return [$user, $minted['plain']];
+    }
+
+    private function newPrivateKey(): string
+    {
+        $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        openssl_pkey_export($key, $privateKey);
+
+        return $privateKey;
+    }
+
+    private function countingSigner(string $privateKey): DeviceJobSigner
+    {
+        return new class($privateKey) extends DeviceJobSigner
+        {
+            public int $signCalls = 0;
+
+            public function __construct(private readonly string $privateKey) {}
+
+            public function signMessage(string $message): string
+            {
+                $this->signCalls++;
+                openssl_sign($message, $signature, $this->privateKey, OPENSSL_ALGO_SHA256);
+
+                return base64_encode($signature);
+            }
+
+            public function publicKey(): ?string
+            {
+                $private = openssl_pkey_get_private($this->privateKey);
+
+                return openssl_pkey_get_details($private)['key'] ?? null;
+            }
+        };
     }
 }

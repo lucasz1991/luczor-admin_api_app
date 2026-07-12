@@ -2,6 +2,8 @@
 param(
     [string]$ReleaseVersion = (Get-Date -Format 'yyyy.MM.dd'),
     [string]$BaseUrl = 'https://luczor.follow-flow.de',
+    [ValidateSet('base', 'small')]
+    [string]$WhisperModel = 'small',
     [switch]$Force,
     [switch]$SkipDownload
 )
@@ -11,7 +13,12 @@ $root = Split-Path -Parent $PSScriptRoot
 $releaseRoot = Join-Path $root "storage\app\voice\releases\$ReleaseVersion"
 $keyRelative = 'storage/app/keys/luczor_device_job_private.pem'
 $manifestRelative = "storage/app/voice/releases/$ReleaseVersion/manifest.json"
+$manifestPath = Join-Path $root $manifestRelative.Replace('/', '\\')
 $publicEnv = Join-Path (Split-Path -Parent $root) 'app\.env.voice'
+
+if ((Test-Path -LiteralPath $manifestPath) -and -not $Force) {
+    throw "Voice-Release '$ReleaseVersion' ist bereits veröffentlicht. Bitte eine neue -ReleaseVersion verwenden; -Force überschreibt bewusst das bestehende Manifest."
+}
 
 function Set-DotEnvValue([string]$Path, [string]$Name, [string]$Value) {
     $line = "$Name=$Value"
@@ -38,7 +45,8 @@ New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
 $headers = @{ 'User-Agent' = 'Luczor-voice-release-bootstrap' }
 $whisperZip = Join-Path $releaseRoot 'whisper-bin-x64.zip'
 $piperZip = Join-Path $releaseRoot 'piper_windows_amd64.zip'
-$whisperModel = Join-Path $releaseRoot 'ggml-base.bin'
+$whisperModelFileName = "ggml-$WhisperModel.bin"
+$whisperModel = Join-Path $releaseRoot $whisperModelFileName
 $piperModel = Join-Path $releaseRoot 'de_DE-thorsten-medium.onnx'
 $piperConfig = "$piperModel.json"
 
@@ -49,7 +57,7 @@ if (-not $SkipDownload) {
     $downloads = @(
         @{ Url = $whisperUrl; Path = $whisperZip },
         @{ Url = 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip'; Path = $piperZip },
-        @{ Url = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true'; Path = $whisperModel },
+        @{ Url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${whisperModelFileName}?download=true"; Path = $whisperModel },
         @{ Url = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx?download=true'; Path = $piperModel },
         @{ Url = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx.json?download=true'; Path = $piperConfig }
     )

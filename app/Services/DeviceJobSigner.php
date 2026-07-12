@@ -47,10 +47,25 @@ class DeviceJobSigner
     private function privateKey(): string|false
     {
         $path = (string) config('luczor.device_jobs.private_key_file');
-        if ($path !== '' && is_readable($path)) {
-            return file_get_contents($path);
+        if ($path !== '') {
+            // PHP-FPM does not guarantee the application's working directory.
+            // Treat configured relative paths as Laravel project paths so the
+            // same .env value works for Artisan, FPM, and Windows services.
+            $resolvedPath = $this->isAbsolutePath($path) ? $path : base_path($path);
+            if (is_readable($resolvedPath)) {
+                $privateKey = file_get_contents($resolvedPath);
+                if ($privateKey !== false) {
+                    return $privateKey;
+                }
+            }
         }
 
         return (string) config('luczor.device_jobs.private_key');
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        // Unix root paths, Windows drive paths, and UNC/extended Windows paths.
+        return preg_match('/^(?:[A-Za-z]:[\\\\\/]|[\\\\\/])/', $path) === 1;
     }
 }
