@@ -29,6 +29,10 @@ use App\Models\ProviderCredential;
 use App\Models\Project;
 use App\Models\Setting;
 use App\Models\AgentProfile;
+use App\Models\WorkflowDefinition;
+use App\Models\WorkflowRun;
+use App\Services\WorkflowService;
+use App\Services\WorkflowTaskCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Str;
@@ -95,7 +99,7 @@ class DashboardController extends Controller
     public function page(Request $request, string $page)
     {
         $this->ensureAdmin($request);
-        abort_unless(in_array($page, ['overview', 'providers', 'models', 'telemetry', 'optimizer', 'experiments', 'devices', 'api-keys', 'archives', 'settings'], true), 404);
+        abort_unless(in_array($page, ['overview', 'providers', 'models', 'telemetry', 'optimizer', 'experiments', 'workflows', 'devices', 'api-keys', 'archives', 'settings'], true), 404);
         return view('admin.page', $this->adminData($page));
     }
 
@@ -560,7 +564,183 @@ class DashboardController extends Controller
             'providerPrices' => ProviderPriceSnapshot::latest('valid_from')->get(), 'promptTemplates' => PromptTemplate::latest('version')->get(), 'contextStrategies' => ContextStrategy::orderBy('key')->get(), 'networkPolicies' => NetworkPolicy::orderBy('key')->get(), 'llmExperiments' => LlmExperiment::latest()->get(),
             'devices' => Device::with('user')->latest('last_seen_at')->get(), 'debugRequests' => DeviceDebugRequest::with('device')->latest()->limit(50)->get(), 'apiKeys' => ApiKey::with('user')->latest()->get(), 'abilities' => ApiKey::ABILITIES,
             'archiveCounts' => ['projects' => LuczorProjectArchive::count(), 'messages' => LuczorMessageArchive::count(), 'memories' => LuczorMemoryArchive::count(), 'summaries' => LuczorSummaryArchive::count(), 'agent_events' => LuczorAgentEventArchive::count()], 'settings' => Setting::orderBy('group')->orderBy('key')->get(),
+            'charts' => $page === 'overview' ? $this->dashboardCharts() : [],
+            'telemetryCharts' => $page === 'telemetry' ? $this->telemetryCharts() : [],
+            'workflowDefinitions' => WorkflowDefinition::withCount('runs')->latest()->limit(50)->get(),
+            'workflowRuns' => WorkflowRun::with('definition')->latest()->limit(20)->get(),
+            'taskCatalog' => WorkflowTaskCatalog::options(),
         ];
+    }
+
+    public function storeWorkflow(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate(['name' => ['required', 'string', 'max:160'], 'definition_json' => ['required', 'string', 'max:200000']]);
+        $definition = json_decode($data['definition_json'], true);
+        if (! is_array($definition) || ! isset($definition['steps'])) {
+            return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => 'Ungültiges JSON — erwartet {"steps":[...]}.']);
+        }
+        try {
+            app(WorkflowService::class)->assertDefinition($definition);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => $e->getMessage()]);
+        }
+        WorkflowDefinition::create(['user_id' => $request->user()->id, 'name' => $data['name'], 'version' => 1, 'status' => 'active', 'definition' => $definition]);
+
+        return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow gespeichert.');
+    }
+
+    public function startWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
+    {
+        $this->ensureAdmin($request);
+        $svc = app(WorkflowService::class);
+        $svc->advance($svc->createRun($workflowDefinition));
+
+        return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow-Lauf gestartet.');
+    }
+
+    public function exportWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
+    {
+        $this->ensureAdmin($request);
+        $payload = ['format' => 'luczor-workflow', 'format_version' => 1, 'name' => $workflowDefinition->name, 'definition' => $workflowDefinition->definition];
+
+        return response()->streamDownload(
+            fn () => print (json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)),
+            'workflow-'.$workflowDefinition->id.'.json',
+            ['Content-Type' => 'application/json']
+        );
+    }
+
+    public function importWorkflow(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $request->validate(['file' => ['required', 'file', 'max:2048']]);
+        $parsed = json_decode((string) file_get_contents($request->file('file')->getRealPath()), true);
+        if (! is_array($parsed) || ! is_array($parsed['definition'] ?? null)) {
+            return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => 'Ungültige Workflow-Datei.']);
+        }
+        try {
+            app(WorkflowService::class)->assertDefinition($parsed['definition']);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => $e->getMessage()]);
+        }
+        WorkflowDefinition::create([
+            'user_id' => $request->user()->id,
+            'name' => (string) ($parsed['name'] ?? 'Importierter Workflow'),
+            'version' => 1, 'status' => 'active', 'definition' => $parsed['definition'],
+        ]);
+
+        return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow importiert.');
+    }
+
+    public function deleteWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
+    {
+        $this->ensureAdmin($request);
+        if ($workflowDefinition->is_edit_locked) {
+            return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => 'Eingebundener/gesperrter Workflow kann nicht gelöscht werden.']);
+        }
+        $workflowDefinition->delete();
+
+        return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow gelöscht.');
+    }
+
+    /**
+     * SOLL §15 P17 — render-ready overview charts (offline, no CDN): daily runs
+     * bars + cost line, provider distribution, workflow-status distribution.
+     */
+    private function dashboardCharts(): array
+    {
+        $days = 14;
+        $w = 560.0;
+        $h = 120.0;      // drawable height
+        $baseY = 130.0;  // baseline
+        $start = now()->subDays($days - 1)->startOfDay();
+
+        $rows = LlmRun::query()->where('created_at', '>=', $start)
+            ->selectRaw('date(created_at) as d, count(*) as runs, sum(cost_total) as cost')
+            ->groupBy('d')->get()->keyBy('d');
+
+        $series = [];
+        for ($i = 0; $i < $days; $i++) {
+            $d = $start->copy()->addDays($i)->toDateString();
+            $r = $rows->get($d);
+            $series[] = ['d' => $d, 'runs' => (int) ($r->runs ?? 0), 'cost' => (float) ($r->cost ?? 0)];
+        }
+        $maxRuns = max(1, max(array_column($series, 'runs')));
+        $maxCost = max(0.0000001, max(array_column($series, 'cost')));
+        $slot = $w / $days;
+
+        $bars = [];
+        $costPts = [];
+        foreach ($series as $i => $point) {
+            $bh = round($point['runs'] / $maxRuns * $h, 1);
+            $bars[] = [
+                'x' => round($i * $slot + 3, 1), 'y' => round($baseY - $bh, 1),
+                'w' => round($slot - 6, 1), 'h' => $bh,
+                'day' => (int) substr($point['d'], 8, 2), 'runs' => $point['runs'],
+            ];
+            $cx = round($i * $slot + $slot / 2, 1);
+            $cy = round($baseY - $point['cost'] / $maxCost * $h, 1);
+            $costPts[] = "{$cx},{$cy}";
+        }
+
+        $providerRows = LlmRun::query()->where('created_at', '>=', now()->subDays(30))
+            ->selectRaw('provider_id, count(*) as runs')->groupBy('provider_id')->orderByDesc('runs')->limit(6)->get();
+        $providerMax = max(1, (int) ($providerRows->max('runs') ?? 1));
+        $providers = $providerRows->map(fn ($r) => [
+            'label' => $r->provider_id ?: '—', 'value' => (int) $r->runs,
+            'pct' => round((int) $r->runs / $providerMax * 100),
+        ])->all();
+
+        $wfRows = WorkflowRun::query()->selectRaw('status, count(*) as c')->groupBy('status')->get();
+        $wfMax = max(1, (int) ($wfRows->max('c') ?? 1));
+        $workflowStatus = $wfRows->map(fn ($r) => [
+            'label' => $r->status, 'value' => (int) $r->c, 'pct' => round((int) $r->c / $wfMax * 100),
+        ])->all();
+
+        return [
+            'bars' => $bars, 'cost_points' => implode(' ', $costPts),
+            'providers' => $providers, 'workflow_status' => $workflowStatus,
+            'total_runs' => array_sum(array_column($series, 'runs')),
+            'total_cost' => round(array_sum(array_column($series, 'cost')), 4),
+        ];
+    }
+
+    /** SOLL §15 P21 — 30-day runs bars + cost line + success-rate line (offline SVG). */
+    private function telemetryCharts(): array
+    {
+        $days = 30;
+        $w = 560.0;
+        $h = 120.0;
+        $baseY = 130.0;
+        $start = now()->subDays($days - 1)->startOfDay();
+
+        $rows = LlmRun::query()->where('created_at', '>=', $start)
+            ->selectRaw('date(created_at) as d, count(*) as runs, sum(cost_total) as cost, avg(case when success then 1 else 0 end) as sr')
+            ->groupBy('d')->get()->keyBy('d');
+
+        $series = [];
+        for ($i = 0; $i < $days; $i++) {
+            $d = $start->copy()->addDays($i)->toDateString();
+            $r = $rows->get($d);
+            $series[] = ['runs' => (int) ($r->runs ?? 0), 'cost' => (float) ($r->cost ?? 0), 'sr' => (float) ($r->sr ?? 0)];
+        }
+        $maxRuns = max(1, max(array_column($series, 'runs')));
+        $maxCost = max(0.0000001, max(array_column($series, 'cost')));
+        $slot = $w / $days;
+
+        $bars = [];
+        $costPts = [];
+        $srPts = [];
+        foreach ($series as $i => $p) {
+            $bh = round($p['runs'] / $maxRuns * $h, 1);
+            $bars[] = ['x' => round($i * $slot + 1, 1), 'y' => round($baseY - $bh, 1), 'w' => round($slot - 2, 1), 'h' => $bh, 'runs' => $p['runs']];
+            $cx = round($i * $slot + $slot / 2, 1);
+            $costPts[] = $cx.','.round($baseY - $p['cost'] / $maxCost * $h, 1);
+            $srPts[] = $cx.','.round($baseY - $p['sr'] * $h, 1);
+        }
+
+        return ['bars' => $bars, 'cost_points' => implode(' ', $costPts), 'sr_points' => implode(' ', $srPts)];
     }
 
     private function telemetrySummary(): array

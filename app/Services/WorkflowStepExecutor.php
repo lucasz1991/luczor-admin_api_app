@@ -30,6 +30,21 @@ class WorkflowStepExecutor
         }
 
         $step = WorkflowStep::query()->with('run')->findOrFail($stepId);
+        // P15 — expose the currently executing step as a run cursor for the UI.
+        $step->run?->update(['current_workflow_step_id' => $step->id]);
+
+        // P14 — a nested-workflow step starts a child run and stays 'running'
+        // until the child terminates (settled by syncChildWorkflows()).
+        if ($step->type === 'workflow') {
+            try {
+                $this->workflows->startChildWorkflow($step->fresh());
+            } catch (Throwable $error) {
+                $this->workflows->fail($step->fresh(), mb_substr($error->getMessage(), 0, 8000));
+            }
+
+            return;
+        }
+
         try {
             $output = match ($step->type) {
                 'context' => $this->context($step),

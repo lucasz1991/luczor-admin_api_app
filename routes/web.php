@@ -37,5 +37,10 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/devices/{device}/debug', [DashboardController::class, 'requestDeviceDebug'])->name('dashboard.devices.debug.request');
         Route::get('/dashboard/device-debug/{debugRequest}/download', [DashboardController::class, 'downloadDeviceDebug'])->name('dashboard.devices.debug.download');
         Route::post('/dashboard/settings', [DashboardController::class, 'storeSettings'])->name('dashboard.settings.store');
+        Route::post('/dashboard/workflows', [DashboardController::class, 'storeWorkflow'])->name('dashboard.workflows.store');
+        Route::post('/dashboard/workflows/import', [DashboardController::class, 'importWorkflow'])->name('dashboard.workflows.import');
+        Route::post('/dashboard/workflows/{workflowDefinition}/start', [DashboardController::class, 'startWorkflow'])->name('dashboard.workflows.start');
+        Route::get('/dashboard/workflows/{workflowDefinition}/export', [DashboardController::class, 'exportWorkflow'])->name('dashboard.workflows.export');
+        Route::delete('/dashboard/workflows/{workflowDefinition}', [DashboardController::class, 'deleteWorkflow'])->name('dashboard.workflows.destroy');
     });
 });

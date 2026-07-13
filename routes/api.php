@@ -130,6 +130,10 @@ Route::prefix('v1')->group(function () {
     Route::get('/workflow-runs/{workflowRun}', [WorkflowController::class, 'show'])
         ->middleware('luczor.api:brain.read')->name('api.v1.workflow-runs.show');
 
+    // Vetted workflow task library (SOLL §14 P12) — the only tasks a definition may use.
+    Route::get('/workflows/task-catalog', fn () => response()->json(['data' => \App\Services\WorkflowTaskCatalog::options()]))
+        ->middleware('luczor.api:brain.read')->name('api.v1.workflows.task-catalog');
+
     Route::middleware('luczor.api:brain.write')->group(function () {
         Route::post('/agent-runs', [AgentRunController::class, 'store'])->name('api.v1.agent-runs.store');
         Route::patch('/agent-runs/{agentRun}', [AgentRunController::class, 'update'])->name('api.v1.agent-runs.update');
