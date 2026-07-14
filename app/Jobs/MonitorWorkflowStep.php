@@ -32,7 +32,19 @@ class MonitorWorkflowStep implements ShouldQueue
             return;
         }
         $workflows->syncChildWorkflows($run);   // P14 — settle finished child workflows
+        $workflows->settleWaitSteps($run->fresh());     // P15b — elapsed wait.seconds
+        $workflows->syncDeviceJobSteps($run->fresh());  // P15b — finished device bundles
         $workflows->expireTimedOutSteps($run->fresh());
-        $workflows->advance($run->fresh());
+        $result = $workflows->advance($run->fresh());
+
+        // P15b — self-perpetuating poll while steps wait on time or a device
+        // (skipped on the sync driver, where delays run inline; the minute
+        // sweeper luczor:advance-workflows covers that case in production too).
+        if (config('queue.default') !== 'sync'
+            && ! in_array($result->status, ['completed', 'failed', 'cancelled'], true)
+            && $result->steps->contains(fn ($step) => $step->status === 'running'
+                && ($step->type === 'wait.seconds' || $step->external_run_type === 'device_job'))) {
+            $workflows->scheduleMonitor($result, 5);
+        }
     }
 }

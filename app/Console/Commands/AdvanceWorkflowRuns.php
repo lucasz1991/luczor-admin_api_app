@@ -20,6 +20,8 @@ class AdvanceWorkflowRuns extends Command
             ->limit(max(1, min(5000, (int) $this->option('limit'))))
             ->each(function (WorkflowRun $run) use ($workflows, &$count) {
                 $workflows->syncChildWorkflows($run);    // P14 — settle finished child workflows
+                $workflows->settleWaitSteps($run->fresh());       // P15b — elapsed wait.seconds
+                $workflows->syncDeviceJobSteps($run->fresh());    // P15b — finished device bundles
                 $workflows->expireTimedOutSteps($run->fresh());   // P15 — fail steps stuck past their timeout
                 $workflows->advance($run->fresh());
                 $count++;

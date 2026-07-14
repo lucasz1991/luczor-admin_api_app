@@ -72,7 +72,7 @@ class WorkflowEditorTest extends TestCase
     {
         $admin = $this->admin();
         $wf = $this->workflow($admin);
-        $bad = ['steps' => [['key' => 'x', 'type' => 'browser.open']]]; // nicht freigegeben
+        $bad = ['steps' => [['key' => 'x', 'type' => 'shell.exec']]]; // nicht im Katalog
 
         $this->actingAs($admin)
             ->putJson(route('dashboard.workflows.update', $wf), ['name' => 'Demo', 'definition_json' => json_encode($bad)])

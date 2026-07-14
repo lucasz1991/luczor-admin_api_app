@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DeviceJob;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
 use App\Models\WorkflowRunArtifact;
@@ -76,8 +77,11 @@ class WorkflowService
             }
 
             $fresh = $run->steps()->get();
+            // P15b — every auto-dispatchable catalog type (server branches and
+            // client/device bundles) is handed to the executor; llm/manual/
+            // approval/device_job stay externally completed.
             $readyStepIds = $fresh
-                ->filter(fn (WorkflowStep $step) => $step->status === 'ready' && in_array($step->type, ['context', 'review', 'evaluator', 'workflow'], true))
+                ->filter(fn (WorkflowStep $step) => $step->status === 'ready' && WorkflowTaskCatalog::isAutoDispatch($step->type))
                 ->pluck('id')
                 ->all();
             if ($fresh->isNotEmpty() && $fresh->every(fn (WorkflowStep $step) => $step->status === 'completed')) {
@@ -212,6 +216,57 @@ class WorkflowService
     private function runDurationMs(WorkflowRun $run): ?int
     {
         return $run->started_at ? (int) $run->started_at->diffInMilliseconds(now()) : null;
+    }
+
+    /**
+     * SOLL §14 P15b — settle 'running' client-task steps against their device
+     * job: completed → complete with the device result, failed/rejected → fail,
+     * expired without a terminal status → timeout.
+     */
+    public function syncDeviceJobSteps(WorkflowRun $run): int
+    {
+        $synced = 0;
+        $steps = $run->steps()
+            ->where('status', 'running')
+            ->where('external_run_type', 'device_job')
+            ->whereNotNull('external_run_id')
+            ->get();
+        foreach ($steps as $step) {
+            $job = DeviceJob::query()->where('public_id', $step->external_run_id)->first();
+            if (! $job) {
+                $this->fail($step->fresh(), 'device_job_missing');
+                $synced++;
+            } elseif ($job->status === 'completed') {
+                $this->complete($step->fresh(), ['device_job' => $job->public_id, 'result' => $job->result ?? []]);
+                $synced++;
+            } elseif (in_array($job->status, ['failed', 'rejected'], true)) {
+                $this->fail($step->fresh(), mb_substr('device_job_'.$job->status.($job->error ? ': '.$job->error : ''), 0, 8000));
+                $synced++;
+            } elseif ($job->expires_at?->isPast()) {
+                $this->fail($step->fresh(), 'device_job_expired', 'timeout');
+                $synced++;
+            }
+        }
+
+        return $synced;
+    }
+
+    /**
+     * SOLL §14 P15b — complete 'running' wait.seconds steps whose delay elapsed.
+     * The executor parks them as running and schedules a monitor poll.
+     */
+    public function settleWaitSteps(WorkflowRun $run): int
+    {
+        $settled = 0;
+        foreach ($run->steps()->where('type', 'wait.seconds')->where('status', 'running')->get() as $step) {
+            $seconds = max(1, min(3600, (int) (($step->payload['seconds'] ?? null) ?: 5)));
+            if ($step->started_at && $step->started_at->copy()->addSeconds($seconds)->isPast()) {
+                $this->complete($step, ['waited_seconds' => $seconds]);
+                $settled++;
+            }
+        }
+
+        return $settled;
     }
 
     /**
@@ -385,7 +440,10 @@ class WorkflowService
                 'key' => $key,
                 'type' => $type,
                 'depends_on' => array_values(array_filter((array) ($step['depends_on'] ?? []), 'is_string')),
-                'requires_approval' => (bool) ($step['requires_approval'] ?? false),
+                // P15b — the catalog's approval default is a floor, not a hint:
+                // mutating device tasks always pass an approval gate.
+                'requires_approval' => (bool) ($step['requires_approval'] ?? false)
+                    || (bool) (WorkflowTaskCatalog::task($type)['requires_approval'] ?? false),
                 'max_attempts' => max(1, min(10, (int) ($step['max_attempts'] ?? 2))),
                 'payload' => $payload,
             ];

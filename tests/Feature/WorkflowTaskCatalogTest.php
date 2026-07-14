@@ -20,16 +20,32 @@ class WorkflowTaskCatalogTest extends TestCase
         $this->assertContains('agent.dispatch', $keys);
     }
 
-    public function test_only_currently_executable_types_are_allowed_in_definitions(): void
+    public function test_every_catalogued_type_is_allowed_and_uncatalogued_are_not(): void
     {
-        // The seven executable step types stay allowed (no regression).
+        // The seven original step types stay allowed (no regression).
         foreach (['context', 'llm', 'evaluator', 'review', 'device_job', 'approval', 'manual'] as $type) {
             $this->assertTrue(WorkflowTaskCatalog::isAllowedInDefinition($type), $type);
         }
-        // Newly catalogued tasks are visible but not yet allowed in definitions (P15).
-        $this->assertFalse(WorkflowTaskCatalog::isAllowedInDefinition('browser.open'));
-        $this->assertFalse(WorkflowTaskCatalog::isAllowedInDefinition('python.run'));
+        // P15b — since every catalogued task has an executor path (server branch
+        // or device_job bundle), the whole library is definition-ready.
+        $this->assertTrue(WorkflowTaskCatalog::isAllowedInDefinition('browser.open'));
+        $this->assertTrue(WorkflowTaskCatalog::isAllowedInDefinition('python.run'));
+        $this->assertTrue(WorkflowTaskCatalog::isAllowedInDefinition('wait.seconds'));
         $this->assertFalse(WorkflowTaskCatalog::isAllowedInDefinition('bogus'));
+    }
+
+    public function test_auto_dispatch_marks_executor_types_but_not_external_ones(): void
+    {
+        foreach (['context', 'review', 'evaluator', 'workflow', 'wait.seconds', 'memory.remember', 'browser.open_url'] as $type) {
+            $this->assertTrue(WorkflowTaskCatalog::isAutoDispatch($type), $type);
+        }
+        // Externally completed types are never handed to the executor unattended.
+        foreach (['llm', 'manual', 'approval', 'device_job'] as $type) {
+            $this->assertFalse(WorkflowTaskCatalog::isAutoDispatch($type), $type);
+        }
+        $this->assertTrue(WorkflowTaskCatalog::isClientTask('browser.open'));
+        $this->assertFalse(WorkflowTaskCatalog::isClientTask('device_job'));
+        $this->assertFalse(WorkflowTaskCatalog::isClientTask('wait.seconds'));
     }
 
     public function test_assert_definition_accepts_vetted_types_and_rejects_others(): void
@@ -46,7 +62,7 @@ class WorkflowTaskCatalogTest extends TestCase
 
         $this->expectException(HttpException::class);
         $service->assertDefinition([
-            'steps' => [['key' => 'bad', 'type' => 'browser.open']],
+            'steps' => [['key' => 'bad', 'type' => 'shell.exec']],
         ]);
     }
 }

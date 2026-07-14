@@ -149,6 +149,9 @@ class DeviceController extends Controller
             'outcome' => $decision,
             'payload' => ['job_id' => $job->public_id, 'reason' => $data['reason'] ?? null],
         ]);
+        if (! $data['approved']) {
+            $this->settleWorkflowStep($job->fresh());   // P15b — a rejection fails the workflow step
+        }
 
         return response()->json(['data' => $job->fresh()]);
     }
@@ -199,8 +202,28 @@ class DeviceController extends Controller
             'risk_level' => $job->risk_level, 'outcome' => $data['ok'] ? 'completed' : 'failed',
             'payload' => ['job_id' => $job->public_id], 'result' => $data['result'] ?? ['error' => $data['error'] ?? null],
         ]);
+        $this->settleWorkflowStep($job->fresh());   // P15b — feed the result back into the workflow
 
         return response()->json(['data' => $job->fresh()]);
+    }
+
+    /**
+     * SOLL §14 P15b — when a workflow-task bundle reaches a terminal status,
+     * poke the owning run's monitor so the step settles promptly (the minute
+     * sweeper would catch it anyway; this removes the latency).
+     */
+    private function settleWorkflowStep(DeviceJob $job): void
+    {
+        if ($job->tool_profile !== 'workflow.task') {
+            return;
+        }
+        $step = \App\Models\WorkflowStep::query()
+            ->where('external_run_type', 'device_job')
+            ->where('external_run_id', $job->public_id)
+            ->first();
+        if ($step && $step->run) {
+            app(\App\Services\WorkflowService::class)->scheduleMonitor($step->run, 1);
+        }
     }
 
     private function currentDevice(Request $request, ApiActor $actor, string $clientId): Device

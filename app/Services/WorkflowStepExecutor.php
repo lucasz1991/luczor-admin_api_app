@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\Device;
 use App\Models\LlmRun;
 use App\Models\Project;
+use App\Models\Task;
 use App\Models\WorkflowStep;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Throwable;
 
 /** Executes only declarative, server-safe workflow step types. */
@@ -16,6 +19,8 @@ class WorkflowStepExecutor
         private ContextController $context,
         private EvaluationService $evaluator,
         private AuditLogger $audit,
+        private LuczorMemoryService $memory,
+        private DeviceJobService $deviceJobs,
     ) {
     }
 
@@ -45,11 +50,35 @@ class WorkflowStepExecutor
             return;
         }
 
+        // P15b — a wait step parks as 'running'; settleWaitSteps() completes it
+        // once the delay elapsed (poked by the monitor chain / minute sweeper).
+        if ($step->type === 'wait.seconds') {
+            $seconds = max(1, min(3600, (int) ((($step->payload ?? [])['seconds'] ?? null) ?: 5)));
+            $this->workflows->scheduleMonitor($step->run, $seconds + 1);
+
+            return;
+        }
+
+        // P15b — a client task compiles into a signed device_job bundle and stays
+        // 'running' until the device reports; settled by syncDeviceJobSteps().
+        if (WorkflowTaskCatalog::isClientTask($step->type)) {
+            try {
+                $this->startClientTask($step->fresh());
+            } catch (Throwable $error) {
+                $this->workflows->fail($step->fresh(), mb_substr($error->getMessage(), 0, 8000));
+            }
+
+            return;
+        }
+
         try {
             $output = match ($step->type) {
                 'context' => $this->context($step),
                 'review' => $this->review($step),
                 'evaluator' => $this->evaluate($step),
+                'memory.remember' => $this->remember($step),
+                'memory.recall' => $this->recall($step),
+                'task.create' => $this->createTask($step),
                 default => throw new \RuntimeException('This workflow step type requires an external approval or device result.'),
             };
             $this->workflows->complete($step->fresh(), $output);
@@ -120,6 +149,101 @@ class WorkflowStepExecutor
         }
 
         return ['reviewed_steps' => $dependencies->pluck('step_key')->values()->all(), 'required_output_keys' => $required, 'status' => 'evidence_complete'];
+    }
+
+    /** P15b — persist a memory link (never global scope from a workflow). @return array<string,mixed> */
+    private function remember(WorkflowStep $step): array
+    {
+        $payload = $step->payload ?? [];
+        $content = trim((string) ($payload['content'] ?? ''));
+        abort_if($content === '', 422, 'memory.remember requires payload.content.');
+        $scope = (string) ($payload['scope'] ?? 'project');
+        if (! in_array($scope, ['private', 'project', 'skill', 'agent'], true)) {
+            $scope = 'project';
+        }
+        $project = $step->run->project_id ? Project::find($step->run->project_id) : null;
+        $link = $this->memory->remember([
+            'user_id' => $step->user_id,
+            'content' => mb_substr($content, 0, 8000),
+            'scope' => $scope,
+            'project_id' => $project?->external_id,
+            'project_ref_id' => $project?->id,
+            'type' => Str::limit((string) ($payload['type'] ?? 'workflow'), 60, ''),
+            'importance' => max(0, min(1, (float) ($payload['importance'] ?? 0.5))),
+            'meta' => ['workflow_run' => $step->run->public_id, 'step_key' => $step->step_key],
+        ]);
+
+        return ['memory_link_id' => $link->id, 'external_id' => $link->external_id, 'dataset' => $link->dataset];
+    }
+
+    /** P15b — recall memories into the step output AND the run's context store. @return array<string,mixed> */
+    private function recall(WorkflowStep $step): array
+    {
+        $payload = $step->payload ?? [];
+        $query = trim((string) ($payload['query'] ?? ''));
+        $topK = max(1, min(20, (int) ($payload['top_k'] ?? 6)));
+        $scope = (string) ($payload['scope'] ?? 'project');
+        if (! in_array($scope, ['private', 'project', 'skill', 'agent'], true)) {
+            $scope = 'project';
+        }
+        $project = $step->run->project_id ? Project::find($step->run->project_id) : null;
+        $items = $this->memory->recall($query, $scope, [
+            'user_id' => $step->user_id,
+            'project_id' => $project?->external_id,
+        ], $topK);
+
+        // P15 — workflow_runs.context is the run's variable store.
+        $run = $step->run;
+        $context = is_array($run->context) ? $run->context : [];
+        $context[$step->step_key] = ['memories' => $items];
+        $run->update(['context' => $context]);
+
+        return ['memories' => $items, 'count' => count($items)];
+    }
+
+    /** P15b — create a user task (SOLL §8 tasks table). @return array<string,mixed> */
+    private function createTask(WorkflowStep $step): array
+    {
+        $payload = $step->payload ?? [];
+        $title = trim((string) ($payload['title'] ?? ''));
+        abort_if($title === '', 422, 'task.create requires payload.title.');
+        $task = Task::create([
+            'user_id' => $step->user_id,
+            'client_id' => 'workflow',
+            'external_id' => (string) Str::uuid(),
+            'title' => mb_substr($title, 0, 200),
+            'description' => mb_substr((string) ($payload['description'] ?? ('Erstellt durch Workflow-Lauf '.$step->run->public_id)), 0, 4000),
+            'status' => 'open',
+            'priority' => in_array($payload['priority'] ?? 'normal', Task::PRIORITIES, true) ? $payload['priority'] : 'normal',
+            'project_ref_id' => $step->run->project_id,
+        ]);
+
+        return ['task_id' => $task->id, 'external_id' => $task->external_id, 'title' => $task->title];
+    }
+
+    /** P15b — dispatch a client task as a signed device_job bundle. */
+    private function startClientTask(WorkflowStep $step): void
+    {
+        $payload = $step->payload ?? [];
+        $params = array_diff_key($payload, array_flip(['routes', 'title', 'list', 'timeout_seconds', 'device_id']));
+        $device = $this->resolveDevice($step, trim((string) ($payload['device_id'] ?? '')));
+        $job = $this->deviceJobs->createForWorkflow($step, $device, $params);
+        $step->update(['external_run_type' => 'device_job', 'external_run_id' => $job->public_id]);
+        $this->workflows->scheduleMonitor($step->run, 5);
+    }
+
+    /** Explicit payload.device_id, else the owner's most recently seen device. */
+    private function resolveDevice(WorkflowStep $step, string $deviceId): Device
+    {
+        $query = Device::query()->where('user_id', $step->user_id)->whereNull('revoked_at');
+        $device = $deviceId !== ''
+            ? (clone $query)->where('device_id', $deviceId)->first()
+            : $query->orderByRaw("case when status = 'online' then 0 else 1 end")->orderByDesc('last_seen_at')->first();
+        abort_unless($device !== null, 422, $deviceId !== ''
+            ? 'The requested device is unknown, revoked or not yours.'
+            : 'No device is available for this client task.');
+
+        return $device;
     }
 
     /** @return array<string,mixed> */

@@ -38,7 +38,7 @@ class WorkflowAdminTest extends TestCase
 
     public function test_invalid_definition_is_rejected_with_an_error(): void
     {
-        $json = json_encode(['steps' => [['key' => 'a', 'type' => 'browser.open']]]); // not allowed in definitions
+        $json = json_encode(['steps' => [['key' => 'a', 'type' => 'shell.exec']]]); // not in the catalog
 
         $this->actingAs($this->admin())
             ->post(route('dashboard.workflows.store'), ['name' => 'Bad', 'definition_json' => $json])

@@ -10,12 +10,15 @@ namespace App\Services;
  *
  * Two runner classes preserve Luczor's security posture:
  *  - runner=server: executed by WorkflowStepExecutor (declarative, no shell/node).
- *  - runner=client: executed on the device as a device_job bundle, never server-side.
+ *  - runner=client: the executor compiles the step into a device_job bundle; the
+ *    device executes it and reports the result, never the server (P15b).
  *
- * `allowed_in_definition` gates what assertDefinition() accepts today. The seven
- * currently-executable step types are allowed; newly catalogued client/server
- * tasks are listed (visible to UI/planning) but only become allowed once their
- * executor lands (P15) — so no definition can be created that breaks at runtime.
+ * `allowed_in_definition` gates what assertDefinition() accepts. Since P15b every
+ * catalogued task has an executor path (server branch or device_job bundle), so
+ * the whole library is definition-ready.
+ *
+ * `auto_dispatch` marks types advance() may hand to the executor unattended;
+ * llm/manual/approval/device_job stay externally completed (API/approval).
  */
 class WorkflowTaskCatalog
 {
@@ -23,59 +26,67 @@ class WorkflowTaskCatalog
     public static function all(): array
     {
         return [
-            // ── Server-safe, executable today (current step types) ───────────
-            'context' => self::entry('Kontext abrufen', 'server', 'data', true),
+            // ── Server-safe step types (original seven) ──────────────────────
+            'context' => self::entry('Kontext abrufen', 'server', 'data', true, ['auto_dispatch' => true]),
             'llm' => self::entry('LLM-Aufruf', 'server', 'ai', true),
-            'evaluator' => self::entry('Evaluator', 'server', 'data', true),
-            'review' => self::entry('Review', 'server', 'data', true),
+            'evaluator' => self::entry('Evaluator', 'server', 'data', true, ['auto_dispatch' => true]),
+            'review' => self::entry('Review', 'server', 'data', true, ['auto_dispatch' => true]),
             'device_job' => self::entry('Geräte-Job', 'client', 'device', true, ['mutating' => true, 'requires_approval' => true]),
             'approval' => self::entry('Freigabe', 'server', 'control', true, ['requires_approval' => true]),
             'manual' => self::entry('Manueller Schritt', 'server', 'control', true),
             'workflow' => self::entry('Verschachtelter Workflow', 'server', 'workflow', true, [
+                'auto_dispatch' => true,
                 'params' => ['workflow_definition_id' => ['type' => 'number']],
             ]),
 
-            // ── Catalogued, executor lands in P15 (not yet allowed in defs) ──
-            'wait.seconds' => self::entry('Warten (Sekunden)', 'server', 'control', false, [
+            // ── Server tasks with their own executor branch (P15b) ───────────
+            'wait.seconds' => self::entry('Warten (Sekunden)', 'server', 'control', true, [
+                'auto_dispatch' => true,
+                // Above the max wait so expireTimedOutSteps never kills a wait.
+                'timeout_seconds' => 3660,
                 'params' => ['seconds' => ['type' => 'number', 'default' => 5, 'min' => 1, 'max' => 3600]],
             ]),
-            'memory.remember' => self::entry('Erinnerung speichern', 'server', 'memory', false, [
+            'memory.remember' => self::entry('Erinnerung speichern', 'server', 'memory', true, [
+                'auto_dispatch' => true,
                 'params' => ['content' => ['type' => 'textarea'], 'scope' => ['type' => 'string', 'default' => 'project']],
                 'mutating' => true,
             ]),
-            'memory.recall' => self::entry('Erinnerung abrufen', 'server', 'memory', false, [
+            'memory.recall' => self::entry('Erinnerung abrufen', 'server', 'memory', true, [
+                'auto_dispatch' => true,
                 'params' => ['query' => ['type' => 'string'], 'top_k' => ['type' => 'number', 'default' => 6]],
             ]),
-            'task.create' => self::entry('Aufgabe anlegen', 'server', 'data', false, [
+            'task.create' => self::entry('Aufgabe anlegen', 'server', 'data', true, [
+                'auto_dispatch' => true,
                 'params' => ['title' => ['type' => 'string'], 'priority' => ['type' => 'string', 'default' => 'normal']],
                 'mutating' => true,
             ]),
 
             // ── Client/device tasks (runner=client → device_job bundle) ──────
-            'browser.open' => self::entry('Browser öffnen', 'client', 'browser', false, ['mutating' => true]),
-            'browser.open_url' => self::entry('URL öffnen', 'client', 'browser', false, [
-                'mutating' => true, 'params' => ['url' => ['type' => 'string']],
+            'browser.open' => self::entry('Browser öffnen', 'client', 'browser', true, ['auto_dispatch' => true, 'mutating' => true]),
+            'browser.open_url' => self::entry('URL öffnen', 'client', 'browser', true, [
+                'auto_dispatch' => true, 'mutating' => true, 'params' => ['url' => ['type' => 'string']],
             ]),
-            'browser.click' => self::entry('Element klicken', 'client', 'browser', false, [
-                'mutating' => true, 'params' => ['selector' => ['type' => 'string']],
+            'browser.click' => self::entry('Element klicken', 'client', 'browser', true, [
+                'auto_dispatch' => true, 'mutating' => true, 'params' => ['selector' => ['type' => 'string']],
             ]),
-            'browser.read' => self::entry('Seite/Element lesen', 'client', 'browser', false, [
-                'params' => ['selector' => ['type' => 'string']],
+            'browser.read' => self::entry('Seite/Element lesen', 'client', 'browser', true, [
+                'auto_dispatch' => true, 'params' => ['selector' => ['type' => 'string']],
             ]),
-            'file.read' => self::entry('Datei lesen', 'client', 'file', false, [
-                'params' => ['path' => ['type' => 'string']],
+            'file.read' => self::entry('Datei lesen', 'client', 'file', true, [
+                'auto_dispatch' => true, 'params' => ['path' => ['type' => 'string']],
             ]),
-            'file.write' => self::entry('Datei schreiben', 'client', 'file', false, [
-                'mutating' => true, 'requires_approval' => true,
+            'file.write' => self::entry('Datei schreiben', 'client', 'file', true, [
+                'auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true,
                 'params' => ['path' => ['type' => 'string'], 'content' => ['type' => 'textarea']],
             ]),
-            'api.call' => self::entry('API-Aufruf', 'client', 'api', false, [
-                'mutating' => true, 'params' => ['method' => ['type' => 'string', 'default' => 'GET'], 'url' => ['type' => 'string']],
+            'api.call' => self::entry('API-Aufruf', 'client', 'api', true, [
+                'auto_dispatch' => true, 'mutating' => true,
+                'params' => ['method' => ['type' => 'string', 'default' => 'GET'], 'url' => ['type' => 'string']],
             ]),
-            'python.run' => self::entry('Python ausführen', 'client', 'code', false, ['mutating' => true, 'requires_approval' => true]),
-            'node.run' => self::entry('Node ausführen', 'client', 'code', false, ['mutating' => true, 'requires_approval' => true]),
-            'agent.dispatch' => self::entry('Coding-Agent beauftragen', 'client', 'agent', false, [
-                'mutating' => true, 'requires_approval' => true,
+            'python.run' => self::entry('Python ausführen', 'client', 'code', true, ['auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true]),
+            'node.run' => self::entry('Node ausführen', 'client', 'code', true, ['auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true]),
+            'agent.dispatch' => self::entry('Coding-Agent beauftragen', 'client', 'agent', true, [
+                'auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true,
                 'params' => ['agent' => ['type' => 'string'], 'prompt' => ['type' => 'textarea']],
             ]),
         ];
@@ -92,6 +103,7 @@ class WorkflowTaskCatalog
             'runner' => $runner,          // server | client
             'kind' => $kind,              // data|ai|control|device|memory|browser|file|api|code|agent
             'allowed_in_definition' => $allowedInDefinition,
+            'auto_dispatch' => false,     // advance() may hand the step to the executor
             'mutating' => false,
             'requires_approval' => false,
             'timeout_seconds' => 300,
@@ -109,6 +121,20 @@ class WorkflowTaskCatalog
     public static function isAllowedInDefinition(string $key): bool
     {
         return (bool) (self::task($key)['allowed_in_definition'] ?? false);
+    }
+
+    /** True when advance() may dispatch the step to the executor unattended. */
+    public static function isAutoDispatch(string $key): bool
+    {
+        return (bool) (self::task($key)['auto_dispatch'] ?? false);
+    }
+
+    /** True when the task runs on the device as a device_job bundle (P15b). */
+    public static function isClientTask(string $key): bool
+    {
+        $task = self::task($key);
+
+        return $task !== null && $task['runner'] === 'client' && $key !== 'device_job';
     }
 
     /**

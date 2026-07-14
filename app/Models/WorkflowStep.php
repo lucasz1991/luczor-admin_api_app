@@ -10,6 +10,7 @@ class WorkflowStep extends Model
         'workflow_run_id', 'user_id', 'step_key', 'type', 'status', 'position',
         'attempts', 'max_attempts', 'requires_approval', 'depends_on', 'payload',
         'output', 'logs', 'error', 'available_at', 'started_at', 'finished_at', 'duration_ms',
+        'external_run_type', 'external_run_id',
     ];
     protected $casts = [
         'requires_approval' => 'boolean', 'depends_on' => 'array', 'payload' => 'array',

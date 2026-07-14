@@ -18,6 +18,9 @@ class DeviceToolPolicy
         'desktop.input.type_text' => 'critical',
         'desktop.input.press_key' => 'critical',
         'desktop.open_url' => 'normal',
+        // SOLL §14 P15b — a vetted workflow client task compiled into a bundle;
+        // the task_key is re-validated against the WorkflowTaskCatalog.
+        'workflow.task' => 'sensitive',
     ];
 
     /** @param array<string,mixed> $payload */
@@ -26,6 +29,7 @@ class DeviceToolPolicy
         abort_unless(array_key_exists($tool, self::RISKS), 422, 'The device tool profile is not registered.');
 
         return match ($tool) {
+            'workflow.task' => $this->workflowTask($payload),
             'desktop.input.move_mouse' => [
                 'x' => $this->coordinate($payload['x'] ?? null),
                 'y' => $this->coordinate($payload['y'] ?? null),
@@ -43,9 +47,47 @@ class DeviceToolPolicy
         };
     }
 
-    public function risk(string $tool): string
+    /** @param array<string,mixed> $payload */
+    public function risk(string $tool, array $payload = []): string
     {
+        // P15b — a workflow bundle is as risky as its catalogued task contract.
+        if ($tool === 'workflow.task') {
+            $task = WorkflowTaskCatalog::task((string) ($payload['task_key'] ?? '')) ?? [];
+
+            return match (true) {
+                (bool) ($task['requires_approval'] ?? true) => 'sensitive',
+                (bool) ($task['mutating'] ?? false) => 'normal',
+                default => 'low',
+            };
+        }
+
         return self::RISKS[$tool] ?? 'critical';
+    }
+
+    /**
+     * P15b — bundle payload for a workflow client task: only catalogued client
+     * tasks, bounded params, plus the workflow back-reference for the device.
+     *
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private function workflowTask(array $payload): array
+    {
+        $key = (string) ($payload['task_key'] ?? '');
+        abort_unless(WorkflowTaskCatalog::isClientTask($key), 422, 'The workflow client task is not in the catalog.');
+        $params = is_array($payload['params'] ?? null) ? $payload['params'] : [];
+        abort_unless(strlen((string) json_encode($params)) <= 20000, 422, 'Workflow task params are too large.');
+        $workflow = is_array($payload['workflow'] ?? null) ? $payload['workflow'] : [];
+
+        return [
+            'task_key' => $key,
+            'params' => $params,
+            'workflow' => [
+                'run' => (string) ($workflow['run'] ?? ''),
+                'step_id' => (int) ($workflow['step_id'] ?? 0),
+                'step_key' => (string) ($workflow['step_key'] ?? ''),
+            ],
+        ];
     }
 
     public function requiresLocalApproval(int $userId, ?int $projectId, Device $device, string $tool): bool
