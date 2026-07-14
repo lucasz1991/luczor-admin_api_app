@@ -29,6 +29,9 @@ use App\Models\ProviderCredential;
 use App\Models\Project;
 use App\Models\Setting;
 use App\Models\AgentProfile;
+use App\Models\AgentRun;
+use App\Models\MemoryLink;
+use App\Models\Persona;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
 use App\Services\WorkflowService;
@@ -99,7 +102,7 @@ class DashboardController extends Controller
     public function page(Request $request, string $page)
     {
         $this->ensureAdmin($request);
-        abort_unless(in_array($page, ['overview', 'providers', 'models', 'telemetry', 'optimizer', 'experiments', 'workflows', 'devices', 'api-keys', 'archives', 'settings'], true), 404);
+        abort_unless(in_array($page, ['overview', 'providers', 'models', 'telemetry', 'optimizer', 'experiments', 'workflows', 'agents', 'devices', 'api-keys', 'archives', 'settings'], true), 404);
         return view('admin.page', $this->adminData($page));
     }
 
@@ -289,10 +292,21 @@ class DashboardController extends Controller
     public function storePromptTemplate(Request $request)
     {
         $this->ensureAdmin($request);
-        $data = $request->validate(['key' => ['required','string','max:120'], 'task_type' => ['nullable','string','max:120'], 'body' => ['required','string','max:100000']]);
-        $version = ((int) PromptTemplate::where('key', $data['key'])->max('version')) + 1;
-        PromptTemplate::create($data + ['version' => $version, 'status' => 'active']);
-        return Redirect::route('dashboard')->with('status', 'Prompt version saved.');
+        $data = $request->validate([
+            'key' => ['required', 'string', 'max:120'],
+            'task_type' => ['nullable', 'string', 'max:120'],
+            'role' => ['nullable', 'string', 'max:40'],
+            'priority' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'body' => ['required', 'string', 'max:100000'],
+        ]);
+        // P19 — transactional versioning (archive old active, insert next version).
+        PromptTemplate::publish($data['key'], $data['body'], [
+            'task_type' => $data['task_type'] ?? null,
+            'role' => $data['role'] ?? null,
+            'priority' => (int) ($data['priority'] ?? 100),
+        ]);
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Prompt-Version veröffentlicht.');
     }
 
     public function storeContextStrategy(Request $request)
@@ -566,6 +580,10 @@ class DashboardController extends Controller
             'archiveCounts' => ['projects' => LuczorProjectArchive::count(), 'messages' => LuczorMessageArchive::count(), 'memories' => LuczorMemoryArchive::count(), 'summaries' => LuczorSummaryArchive::count(), 'agent_events' => LuczorAgentEventArchive::count()], 'settings' => Setting::orderBy('group')->orderBy('key')->get(),
             'charts' => $page === 'overview' ? $this->dashboardCharts() : [],
             'telemetryCharts' => $page === 'telemetry' ? $this->telemetryCharts() : [],
+            'memoryOverview' => $page === 'archives' ? $this->memoryOverview() : [],
+            'personas' => $page === 'optimizer' ? Persona::orderBy('name')->get() : collect(),
+            'agentRuns' => $page === 'agents' ? AgentRun::withCount('tasks')->latest()->limit(30)->get() : collect(),
+            'agentEvents' => $page === 'agents' ? AuditEvent::latest()->limit(50)->get() : collect(),
             'workflowDefinitions' => WorkflowDefinition::withCount('runs')->latest()->limit(50)->get(),
             'workflowRuns' => WorkflowRun::with('definition')->latest()->limit(20)->get(),
             'taskCatalog' => WorkflowTaskCatalog::options(),
@@ -644,6 +662,34 @@ class DashboardController extends Controller
         return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow gelöscht.');
     }
 
+    public function storePersona(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate(['name' => ['required', 'string', 'max:120'], 'prompt' => ['required', 'string', 'max:20000']]);
+        Persona::updateOrCreate(['slug' => Str::slug($data['name'])], ['name' => $data['name'], 'prompt' => $data['prompt']]);
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Persönlichkeit gespeichert.');
+    }
+
+    public function activatePersona(Request $request, Persona $persona)
+    {
+        $this->ensureAdmin($request);
+        Persona::query()->update(['active' => false]);
+        $persona->update(['active' => true]);
+        Setting::putValue('active_persona', $persona->slug, ['group' => 'client', 'label' => 'Aktive KI-Persönlichkeit', 'type' => 'string']);
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Persönlichkeit aktiviert: '.$persona->name);
+    }
+
+    public function deactivatePersonas(Request $request)
+    {
+        $this->ensureAdmin($request);
+        Persona::query()->update(['active' => false]);
+        Setting::putValue('active_persona', '', ['group' => 'client', 'label' => 'Aktive KI-Persönlichkeit', 'type' => 'string']);
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Keine Persönlichkeit aktiv.');
+    }
+
     /**
      * SOLL §15 P17 — render-ready overview charts (offline, no CDN): daily runs
      * bars + cost line, provider distribution, workflow-status distribution.
@@ -703,6 +749,28 @@ class DashboardController extends Controller
             'providers' => $providers, 'workflow_status' => $workflowStatus,
             'total_runs' => array_sum(array_column($series, 'runs')),
             'total_cost' => round(array_sum(array_column($series, 'cost')), 4),
+        ];
+    }
+
+    /** SOLL §15 P20 — memory relationship overview (scope/type/project distribution). */
+    private function memoryOverview(): array
+    {
+        $mk = fn (array $counts) => (function ($counts) {
+            $max = max(1, ...(array_values($counts) ?: [1]));
+
+            return collect($counts)->map(fn ($v, $k) => ['label' => (string) $k, 'value' => (int) $v, 'pct' => (int) round($v / $max * 100)])->values()->all();
+        })($counts);
+
+        $byScope = MemoryLink::query()->selectRaw('scope, count(*) c')->groupBy('scope')->pluck('c', 'scope')->all();
+        $byType = MemoryLink::query()->selectRaw('type, count(*) c')->groupBy('type')->orderByDesc('c')->limit(8)->pluck('c', 'type')->all();
+        $byProject = MemoryLink::query()->whereNotNull('project_id')->selectRaw('project_id, count(*) c')
+            ->groupBy('project_id')->orderByDesc('c')->limit(8)->pluck('c', 'project_id')->all();
+
+        return [
+            'total' => MemoryLink::count(),
+            'by_scope' => $mk($byScope),
+            'by_type' => $mk($byType),
+            'by_project' => $mk($byProject),
         ];
     }
 

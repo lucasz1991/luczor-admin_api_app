@@ -105,6 +105,14 @@ class DatabaseSeeder extends Seeder
             ['key' => 'voice_mode', 'value' => 'wakeword', 'group' => 'voice', 'label' => 'Lokaler Eingabemodus', 'type' => 'string'],
             ['key' => 'voice_wake_word', 'value' => 'luczor', 'group' => 'voice', 'label' => 'Wake-Word', 'type' => 'string'],
             ['key' => 'voice_local_stt_language', 'value' => 'de', 'group' => 'voice', 'label' => 'STT-Sprache', 'type' => 'string'],
+            ['key' => 'voice_stt_engine', 'value' => 'whisper_local', 'group' => 'voice', 'label' => 'STT-Engine (whisper_local|whisper_rs)', 'type' => 'string'],
+            ['key' => 'hands_free_strategy', 'value' => 'safeword', 'group' => 'voice', 'label' => 'Freihand-Strategie (safeword|continuous)', 'type' => 'string'],
+            ['key' => 'voice_trigger_phrase', 'value' => 'luczor start', 'group' => 'voice', 'label' => 'Aktivierungsphrase', 'type' => 'string'],
+            ['key' => 'voice_end_phrase', 'value' => 'luczor stopp', 'group' => 'voice', 'label' => 'Beendigungsphrase', 'type' => 'string'],
+            ['key' => 'voice_continuous_silence_ms', 'value' => 5000, 'group' => 'voice', 'label' => 'Dauerzuhören: Pause bis Abschluss (ms)', 'type' => 'number'],
+            ['key' => 'voice_tts_rate', 'value' => 1.0, 'group' => 'voice', 'label' => 'TTS-Tempo (0.5–2.0)', 'type' => 'number'],
+            ['key' => 'voice_tts_volume', 'value' => 90, 'group' => 'voice', 'label' => 'TTS-Lautstärke (0–100)', 'type' => 'number'],
+            ['key' => 'voice_interrupt_mode', 'value' => 'on_speech', 'group' => 'voice', 'label' => 'TTS-Unterbrechung (on_speech|on_activation_phrase|off)', 'type' => 'string'],
         ];
 
         foreach ($settings as $s) {

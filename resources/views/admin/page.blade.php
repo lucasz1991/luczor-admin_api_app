@@ -1,6 +1,6 @@
 <x-app-layout>
     <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div><div class="font-mono text-xs uppercase tracking-[.2em] text-cyan-300/70">Admin / {{ $page }}</div><h1 class="mt-2 text-2xl font-semibold text-white">{{ match($page) {'overview'=>'System Overview','providers'=>'Provider & Preise','models'=>'Modelle & Routing','telemetry'=>'Telemetry & Kosten','optimizer'=>'Prompt, Kontext & Policy','experiments'=>'Modell-Experimente','workflows'=>'Workflows','devices'=>'Geraete-Debug','api-keys'=>'Geraete & Keys','archives'=>'Archive & Audit','settings'=>'Server Settings'} }}</h1></div>
+        <div><div class="font-mono text-xs uppercase tracking-[.2em] text-cyan-300/70">Admin / {{ $page }}</div><h1 class="mt-2 text-2xl font-semibold text-white">{{ match($page) {'overview'=>'System Overview','providers'=>'Provider & Preise','models'=>'Modelle & Routing','telemetry'=>'Telemetry & Kosten','optimizer'=>'Prompt, Kontext & Policy','experiments'=>'Modell-Experimente','workflows'=>'Workflows','agents'=>'Agenten & Ereignisse','devices'=>'Geraete-Debug','api-keys'=>'Geraete & Keys','archives'=>'Archive & Audit','settings'=>'Server Settings'} }}</h1></div>
         @if(session('status'))<div class="rounded border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-100">{{ session('status') }}</div>@endif
     </div>
     @if($errors->any())<div class="mb-6 rounded border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">{{ $errors->first() }}</div>@endif
@@ -22,7 +22,7 @@
                 <div class="mt-3 space-y-2">@forelse(($charts['workflow_status'] ?? []) as $s)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $s['label'] }}</span><span class="text-slate-500">{{ $s['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $s['pct'] }}%;background:rgba(52,211,153,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">Noch keine Läufe.</p>@endforelse</div>
             </section>
         </div>
-        <div class="mt-8 grid gap-4 md:grid-cols-3"><a href="{{ route('admin.page','models') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Modelle verwalten</b><p class="mt-2 text-sm text-slate-400">Free-Model-Ketten, Fallbacks und Messwerte.</p></a><a href="{{ route('admin.page','telemetry') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Telemetry auswerten</b><p class="mt-2 text-sm text-slate-400">Kosten, Geschwindigkeit und Erfolgsrate.</p></a><a href="{{ route('admin.page','devices') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Geraete debuggen</b><p class="mt-2 text-sm text-slate-400">Stille Debug-Anforderung und Download.</p></a><a href="{{ route('admin.page','workflows') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Workflows</b><p class="mt-2 text-sm text-slate-400">AI-Abläufe orchestrieren, starten und exportieren.</p></a></div>
+        <div class="mt-8 grid gap-4 md:grid-cols-3"><a href="{{ route('admin.page','models') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Modelle verwalten</b><p class="mt-2 text-sm text-slate-400">Free-Model-Ketten, Fallbacks und Messwerte.</p></a><a href="{{ route('admin.page','telemetry') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Telemetry auswerten</b><p class="mt-2 text-sm text-slate-400">Kosten, Geschwindigkeit und Erfolgsrate.</p></a><a href="{{ route('admin.page','devices') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Geraete debuggen</b><p class="mt-2 text-sm text-slate-400">Stille Debug-Anforderung und Download.</p></a><a href="{{ route('admin.page','workflows') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Workflows</b><p class="mt-2 text-sm text-slate-400">AI-Abläufe orchestrieren, starten und exportieren.</p></a><a href="{{ route('admin.page','agents') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Agenten & Ereignisse</b><p class="mt-2 text-sm text-slate-400">Agent-Läufe und Audit-Ereignisprotokoll.</p></a></div>
     @elseif($page === 'models')
         <div class="grid gap-6 xl:grid-cols-[.8fr_1.2fr]"><section class="luczor-card p-5"><h2 class="font-semibold">Neues Modellprofil</h2><p class="mt-1 text-sm text-slate-400">Nur Admins bestimmen Modelle und Fallbacks.</p><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.model-profiles.store') }}">@csrf<input class="luczor-input" name="name" placeholder="Anzeigename" required><input class="luczor-input" name="provider" value="openrouter" required><input class="luczor-input" name="model_id" placeholder="nvidia/...:free" required><div class="grid grid-cols-3 gap-2"><input class="luczor-input" name="temperature" value="0.2" type="number" step="0.05" min="0" max="2"><input class="luczor-input" name="max_tokens" value="2200" type="number" min="1"><input class="luczor-input" name="purpose" value="chat"></div><button class="luczor-btn">Profil anlegen</button></form></section>
         <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Profile</h2><table class="mt-4 min-w-full text-left text-sm"><thead class="text-xs uppercase text-slate-500"><tr><th>Name / Modell</th><th>Zweck</th><th>Status</th><th></th></tr></thead><tbody class="divide-y divide-slate-800">@foreach($modelProfiles as $profile)<tr><td class="py-3"><b class="text-cyan-100">{{ $profile->name }}</b><div class="font-mono text-xs text-slate-500">{{ $profile->model_id }}</div></td><td>{{ $profile->purpose }}</td><td>{{ $profile->active?'aktiv':'aus' }}</td><td><details><summary class="cursor-pointer text-cyan-200">Bearbeiten</summary><form class="mt-3 grid gap-2" method="POST" action="{{ route('dashboard.model-profiles.update',$profile) }}">@csrf @method('PUT')<input class="luczor-input" name="name" value="{{ $profile->name }}"><input class="luczor-input" name="provider" value="{{ $profile->provider }}"><input class="luczor-input" name="model_id" value="{{ $profile->model_id }}"><div class="grid grid-cols-3 gap-2"><input class="luczor-input" name="temperature" value="{{ $profile->temperature }}"><input class="luczor-input" name="max_tokens" value="{{ $profile->max_tokens }}"><input class="luczor-input" name="purpose" value="{{ $profile->purpose }}"></div><button class="luczor-btn">Speichern</button></form><form class="mt-2 inline" method="POST" action="{{ route('dashboard.model-profiles.toggle',$profile) }}">@csrf<button class="luczor-btn-secondary">{{ $profile->active?'Deaktivieren':'Aktivieren' }}</button></form><form class="ml-2 inline" method="POST" action="{{ route('dashboard.model-profiles.destroy',$profile) }}">@csrf @method('DELETE')<button class="text-rose-300">Loeschen</button></form></details></td></tr>@endforeach</tbody></table></section></div>
@@ -233,6 +233,64 @@ function setChainStatus(list, message, state){
             <table class="mt-4 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Workflow</th><th>Status</th><th>Dauer</th><th>Gestartet</th></tr></thead>
             <tbody>@foreach($workflowRuns as $run)<tr class="border-t border-slate-800"><td class="py-2 text-cyan-100">{{ $run->definition?->name ?? '—' }}</td><td>{{ $run->status }}</td><td>{{ $run->duration_ms ? round($run->duration_ms/1000,1).' s' : '—' }}</td><td>{{ optional($run->started_at)->format('d.m. H:i') ?? '—' }}</td></tr>@endforeach</tbody></table>
         </section>
+    @elseif($page === 'agents')
+        <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Agent-Läufe</h2>
+            <table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Ziel / Task</th><th>Status</th><th>Modell</th><th>Aufgaben</th><th>Gestartet</th></tr></thead>
+            <tbody>@forelse($agentRuns as $run)<tr class="border-t border-slate-800"><td class="py-2"><span class="text-cyan-100">{{ \Illuminate\Support\Str::limit($run->goal ?? $run->task_type, 60) }}</span><div class="text-slate-500">{{ $run->task_type }}</div></td><td>{{ $run->status }}</td><td>{{ $run->model_id ?? '—' }}</td><td>{{ $run->tasks_count }}</td><td>{{ optional($run->started_at)->format('d.m. H:i') ?? '—' }}</td></tr>@empty<tr><td colspan="5" class="py-3 text-slate-500">Noch keine Agent-Läufe.</td></tr>@endforelse</tbody></table>
+        </section>
+        <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Ereignisprotokoll <span class="text-xs text-slate-500">(Audit)</span></h2>
+            <table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Ereignis</th><th>Tool</th><th>Ergebnis</th><th>Risiko</th><th>Zeit</th></tr></thead>
+            <tbody>@forelse($agentEvents as $e)<tr class="border-t border-slate-800"><td class="py-2 text-cyan-100">{{ $e->event_type }}</td><td>{{ $e->tool ?? '—' }}</td><td class="{{ $e->outcome==='failed'?'text-rose-300':($e->outcome==='completed'?'text-emerald-300':'') }}">{{ $e->outcome ?? '—' }}</td><td>{{ $e->risk_level ?? '—' }}</td><td>{{ optional($e->created_at)->format('d.m. H:i:s') ?? '—' }}</td></tr>@empty<tr><td colspan="5" class="py-3 text-slate-500">Noch keine Ereignisse.</td></tr>@endforelse</tbody></table>
+        </section>
+    @elseif($page === 'archives')
+        <div class="grid gap-4 md:grid-cols-5">@foreach($archiveCounts as $key=>$count)<div class="luczor-card p-4"><small class="text-slate-500">{{ str_replace('_',' ',$key) }}</small><div class="mt-2 text-2xl text-cyan-100">{{ $count }}</div></div>@endforeach</div>
+        <div class="mt-6 grid gap-6 lg:grid-cols-3">
+            <section class="luczor-card p-5"><h2 class="font-semibold">Erinnerungen · Scope <span class="text-xs text-slate-500">({{ $memoryOverview['total'] ?? 0 }})</span></h2>
+                <div class="mt-3 space-y-2">@forelse(($memoryOverview['by_scope'] ?? []) as $r)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $r['label'] }}</span><span class="text-slate-500">{{ $r['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $r['pct'] }}%;background:rgba(34,211,238,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">Noch keine Erinnerungen.</p>@endforelse</div>
+            </section>
+            <section class="luczor-card p-5"><h2 class="font-semibold">Erinnerungen · Typ</h2>
+                <div class="mt-3 space-y-2">@forelse(($memoryOverview['by_type'] ?? []) as $r)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $r['label'] }}</span><span class="text-slate-500">{{ $r['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $r['pct'] }}%;background:rgba(52,211,153,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">—</p>@endforelse</div>
+            </section>
+            <section class="luczor-card p-5"><h2 class="font-semibold">Erinnerungen · Projekt</h2>
+                <div class="mt-3 space-y-2">@forelse(($memoryOverview['by_project'] ?? []) as $r)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $r['label'] }}</span><span class="text-slate-500">{{ $r['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $r['pct'] }}%;background:rgba(245,158,11,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">—</p>@endforelse</div>
+            </section>
+        </div>
+    @elseif($page === 'optimizer')
+        <div class="grid gap-6 lg:grid-cols-2">
+            <section class="luczor-card p-5"><h2 class="font-semibold">Prompt-Version veröffentlichen</h2>
+                <p class="mt-1 text-xs text-slate-500">Reihenfolge: luczor.system → Use-Case → Rollen-Regeln (nach Priorität) → Verlauf.</p>
+                <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.prompt-templates.store') }}">@csrf
+                    <input class="luczor-input" name="key" placeholder="Key (z. B. luczor.role.coder)" required>
+                    <div class="grid grid-cols-3 gap-2">
+                        <input class="luczor-input" name="role" placeholder="Rolle (chat|coder|planner|analyst|all)">
+                        <input class="luczor-input" name="task_type" placeholder="Task-Type (optional)">
+                        <input class="luczor-input" name="priority" type="number" value="100" placeholder="Priorität">
+                    </div>
+                    <textarea class="luczor-input font-mono text-xs" name="body" rows="6" placeholder="Prompt-Text / Regel" required></textarea>
+                    <button class="luczor-btn">Veröffentlichen (neue Version)</button>
+                </form>
+            </section>
+            <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Prompt-Vorlagen</h2>
+                <table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Key</th><th>v</th><th>Rolle</th><th>Prio</th><th>Status</th></tr></thead>
+                <tbody>@foreach($promptTemplates as $t)<tr class="border-t border-slate-800"><td class="py-1.5 text-cyan-100">{{ $t->key }}</td><td>{{ $t->version }}</td><td>{{ $t->role ?? '—' }}</td><td>{{ $t->priority ?? '—' }}</td><td class="{{ $t->status==='active'?'text-emerald-300':'text-slate-500' }}">{{ $t->status }}</td></tr>@endforeach</tbody></table>
+            </section>
+        </div>
+        <div class="mt-6 grid gap-6 lg:grid-cols-2">
+            <section class="luczor-card p-5"><h2 class="font-semibold">KI-Persönlichkeit anlegen</h2>
+                <p class="mt-1 text-xs text-slate-500">Wird direkt nach dem System-Prompt injiziert (globale Persönlichkeit).</p>
+                <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.personas.store') }}">@csrf
+                    <input class="luczor-input" name="name" placeholder="Name (z. B. Sachlich-Knapp)" required>
+                    <textarea class="luczor-input font-mono text-xs" name="prompt" rows="5" placeholder="Persönlichkeits-Prompt / Tonalität" required></textarea>
+                    <button class="luczor-btn">Speichern</button>
+                </form>
+            </section>
+            <section class="luczor-card overflow-x-auto p-5"><div class="flex items-center justify-between"><h2 class="font-semibold">Persönlichkeiten</h2><form method="POST" action="{{ route('dashboard.personas.deactivate') }}">@csrf<button class="luczor-btn-secondary">Keine aktiv</button></form></div>
+                <div class="mt-3 space-y-2">@forelse($personas as $p)<div class="flex items-center justify-between rounded border border-slate-800 p-2"><div><b class="text-cyan-100">{{ $p->name }}</b>@if($p->active)<span class="ml-2 rounded border border-emerald-400/30 px-1.5 text-[10px] text-emerald-200">aktiv</span>@endif<div class="font-mono text-[10px] text-slate-600">{{ $p->slug }}</div></div>@unless($p->active)<form method="POST" action="{{ route('dashboard.personas.activate',$p) }}">@csrf<button class="luczor-btn-secondary">Aktivieren</button></form>@endunless</div>@empty<p class="text-xs text-slate-500">Noch keine Persönlichkeiten.</p>@endforelse</div>
+            </section>
+        </div>
+        <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Netzwerk-Policies</h2>
+            <div class="mt-3 grid gap-3 md:grid-cols-3">@foreach($networkPolicies as $policy)<div class="rounded border border-slate-800 p-3"><b>{{ $policy->name }}</b><div class="text-xs text-slate-500">{{ $policy->key }}</div></div>@endforeach</div>
+        </section>
     @elseif($page === 'settings')
         <form method="POST" action="{{ route('dashboard.settings.store') }}">@csrf
         @forelse($settings->groupBy('group') as $group => $groupSettings)
@@ -243,7 +301,23 @@ function setChainStatus(list, message, state){
                     <div class="rounded border border-slate-800 p-3">
                         <div class="text-sm text-slate-200">{{ $s->label ?? $s->key }}</div>
                         <div class="font-mono text-[10px] text-slate-600">{{ $s->key }}</div>
-                        @if($s->type === 'bool')
+                        @if($s->key === 'voice_stt_engine')
+                            <select class="luczor-input mt-2" name="settings[{{ $s->key }}]">
+                                <option value="whisper_local" @selected($v==='whisper_local')>whisper_local (whisper.cpp, Standard)</option>
+                                <option value="whisper_rs" @selected($v==='whisper_rs')>whisper_rs (nativer Build, benötigt CMake)</option>
+                            </select>
+                        @elseif($s->key === 'hands_free_strategy')
+                            <select class="luczor-input mt-2" name="settings[{{ $s->key }}]">
+                                <option value="safeword" @selected($v==='safeword')>Safeword (Aktivierungs-/Beendigungsphrase)</option>
+                                <option value="continuous" @selected($v==='continuous')>Dauerzuhören (Auto-Abschluss nach Pause)</option>
+                            </select>
+                        @elseif($s->key === 'voice_interrupt_mode')
+                            <select class="luczor-input mt-2" name="settings[{{ $s->key }}]">
+                                <option value="on_speech" @selected($v==='on_speech')>Bei Sprache (Barge-in)</option>
+                                <option value="on_activation_phrase" @selected($v==='on_activation_phrase')>Nur bei Aktivierungsphrase</option>
+                                <option value="off" @selected($v==='off')>Aus</option>
+                            </select>
+                        @elseif($s->type === 'bool')
                             <label class="mt-2 inline-flex items-center gap-2 text-sm text-slate-400"><input type="checkbox" name="settings[{{ $s->key }}]" value="1" @checked($v)> aktiv</label>
                         @elseif($s->type === 'number')
                             <input class="luczor-input mt-2" type="number" step="any" name="settings[{{ $s->key }}]" value="{{ $v }}">

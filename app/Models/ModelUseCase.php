@@ -16,6 +16,8 @@ class ModelUseCase extends Model
         'active',
         'routing_strategy',
         'max_attempts',
+        'max_input_tokens',
+        'max_cost_usd',
         'prompt_template_key',
         'network_policy_key',
         'review_enabled',
@@ -25,6 +27,7 @@ class ModelUseCase extends Model
     protected $casts = [
         'active' => 'boolean',
         'max_attempts' => 'integer',
+        'max_input_tokens' => 'integer',
         'review_enabled' => 'boolean',
     ];
 

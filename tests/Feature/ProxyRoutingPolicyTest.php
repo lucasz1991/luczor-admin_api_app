@@ -9,7 +9,9 @@ use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
 use App\Models\NetworkPolicy;
+use App\Models\Persona;
 use App\Models\ProviderCredential;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\ProviderPolicyService;
 use App\Services\ProviderHttpClientFactory;
@@ -254,6 +256,64 @@ class ProxyRoutingPolicyTest extends TestCase
     }
 
     /** @return array{0: ModelProfile, 1: ModelProfile} */
+    public function test_active_persona_is_injected_into_the_prompt(): void
+    {
+        [, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles();
+        NetworkPolicy::create([
+            'key' => 'proxy.openrouter.default', 'name' => 'Default', 'status' => 'active',
+            'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
+            'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 50,
+        ]);
+        Persona::create(['slug' => 'knapp', 'name' => 'Knapp', 'prompt' => 'PERSONA: antworte knapp.', 'active' => true]);
+        Setting::putValue('active_persona', 'knapp', ['group' => 'client', 'type' => 'string']);
+
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('post')->once()->withArgs(function (string $url, array $options) {
+            $systemContents = array_map(
+                fn ($m) => $m['content'] ?? '',
+                array_filter($options['json']['messages'], fn ($m) => ($m['role'] ?? '') === 'system')
+            );
+            $this->assertContains('PERSONA: antworte knapp.', $systemContents);
+
+            return true;
+        })->andReturn(new Response(200, [], json_encode([
+            'id' => 'r1', 'choices' => [['finish_reason' => 'stop', 'message' => ['role' => 'assistant', 'content' => 'OK']]],
+            'usage' => ['prompt_tokens' => 3, 'completion_tokens' => 1],
+        ], JSON_THROW_ON_ERROR)));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [['role' => 'user', 'content' => 'Hallo']],
+            'task_type' => 'chat.general',
+        ])->assertOk();
+    }
+
+    public function test_a_use_case_budget_tightens_below_the_network_policy(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles(); // creates the 'chat' use case
+        ModelUseCase::where('slug', 'chat')->update(['max_input_tokens' => 1]);
+        NetworkPolicy::create([
+            'key' => 'proxy.openrouter.default', 'name' => 'Lenient', 'status' => 'active',
+            'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
+            'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000000, 'max_output_tokens' => 50,
+        ]);
+
+        // The global policy would allow this, but the use-case budget rejects it.
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [['role' => 'user', 'content' => str_repeat('lang ', 40)]],
+            'task_type' => 'chat.general',
+        ])->assertStatus(422)->assertJsonStructure(['message', 'request_id']);
+
+        $this->assertDatabaseHas('llm_runs', ['user_id' => $user->id, 'status' => 'budget_rejected']);
+        $this->assertSame(0, LlmAttempt::count());
+    }
+
     private function chatProfiles(): array
     {
         $primary = ModelProfile::create(['name' => 'Admin Primary', 'slug' => 'admin-primary', 'provider' => 'openrouter', 'model_id' => 'admin/primary', 'purpose' => 'chat', 'temperature' => 0.1, 'max_tokens' => 100]);

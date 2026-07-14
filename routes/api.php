@@ -26,6 +26,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthController::class)->name('api.v1.health');
+    // SOLL §15 P26 — visible versioning for support/debugging.
+    Route::get('/version', fn () => response()->json([
+        'api' => 'v1',
+        'laravel' => app()->version(),
+        'app' => config('app.version', 'dev'),
+        'server_time' => now()->toIso8601String(),
+    ]))->name('api.v1.version');
     Route::get('/voice/releases/{version}/{file}', VoiceAssetController::class)
         ->where(['version' => '[A-Za-z0-9._-]+', 'file' => '[A-Za-z0-9._-]+'])
         ->name('api.v1.voice.asset');

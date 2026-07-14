@@ -13,8 +13,11 @@ class ProviderPolicyService
 {
     private string $selectionSource = 'admin_policy';
 
-    /** @return array<int,ModelProfile> */
-    public function candidates(?string $requestedModel, string $taskType): array
+    /**
+     * @param array<int,string> $requiredCapabilities
+     * @return array<int,ModelProfile>
+     */
+    public function candidates(?string $requestedModel, string $taskType, array $requiredCapabilities = []): array
     {
         // Intentionally ignore client-supplied model identifiers. Customers
         // describe the task; only the admin-managed use-case ladder and the
@@ -29,9 +32,9 @@ class ProviderPolicyService
                 ->with('modelProfile')
                 ->get()
                 ->pluck('modelProfile')
-                // openrouter + openai share the /chat/completions wire; anthropic
-                // needs its own driver (full P2) and is excluded here for now.
-                ->filter(fn ($profile) => $profile?->active && in_array($profile->provider, ['openrouter', 'openai'], true));
+                // P2b — every provider with a wire driver is routable
+                // (openrouter/openai-compat, openai responses, anthropic messages).
+                ->filter(fn ($profile) => $profile?->active && in_array($profile->provider, ['openrouter', 'openai', 'anthropic'], true));
             $profiles = $fallbacks->values();
         }
 
@@ -46,6 +49,25 @@ class ProviderPolicyService
         abort_if($profiles->isEmpty(), 503, 'No enabled OpenRouter model profile is available.');
 
         $profiles = $profiles->unique('id')->values();
+
+        // SOLL §18 — capability routing: drop profiles that declare capabilities
+        // but lack a required one (vision/tools). Profiles with unknown (empty)
+        // capabilities are kept. If the filter empties the ladder, fall back to
+        // the unfiltered set rather than dead-ending the request.
+        if ($requiredCapabilities !== []) {
+            $filtered = $profiles->filter(function (ModelProfile $profile) use ($requiredCapabilities) {
+                $caps = is_array($profile->capabilities) ? $profile->capabilities : [];
+                if ($caps === []) {
+                    return true;
+                }
+                return count(array_intersect($requiredCapabilities, $caps)) === count($requiredCapabilities);
+            })->values();
+            if ($filtered->isNotEmpty()) {
+                $profiles = $filtered;
+                $this->selectionSource = 'admin_policy_capability';
+            }
+        }
+
         $ranking = ModelRanking::query()
             ->whereNull('user_id')
             ->where('task_type', $taskType)

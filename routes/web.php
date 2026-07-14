@@ -30,6 +30,9 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/provider-prices', [DashboardController::class, 'storeProviderPrice'])->name('dashboard.provider-prices.store');
         Route::post('/dashboard/prompt-templates', [DashboardController::class, 'storePromptTemplate'])->name('dashboard.prompt-templates.store');
         Route::post('/dashboard/context-strategies', [DashboardController::class, 'storeContextStrategy'])->name('dashboard.context-strategies.store');
+        Route::post('/dashboard/personas', [DashboardController::class, 'storePersona'])->name('dashboard.personas.store');
+        Route::post('/dashboard/personas/{persona}/activate', [DashboardController::class, 'activatePersona'])->name('dashboard.personas.activate');
+        Route::post('/dashboard/personas/deactivate', [DashboardController::class, 'deactivatePersonas'])->name('dashboard.personas.deactivate');
         Route::post('/dashboard/network-policies', [DashboardController::class, 'storeNetworkPolicy'])->name('dashboard.network-policies.store');
         Route::post('/dashboard/llm-experiments', [DashboardController::class, 'storeLlmExperiment'])->name('dashboard.llm-experiments.store');
         Route::post('/dashboard/agent-profiles', [DashboardController::class, 'storeAgentProfile'])->name('dashboard.agent-profiles.store');

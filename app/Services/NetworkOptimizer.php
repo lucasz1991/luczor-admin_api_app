@@ -26,8 +26,9 @@ class NetworkOptimizer
 
     public function shouldRetry(int $status, int $attempt, int $availableCandidates, NetworkPolicy $policy): bool
     {
+        // 529 is Anthropic's "overloaded" status — retriable like 503.
         return $attempt < min($availableCandidates, (int) $policy->max_attempts)
-            && in_array($status, [0, 408, 409, 425, 429, 500, 502, 503, 504], true);
+            && in_array($status, [0, 408, 409, 425, 429, 500, 502, 503, 504, 529], true);
     }
 
     public function backoff(NetworkPolicy $policy, int $attempt): void

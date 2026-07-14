@@ -33,8 +33,15 @@ return new class extends Migration
                 $table->foreignId('parent_definition_id')->constrained('workflow_definitions')->cascadeOnDelete();
                 $table->foreignId('child_definition_id')->constrained('workflow_definitions')->cascadeOnDelete();
                 $table->timestamps();
-                $table->unique(['parent_definition_id', 'child_definition_id']);
+                // Explicit name: the auto-generated one is 79 chars, MySQL caps at 64.
+                $table->unique(['parent_definition_id', 'child_definition_id'], 'wdd_parent_child_unique');
                 $table->index('child_definition_id');
+            });
+        } elseif (! Schema::hasIndex('workflow_definition_dependencies', 'wdd_parent_child_unique')) {
+            // Patch a partially-created table: the earlier ALTER failed on the
+            // over-long auto name AFTER the table + FKs were already created.
+            Schema::table('workflow_definition_dependencies', function (Blueprint $table) {
+                $table->unique(['parent_definition_id', 'child_definition_id'], 'wdd_parent_child_unique');
             });
         }
     }

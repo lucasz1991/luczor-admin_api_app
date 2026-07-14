@@ -8,6 +8,8 @@ use App\Models\LlmRun;
 use App\Models\ProviderCredential;
 use App\Models\PromptTemplate;
 use App\Services\ApiActor;
+use App\Services\Llm\ProviderDriver;
+use App\Services\Llm\ProviderDriverRegistry;
 use App\Services\LlmTelemetryService;
 use App\Services\NetworkOptimizer;
 use App\Services\ProviderHttpClientFactory;
@@ -28,6 +30,7 @@ class ProxyController extends Controller
         NetworkOptimizer $networkOptimizer,
         LlmTelemetryService $telemetry,
         ProviderHttpClientFactory $httpClients,
+        ProviderDriverRegistry $drivers,
     ) {
         $userId = $actor->userId($request);
         $rateKey = 'proxy:'.$userId.':'.($request->attributes->get('apiKey')?->id ?? 'unknown');
@@ -37,9 +40,8 @@ class ProxyController extends Controller
         }
         RateLimiter::hit($rateKey, 60);
 
-        $credential = ProviderCredential::query()->where('provider', 'openrouter')->where('active', true)->latest()->first();
-        if (! $credential?->api_key) {
-            return response()->json(['message' => 'Kein aktiver OpenRouter-Provider im Server konfiguriert.'], 503);
+        if (! ProviderCredential::query()->where('active', true)->exists()) {
+            return response()->json(['message' => 'Kein aktiver Provider im Server konfiguriert.'], 503);
         }
 
         $validated = $request->validate([
@@ -88,22 +90,43 @@ class ProxyController extends Controller
         // Client values are accepted only for backward wire compatibility.
         // Routing, sampling and token limits are exclusively server-owned.
         unset($providerPayload['model'], $providerPayload['temperature'], $providerPayload['max_tokens']);
+        // SOLL §10/§19 — prompt order: luczor.system -> use-case supplement ->
+        // role rules (by priority) -> history.
+        $prefix = 0;
         $adminPrompt = PromptTemplate::query()->where('key', 'luczor.system')->where('status', 'active')
             ->orderByDesc('version')->first();
         if ($adminPrompt) {
             array_unshift($providerPayload['messages'], ['role' => 'system', 'content' => $adminPrompt->body]);
             $meta['prompt_template_id'] = $adminPrompt->key.'@'.$adminPrompt->version;
+            $prefix = 1;
         }
 
-        // SOLL §10 — prompt order: luczor.system -> use-case supplement -> history.
+        // §27 — active AI personality (persona) right after the system prompt.
+        $persona = \App\Models\Persona::activePrompt();
+        if ($persona) {
+            array_splice($providerPayload['messages'], $prefix, 0, [['role' => 'system', 'content' => $persona]]);
+            $prefix++;
+        }
+
         $useCase = $providerPolicy->useCaseFor($taskType);
         if ($useCase && $useCase->prompt_template_key) {
             $useCasePrompt = PromptTemplate::query()->where('key', $useCase->prompt_template_key)
                 ->where('status', 'active')->orderByDesc('version')->first();
             if ($useCasePrompt) {
-                array_splice($providerPayload['messages'], $adminPrompt ? 1 : 0, 0,
-                    [['role' => 'system', 'content' => $useCasePrompt->body]]);
+                array_splice($providerPayload['messages'], $prefix, 0, [['role' => 'system', 'content' => $useCasePrompt->body]]);
+                $prefix++;
             }
+        }
+
+        // §19 — prioritized role rules (only role-tagged templates, never the
+        // global luczor.system) for reproducible per-role behaviour.
+        $role = match ($useCase?->slug) {
+            'coding' => 'coder', 'planner' => 'planner', 'verifier' => 'analyst', 'vision' => 'analyst', default => 'chat',
+        };
+        $roleMessages = PromptTemplate::activeRolePrompts($role)
+            ->map(fn ($t) => ['role' => 'system', 'content' => $t->body])->all();
+        if ($roleMessages !== []) {
+            array_splice($providerPayload['messages'], $prefix, 0, $roleMessages);
         }
 
         // SOLL §10 — mark spoken input so the model treats STT text as fallible.
@@ -118,11 +141,21 @@ class ProxyController extends Controller
             }
         }
 
-        $profiles = $providerPolicy->candidates(null, $taskType);
+        // SOLL §18 — derive required model capabilities from the request.
+        $required = [];
+        if (str_starts_with($taskType, 'vision')) $required[] = 'vision';
+        if (! empty($providerPayload['tools'])) $required[] = 'tools';
+        $profiles = $providerPolicy->candidates(null, $taskType, $required);
         $providerPayload['stream'] = (bool) ($providerPayload['stream'] ?? false);
         $run = $telemetry->startRun($meta, $taskType, $providerPayload, $providerPolicy->selectionSource());
+        // SOLL §27 (Ressourcenmanager) — a use case may tighten the budget below
+        // the global network policy (never loosen it).
+        $tightest = static fn ($a, $b) => $a && $b ? min($a, $b) : ($a ?: $b);
+        $maxInputTokens = $tightest($networkPolicy->max_input_tokens, $useCase?->max_input_tokens);
+        $maxCostUsd = $tightest($networkPolicy->max_cost_usd, $useCase?->max_cost_usd);
+
         $estimatedInputTokens = $providerPolicy->estimatedInputTokens($providerPayload);
-        if ($networkPolicy->max_input_tokens && $estimatedInputTokens > $networkPolicy->max_input_tokens) {
+        if ($maxInputTokens && $estimatedInputTokens > $maxInputTokens) {
             $run->update(['status' => 'budget_rejected', 'success' => false, 'input_tokens' => $estimatedInputTokens]);
             return response()->json(['message' => 'Context exceeds the server input-token budget.', 'request_id' => $run->request_id], 422);
         }
@@ -131,29 +164,26 @@ class ProxyController extends Controller
         $winner = null;
         $winnerProfile = null;
         $winnerCredential = null;
+        $winnerDriver = null;
         $winnerStarted = null;
         $winnerConnectMs = null;
         $upstream = null;
         foreach ($profiles as $index => $profile) {
             $attemptNo = $index + 1;
             if ($attemptNo > (int) $networkPolicy->max_attempts) break;
-            // SOLL §2 — resolve the credential from the profile; fall back to the
-            // default openrouter credential so legacy profiles keep working.
+            // SOLL §2/P2b — resolve the credential from the profile, then by the
+            // profile's provider, then the openrouter default (legacy profiles).
             $profileCredential = ($profile->provider_credential_id
-                ? ProviderCredential::find($profile->provider_credential_id) : null) ?: $credential;
+                ? ProviderCredential::find($profile->provider_credential_id) : null)
+                ?: ProviderCredential::query()->where('provider', $profile->provider)->where('active', true)->latest()->first()
+                ?: ProviderCredential::query()->where('provider', 'openrouter')->where('active', true)->latest()->first();
+            if (! $profileCredential?->api_key) continue;
             $providerName = $profileCredential->provider ?: 'openrouter';
-            $profileBaseUrl = rtrim($profileCredential->base_url ?: $this->defaultBaseUrl($providerName), '/');
+            $driver = $drivers->for($providerName, $profileCredential);
+            $profileBaseUrl = rtrim($profileCredential->base_url ?: $driver->defaultBaseUrl(), '/');
             $providerPayload['model'] = $profile->model_id;
             $providerPayload['temperature'] = $profile->temperature;
             $providerPayload['max_tokens'] = $providerPolicy->outputBudget($profile, $providerPayload['max_tokens'] ?? $networkPolicy->max_output_tokens);
-            // OpenRouter models may reason internally by default. Keep that
-            // reasoning available to the model, but never stream it into the
-            // user-visible assistant response.
-            if ($providerName === 'openrouter') {
-                $providerPayload['reasoning'] = ['exclude' => true];
-            } else {
-                unset($providerPayload['reasoning']);
-            }
             $attempt = $telemetry->startAttempt($run, $profile, $profileCredential, $attemptNo, [
                 'task_type' => $taskType,
                 'admin_order' => $attemptNo,
@@ -162,24 +192,15 @@ class ProxyController extends Controller
             ]);
             $attemptStarted = microtime(true);
             $estimatedCost = $providerPolicy->estimatedCost($profile, $providerPayload, (int) $providerPayload['max_tokens']);
-            if ($networkPolicy->max_cost_usd !== null && $estimatedCost !== null && $estimatedCost > $networkPolicy->max_cost_usd) {
-                $telemetry->failAttempt($attempt, 'cost_budget', 'Estimated request cost exceeds the active network policy.', 0, 0);
+            if ($maxCostUsd !== null && $estimatedCost !== null && $estimatedCost > $maxCostUsd) {
+                $telemetry->failAttempt($attempt, 'cost_budget', 'Estimated request cost exceeds the effective budget.', 0, 0);
                 continue;
             }
 
             try {
-                $headers = [
-                    'Authorization' => 'Bearer '.$profileCredential->api_key,
-                    'Content-Type' => 'application/json',
-                    'Accept' => $providerPayload['stream'] ? 'text/event-stream' : 'application/json',
-                ];
-                if ($providerName === 'openrouter') {
-                    $headers['HTTP-Referer'] = config('app.url');
-                    $headers['X-OpenRouter-Title'] = 'Luczor';
-                }
-                $upstream = $client->post($profileBaseUrl.'/chat/completions', [
-                    'headers' => $headers,
-                    'json' => $providerPayload,
+                $upstream = $client->post($driver->endpoint($profileBaseUrl), [
+                    'headers' => $driver->headers($profileCredential->api_key, (bool) $providerPayload['stream']),
+                    'json' => $driver->buildBody($providerPayload),
                     'stream' => $providerPayload['stream'],
                     'http_errors' => false,
                 ]);
@@ -190,7 +211,7 @@ class ProxyController extends Controller
                     continue;
                 }
                 $telemetry->finishRun($run, $attempt->refresh());
-                return response()->json(['message' => 'OpenRouter is currently unreachable.', 'request_id' => $run->request_id], 503);
+                return response()->json(['message' => 'Provider is currently unreachable.', 'request_id' => $run->request_id], 503);
             }
 
             $status = $upstream->getStatusCode();
@@ -210,6 +231,7 @@ class ProxyController extends Controller
             $winner = $attempt;
             $winnerProfile = $profile;
             $winnerCredential = $profileCredential;
+            $winnerDriver = $driver;
             $winnerStarted = $attemptStarted;
             $winnerConnectMs = $connectMs;
             break;
@@ -234,29 +256,25 @@ class ProxyController extends Controller
         // SOLL §2 — classify upstream errors on BOTH paths (stream previously
         // leaked the raw 401/403 body as text/event-stream).
         if ($upstream->getStatusCode() >= 400) {
-            return $this->jsonResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders);
+            return $this->jsonResponse($upstream, $winnerDriver, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders);
         }
 
         return $providerPayload['stream']
-            ? $this->streamResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders)
-            : $this->jsonResponse($upstream, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders);
+            ? $this->streamResponse($upstream, $winnerDriver, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders)
+            : $this->jsonResponse($upstream, $winnerDriver, $winner, $run, $telemetry, (float) $winnerStarted, (int) $winnerConnectMs, $luczorHeaders);
     }
 
-    private function defaultBaseUrl(string $provider): string
-    {
-        return match ($provider) {
-            'openai' => 'https://api.openai.com/v1',
-            default => 'https://openrouter.ai/api/v1',
-        };
-    }
-
-    private function jsonResponse($upstream, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs, array $luczorHeaders = [])
+    private function jsonResponse($upstream, ProviderDriver $driver, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs, array $luczorHeaders = [])
     {
         $body = $upstream->getBody()->getContents();
         $json = json_decode($body, true) ?: [];
-        $usage = is_array($json['usage'] ?? null) ? $json['usage'] : [];
-        $finishReason = $json['choices'][0]['finish_reason'] ?? null;
-        $generationId = $json['id'] ?? ($upstream->getHeaderLine('X-Generation-Id') ?: null);
+        // P2b — non-passthrough drivers translate the provider response into
+        // the canonical chat.completion shape the client speaks.
+        $normalize = $upstream->getStatusCode() < 400 && ! $driver->passthrough();
+        $canonical = $normalize ? $driver->normalizeResponse($json) : $json;
+        $usage = is_array($canonical['usage'] ?? null) ? $canonical['usage'] : [];
+        $finishReason = $canonical['choices'][0]['finish_reason'] ?? null;
+        $generationId = $canonical['id'] ?? ($upstream->getHeaderLine('X-Generation-Id') ?: null);
         $attemptMeta = [
             'generation_id' => $generationId,
             'connect_ms' => $connectMs,
@@ -279,19 +297,19 @@ class ProxyController extends Controller
             ], 502)->withHeaders($luczorHeaders)->header('X-Luczor-Request-Id', $run->request_id);
         }
 
-        return response($body, $upstream->getStatusCode())
+        return response($normalize ? json_encode($canonical, JSON_UNESCAPED_UNICODE) : $body, $upstream->getStatusCode())
             ->header('Content-Type', 'application/json')
             ->withHeaders($luczorHeaders)
             ->header('X-Luczor-Request-Id', $run->request_id);
     }
 
-    private function streamResponse($upstream, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs, array $luczorHeaders = []): StreamedResponse
+    private function streamResponse($upstream, ProviderDriver $driver, LlmAttempt $attempt, LlmRun $run, LlmTelemetryService $telemetry, float $started, int $connectMs, array $luczorHeaders = []): StreamedResponse
     {
         $body = $upstream->getBody();
         $status = $upstream->getStatusCode();
         $headerGenerationId = $upstream->getHeaderLine('X-Generation-Id') ?: null;
 
-        return new StreamedResponse(function () use ($body, $status, $attempt, $run, $telemetry, $headerGenerationId, $started, $connectMs) {
+        return new StreamedResponse(function () use ($body, $status, $driver, $attempt, $run, $telemetry, $headerGenerationId, $started, $connectMs) {
             $buffer = '';
             $usage = [];
             $finishReason = null;
@@ -299,28 +317,57 @@ class ProxyController extends Controller
             $ttftMs = null;
             $hash = hash_init('sha256');
 
-            while (! $body->eof()) {
-                $chunk = $body->read(8192);
-                if ($chunk === '') continue;
-                echo $chunk;
-                @ob_flush(); @flush();
-                hash_update($hash, $chunk);
-                $buffer .= $chunk;
-                $lines = preg_split('/\r?\n/', $buffer);
-                $buffer = array_pop($lines) ?? '';
-                foreach ($lines as $line) {
-                    $line = trim($line);
-                    if (! str_starts_with($line, 'data:')) continue;
-                    $data = trim(substr($line, 5));
-                    if ($data === '' || $data === '[DONE]') continue;
-                    $event = json_decode($data, true);
-                    if (! is_array($event)) continue;
-                    $generationId ??= $event['id'] ?? null;
-                    if (is_array($event['usage'] ?? null)) $usage = $event['usage'];
-                    $finishReason = $event['choices'][0]['finish_reason'] ?? $finishReason;
-                    $content = $event['choices'][0]['delta']['content'] ?? null;
-                    if ($ttftMs === null && is_string($content) && $content !== '') $ttftMs = $this->elapsedMs($started);
+            // Shared telemetry extraction over canonical `data: {...}` lines.
+            $absorb = function (string $line) use (&$usage, &$finishReason, &$generationId, &$ttftMs, $started) {
+                $line = trim($line);
+                if (! str_starts_with($line, 'data:')) return;
+                $data = trim(substr($line, 5));
+                if ($data === '' || $data === '[DONE]') return;
+                $event = json_decode($data, true);
+                if (! is_array($event)) return;
+                if ($generationId === null && is_string($event['id'] ?? null) && $event['id'] !== '') $generationId = $event['id'];
+                if (is_array($event['usage'] ?? null)) $usage = $event['usage'];
+                $finishReason = $event['choices'][0]['finish_reason'] ?? $finishReason;
+                $content = $event['choices'][0]['delta']['content'] ?? null;
+                if ($ttftMs === null && is_string($content) && $content !== '') $ttftMs = $this->elapsedMs($started);
+            };
+
+            if ($driver->passthrough()) {
+                while (! $body->eof()) {
+                    $chunk = $body->read(8192);
+                    if ($chunk === '') continue;
+                    echo $chunk;
+                    @ob_flush(); @flush();
+                    hash_update($hash, $chunk);
+                    $buffer .= $chunk;
+                    $lines = preg_split('/\r?\n/', $buffer);
+                    $buffer = array_pop($lines) ?? '';
+                    foreach ($lines as $line) $absorb($line);
                 }
+            } else {
+                // P2b — translate the provider's SSE dialect into canonical
+                // chat.completion.chunk frames while it streams.
+                $adapter = $driver->streamAdapter();
+                $emit = function (string $frame) use (&$hash, $absorb) {
+                    echo $frame."\n\n";
+                    @ob_flush(); @flush();
+                    hash_update($hash, $frame."\n\n");
+                    $absorb($frame);
+                };
+                while (! $body->eof()) {
+                    $chunk = $body->read(8192);
+                    if ($chunk === '') continue;
+                    $buffer .= $chunk;
+                    $lines = preg_split('/\r?\n/', $buffer);
+                    $buffer = array_pop($lines) ?? '';
+                    foreach ($lines as $line) {
+                        foreach ($adapter->feed($line) as $frame) $emit($frame);
+                    }
+                }
+                if ($buffer !== '') {
+                    foreach ($adapter->feed($buffer) as $frame) $emit($frame);
+                }
+                foreach ($adapter->finish() as $frame) $emit($frame);
             }
 
             $attempt = $telemetry->finishAttempt($attempt, $status, $this->elapsedMs($started), $usage, [
