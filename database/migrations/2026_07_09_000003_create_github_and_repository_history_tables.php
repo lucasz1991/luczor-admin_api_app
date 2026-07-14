@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -48,17 +49,28 @@ return new class extends Migration
             $table->index(['repository_id', 'branch', 'committed_at']);
         });
 
-        if (! Schema::hasTable('repository_changed_files')) Schema::create('repository_changed_files', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('repository_commit_id')->constrained()->cascadeOnDelete();
-            $table->string('path', 1000);
-            $table->string('status', 30)->nullable();
-            $table->integer('additions')->nullable();
-            $table->integer('deletions')->nullable();
-            $table->json('meta')->nullable();
-            $table->timestamps();
-            $table->unique(['repository_commit_id', 'path']);
-        });
+        if (! Schema::hasTable('repository_changed_files')) {
+            Schema::create('repository_changed_files', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('repository_commit_id')->constrained()->cascadeOnDelete();
+                $table->string('path', 1000);
+                $table->string('status', 30)->nullable();
+                $table->integer('additions')->nullable();
+                $table->integer('deletions')->nullable();
+                $table->json('meta')->nullable();
+                $table->timestamps();
+            });
+            // utf8mb4 makes the full (commit_id, path) key 4008 bytes — over InnoDB's
+            // 3072-byte cap — so MySQL/MariaDB indexes a 500-char path prefix instead.
+            // Name matches the fluent auto-name so existing databases stay consistent.
+            if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+                DB::statement('alter table `repository_changed_files` add unique `repository_changed_files_repository_commit_id_path_unique`(`repository_commit_id`, `path`(500))');
+            } else {
+                Schema::table('repository_changed_files', function (Blueprint $table) {
+                    $table->unique(['repository_commit_id', 'path']);
+                });
+            }
+        }
 
         if (! Schema::hasTable('github_webhook_deliveries')) Schema::create('github_webhook_deliveries', function (Blueprint $table) {
             $table->id();
