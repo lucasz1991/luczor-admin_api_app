@@ -25,6 +25,88 @@ class ProviderDriverTest extends TestCase
         $this->assertInstanceOf(OpenAiCompatDriver::class, $registry->for('openai', $compat));
     }
 
+    public function test_openai_compat_driver_passes_through_and_targets_the_right_base_url(): void
+    {
+        $openrouter = new OpenAiCompatDriver('openrouter');
+        $this->assertTrue($openrouter->passthrough());
+        $this->assertSame('https://openrouter.ai/api/v1', $openrouter->defaultBaseUrl());
+        $this->assertSame('https://openrouter.ai/api/v1/chat/completions', $openrouter->endpoint($openrouter->defaultBaseUrl()));
+        // Passthrough drivers leave the response canonical; the openrouter body
+        // only gains reasoning.exclude (internal reasoning kept, never streamed).
+        $payload = ['model' => 'x', 'messages' => [['role' => 'user', 'content' => 'hi']], 'stream' => true];
+        $this->assertSame($payload + ['reasoning' => ['exclude' => true]], $openrouter->buildBody($payload));
+        $this->assertSame(['id' => 'abc'], $openrouter->normalizeResponse(['id' => 'abc']));
+
+        // The plain OpenAI-compatible wire strips any reasoning directive.
+        $openai = new OpenAiCompatDriver('openai');
+        $this->assertSame('https://api.openai.com/v1', $openai->defaultBaseUrl());
+        $this->assertArrayNotHasKey('reasoning', $openai->buildBody($payload + ['reasoning' => ['exclude' => true]]));
+    }
+
+    public function test_anthropic_clamps_temperature_and_defaults_max_tokens(): void
+    {
+        $driver = new AnthropicMessagesDriver();
+
+        $hot = $driver->buildBody(['model' => 'claude', 'messages' => [['role' => 'user', 'content' => 'x']], 'temperature' => 1.9]);
+        $this->assertSame(1.0, $hot['temperature']);          // Anthropic caps at 1
+        $this->assertSame(1024, $hot['max_tokens']);          // required field defaulted
+
+        $cold = $driver->buildBody(['model' => 'claude', 'messages' => [['role' => 'user', 'content' => 'x']], 'temperature' => -0.5, 'max_tokens' => 200]);
+        $this->assertSame(0.0, $cold['temperature']);
+        $this->assertSame(200, $cold['max_tokens']);
+    }
+
+    public function test_anthropic_merges_consecutive_same_role_turns(): void
+    {
+        $driver = new AnthropicMessagesDriver();
+
+        $body = $driver->buildBody(['model' => 'claude', 'messages' => [
+            ['role' => 'user', 'content' => 'erste Frage'],
+            ['role' => 'user', 'content' => 'zweite Frage'],
+            ['role' => 'assistant', 'content' => 'Antwort'],
+        ]]);
+
+        // The API rejects non-alternating roles; the two user turns must merge.
+        $this->assertCount(2, $body['messages']);
+        $this->assertSame('user', $body['messages'][0]['role']);
+        $this->assertCount(2, $body['messages'][0]['content']);
+        $this->assertSame('assistant', $body['messages'][1]['role']);
+    }
+
+    public function test_finish_reason_mapping_covers_provider_stop_reasons(): void
+    {
+        $this->assertSame('length', AnthropicMessagesDriver::finishReason('max_tokens'));
+        $this->assertSame('tool_calls', AnthropicMessagesDriver::finishReason('tool_use'));
+        $this->assertSame('stop', AnthropicMessagesDriver::finishReason('end_turn'));
+        $this->assertSame('stop', AnthropicMessagesDriver::finishReason(null));
+    }
+
+    public function test_openai_responses_maps_incomplete_max_output_tokens_to_length(): void
+    {
+        $driver = new OpenAiResponsesDriver();
+
+        $canonical = $driver->normalizeResponse([
+            'id' => 'resp_1', 'model' => 'gpt', 'status' => 'incomplete',
+            'incomplete_details' => ['reason' => 'max_output_tokens'],
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => 'teilweise']]]],
+            'usage' => ['input_tokens' => 3, 'output_tokens' => 5],
+        ]);
+
+        $this->assertSame('length', $canonical['choices'][0]['finish_reason']);
+        $this->assertSame('teilweise', $canonical['choices'][0]['message']['content']);
+        $this->assertSame(8, $canonical['usage']['total_tokens']);
+    }
+
+    public function test_anthropic_stream_adapter_finish_is_idempotent_after_message_stop(): void
+    {
+        $adapter = new AnthropicStreamAdapter();
+        $adapter->feed('data: '.json_encode(['type' => 'message_start', 'message' => ['id' => 'm', 'model' => 'claude', 'usage' => ['input_tokens' => 1]]]));
+        $stop = $adapter->feed('data: '.json_encode(['type' => 'message_stop']));
+        $this->assertContains('data: [DONE]', $stop);
+        // finish() after an explicit message_stop must not emit a second DONE.
+        $this->assertSame([], $adapter->finish());
+    }
+
     public function test_anthropic_body_moves_system_up_and_maps_tool_traffic(): void
     {
         $driver = new AnthropicMessagesDriver();

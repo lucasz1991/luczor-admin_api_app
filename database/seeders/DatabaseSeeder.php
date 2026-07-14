@@ -113,6 +113,9 @@ class DatabaseSeeder extends Seeder
             ['key' => 'voice_tts_rate', 'value' => 1.0, 'group' => 'voice', 'label' => 'TTS-Tempo (0.5–2.0)', 'type' => 'number'],
             ['key' => 'voice_tts_volume', 'value' => 90, 'group' => 'voice', 'label' => 'TTS-Lautstärke (0–100)', 'type' => 'number'],
             ['key' => 'voice_interrupt_mode', 'value' => 'on_speech', 'group' => 'voice', 'label' => 'TTS-Unterbrechung (on_speech|on_activation_phrase|off)', 'type' => 'string'],
+            // P27 — global sandbox safety switch: forces every workflow run to
+            // simulate mutating/device tasks instead of performing them.
+            ['key' => 'sandbox_enabled', 'value' => false, 'group' => 'workflow', 'label' => 'Sandbox erzwingen (alle Läufe simulieren)', 'type' => 'bool'],
         ];
 
         foreach ($settings as $s) {

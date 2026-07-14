@@ -6,6 +6,10 @@ body {
     background: #050b12;
 }
 
+[x-cloak] {
+    display: none !important;
+}
+
 .luczor-card {
     @apply rounded-lg border border-cyan-400/20 bg-white/5 shadow-2xl shadow-black/30 backdrop-blur;
 }

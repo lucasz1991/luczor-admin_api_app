@@ -33,6 +33,11 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/personas', [DashboardController::class, 'storePersona'])->name('dashboard.personas.store');
         Route::post('/dashboard/personas/{persona}/activate', [DashboardController::class, 'activatePersona'])->name('dashboard.personas.activate');
         Route::post('/dashboard/personas/deactivate', [DashboardController::class, 'deactivatePersonas'])->name('dashboard.personas.deactivate');
+        Route::post('/dashboard/skills', [DashboardController::class, 'storeSkill'])->name('dashboard.skills.store');
+        Route::post('/dashboard/skills/{skill}/toggle', [DashboardController::class, 'toggleSkill'])->name('dashboard.skills.toggle');
+        Route::post('/dashboard/skills/{skill}/run', [DashboardController::class, 'runSkill'])->name('dashboard.skills.run');
+        Route::delete('/dashboard/skills/{skill}', [DashboardController::class, 'deleteSkill'])->name('dashboard.skills.destroy');
+        Route::post('/dashboard/model-use-cases/{modelUseCase}/review', [DashboardController::class, 'updateUseCaseReview'])->name('dashboard.model-use-cases.review');
         Route::post('/dashboard/network-policies', [DashboardController::class, 'storeNetworkPolicy'])->name('dashboard.network-policies.store');
         Route::post('/dashboard/llm-experiments', [DashboardController::class, 'storeLlmExperiment'])->name('dashboard.llm-experiments.store');
         Route::post('/dashboard/agent-profiles', [DashboardController::class, 'storeAgentProfile'])->name('dashboard.agent-profiles.store');
@@ -43,6 +48,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/workflows', [DashboardController::class, 'storeWorkflow'])->name('dashboard.workflows.store');
         Route::post('/dashboard/workflows/import', [DashboardController::class, 'importWorkflow'])->name('dashboard.workflows.import');
         Route::post('/dashboard/workflows/template', [DashboardController::class, 'createWorkflowFromTemplate'])->name('dashboard.workflows.template');
+        Route::post('/dashboard/workflows/plan', [DashboardController::class, 'planWorkflow'])->name('dashboard.workflows.plan');
         Route::post('/dashboard/workflows/{workflowDefinition}/start', [DashboardController::class, 'startWorkflow'])->name('dashboard.workflows.start');
         Route::get('/dashboard/workflows/{workflowDefinition}/export', [DashboardController::class, 'exportWorkflow'])->name('dashboard.workflows.export');
         Route::delete('/dashboard/workflows/{workflowDefinition}', [DashboardController::class, 'deleteWorkflow'])->name('dashboard.workflows.destroy');

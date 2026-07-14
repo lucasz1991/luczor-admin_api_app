@@ -28,7 +28,7 @@
             <div>
                 <div class="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-300/70">Workflow-Vorschau</div>
                 <h2 class="mt-1 text-lg font-semibold text-white">{{ $workflowPreviewRun->definition?->name ?? 'Workflow' }}</h2>
-                <div class="mt-1 text-xs text-slate-500">Run #{{ $workflowPreviewRun->id }} · <span data-rp-duration>—</span> · <span class="font-mono text-[10px]">{{ $workflowPreviewRun->public_id }}</span></div>
+                <div class="mt-1 text-xs text-slate-500">Run #{{ $workflowPreviewRun->id }} · <span data-rp-duration>—</span>@if($workflowPreviewRun->sandbox) · <span class="rounded bg-amber-400/10 px-1.5 py-0.5 font-semibold text-amber-200">Sandbox (simuliert)</span>@endif · <span class="font-mono text-[10px]">{{ $workflowPreviewRun->public_id }}</span></div>
             </div>
             <div class="flex items-center gap-2">
                 <span data-rp-badge class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $wfStatusBadge($workflowPreviewRun->status) }}">{{ $wfStatusLabel($workflowPreviewRun->status) }}</span>
@@ -227,6 +227,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <button data-ed-library-toggle class="luczor-btn-secondary">Task-Bibliothek</button>
+                <form method="POST" action="{{ route('dashboard.workflows.start', $workflowEditing) }}">@csrf<input type="hidden" name="sandbox" value="1"><button class="luczor-btn-secondary" @if($workflowEditing->status !== 'active') disabled title="Workflow ist deaktiviert" @endif title="Simuliert mutierende/Geräte-Tasks">Sandbox</button></form>
                 <form method="POST" action="{{ route('dashboard.workflows.start', $workflowEditing) }}">@csrf<button class="luczor-btn-secondary" @if($workflowEditing->status !== 'active') disabled title="Workflow ist deaktiviert" @endif>Testlauf</button></form>
                 <a class="luczor-btn-secondary" href="{{ route('dashboard.workflows.export', $workflowEditing) }}">Export</a>
                 @unless($workflowEditing->is_edit_locked)<button data-ed-save class="luczor-btn" disabled>Speichern</button>@endunless

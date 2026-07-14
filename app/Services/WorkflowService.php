@@ -16,11 +16,14 @@ use Illuminate\Support\Str;
 class WorkflowService
 {
     /** @param array<string,mixed> $definition */
-    public function createRun(WorkflowDefinition $definition, array $input = [], ?int $agentRunId = null): WorkflowRun
+    public function createRun(WorkflowDefinition $definition, array $input = [], ?int $agentRunId = null, bool $sandbox = false): WorkflowRun
     {
         $steps = $this->assertDefinition($definition->definition ?? []);
+        // P27 — a server-wide sandbox setting forces every run into sandbox mode;
+        // an explicit per-run flag can only add to that, never override it off.
+        $sandbox = $sandbox || \App\Models\Setting::getValue('sandbox_enabled', false) === true;
 
-        return DB::transaction(function () use ($definition, $input, $agentRunId, $steps) {
+        return DB::transaction(function () use ($definition, $input, $agentRunId, $steps, $sandbox) {
             $run = WorkflowRun::create([
                 'public_id' => (string) Str::uuid(),
                 'user_id' => $definition->user_id,
@@ -28,6 +31,7 @@ class WorkflowService
                 'workflow_definition_id' => $definition->id,
                 'agent_run_id' => $agentRunId,
                 'status' => 'queued',
+                'sandbox' => $sandbox,
                 'input' => $input,
             ]);
             foreach ($steps as $position => $step) {

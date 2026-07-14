@@ -258,6 +258,7 @@ function setChainStatus(list, message, state){
                 <div class="mt-3 space-y-2">@forelse($personas as $p)<div class="flex items-center justify-between rounded border border-slate-800 p-2"><div><b class="text-cyan-100">{{ $p->name }}</b>@if($p->active)<span class="ml-2 rounded border border-emerald-400/30 px-1.5 text-[10px] text-emerald-200">aktiv</span>@endif<div class="font-mono text-[10px] text-slate-600">{{ $p->slug }}</div></div>@unless($p->active)<form method="POST" action="{{ route('dashboard.personas.activate',$p) }}">@csrf<button class="luczor-btn-secondary">Aktivieren</button></form>@endunless</div>@empty<p class="text-xs text-slate-500">Noch keine Persönlichkeiten.</p>@endforelse</div>
             </section>
         </div>
+        @include('admin.optimizer-extras')
         <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Netzwerk-Policies</h2>
             <div class="mt-3 grid gap-3 md:grid-cols-3">@foreach($networkPolicies as $policy)<div class="rounded border border-slate-800 p-3"><b>{{ $policy->name }}</b><div class="text-xs text-slate-500">{{ $policy->key }}</div></div>@endforeach</div>
         </section>

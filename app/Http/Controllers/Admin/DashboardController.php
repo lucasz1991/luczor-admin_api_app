@@ -583,6 +583,11 @@ class DashboardController extends Controller
             'memoryOverview' => $page === 'archives' ? $this->memoryOverview() : [],
             'memoryGraph' => $page === 'archives' ? $this->memoryGraph() : [],
             'personas' => $page === 'optimizer' ? Persona::orderBy('name')->get() : collect(),
+            'skills' => $page === 'optimizer' ? \App\Models\Skill::with('workflowDefinition')->orderByDesc('active')->orderBy('name')->get() : collect(),
+            'skillWorkflows' => $page === 'optimizer' ? WorkflowDefinition::where('status', 'active')->orderBy('name')->get(['id', 'name']) : collect(),
+            'reflections' => $page === 'optimizer'
+                ? EvaluationResult::with('llmRun')->latest()->limit(20)->get()
+                : collect(),
             'agentRuns' => $page === 'agents' ? AgentRun::withCount('tasks')->latest()->limit(30)->get() : collect(),
             'agentEvents' => $page === 'agents' ? AuditEvent::latest()->limit(50)->get() : collect(),
             'workflowDefinitions' => $page === 'workflows'
@@ -628,12 +633,14 @@ class DashboardController extends Controller
         if ($workflowDefinition->status !== 'active') {
             return $this->workflowError($request, 'Deaktivierter Workflow kann nicht gestartet werden.');
         }
+        $sandbox = (bool) $request->boolean('sandbox');
         $svc = app(WorkflowService::class);
-        $run = $svc->advance($svc->createRun($workflowDefinition));
+        $run = $svc->advance($svc->createRun($workflowDefinition, [], null, $sandbox));
+        $label = $run->sandbox ? 'Sandbox-Lauf gestartet (simuliert).' : 'Workflow-Lauf gestartet.';
 
         return $request->wantsJson()
-            ? response()->json(['message' => 'Workflow-Lauf gestartet.', 'run' => ['id' => $run->id, 'public_id' => $run->public_id, 'status' => $run->status]])
-            : Redirect::route('admin.page', ['page' => 'workflows', 'run' => $run->id])->with('status', 'Workflow-Lauf gestartet.');
+            ? response()->json(['message' => $label, 'run' => ['id' => $run->id, 'public_id' => $run->public_id, 'status' => $run->status, 'sandbox' => $run->sandbox]])
+            : Redirect::route('admin.page', ['page' => 'workflows', 'run' => $run->id])->with('status', $label);
     }
 
     public function exportWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
@@ -679,6 +686,28 @@ class DashboardController extends Controller
         $workflowDefinition->delete();
 
         return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow gelöscht.');
+    }
+
+    /** SOLL §15 P27 — Planning-Engine: turn a goal into a workflow draft. */
+    public function planWorkflow(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'goal' => ['required', 'string', 'max:500'],
+            'include_research' => ['nullable', 'boolean'],
+        ]);
+        try {
+            $definition = app(\App\Services\WorkflowPlanner::class)->plan(
+                $request->user()->id,
+                $data['goal'],
+                (bool) ($data['include_research'] ?? false),
+            );
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return Redirect::route('admin.page', 'optimizer')->withErrors(['skill' => $e->getMessage()]);
+        }
+
+        return Redirect::route('admin.page', ['page' => 'workflows', 'wf' => $definition->id])
+            ->with('status', 'Workflow-Entwurf aus Ziel erzeugt.');
     }
 
     /** P16 — create a starter workflow from a catalog-hydrated template. */
@@ -838,6 +867,75 @@ class DashboardController extends Controller
         Persona::updateOrCreate(['slug' => Str::slug($data['name'])], ['name' => $data['name'], 'prompt' => $data['prompt']]);
 
         return Redirect::route('admin.page', 'optimizer')->with('status', 'Persönlichkeit gespeichert.');
+    }
+
+    /** SOLL §15 P27 — create/update a reusable skill bundle. */
+    public function storeSkill(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'kind' => ['required', 'in:prompt,workflow'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'prompt' => ['nullable', 'string', 'max:20000'],
+            'workflow_definition_id' => ['nullable', 'integer', 'exists:workflow_definitions,id'],
+            'tags' => ['nullable', 'string', 'max:500'],
+        ]);
+        try {
+            app(\App\Services\SkillService::class)->upsert($data + ['user_id' => $request->user()->id]);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return Redirect::route('admin.page', 'optimizer')->withErrors(['skill' => $e->getMessage()]);
+        }
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Skill gespeichert.');
+    }
+
+    public function toggleSkill(Request $request, \App\Models\Skill $skill)
+    {
+        $this->ensureAdmin($request);
+        $skill->update(['active' => ! $skill->active]);
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', $skill->active ? 'Skill aktiviert.' : 'Skill deaktiviert.');
+    }
+
+    public function runSkill(Request $request, \App\Models\Skill $skill)
+    {
+        $this->ensureAdmin($request);
+        try {
+            $result = app(\App\Services\SkillService::class)->apply($skill);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return Redirect::route('admin.page', 'optimizer')->withErrors(['skill' => $e->getMessage()]);
+        }
+        if (($result['kind'] ?? null) === 'workflow') {
+            return Redirect::route('admin.page', ['page' => 'workflows', 'run' => $result['workflow_run_id']])
+                ->with('status', 'Skill-Workflow gestartet.');
+        }
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Prompt-Skill „'.$skill->name.'" bereit (siehe Prompt).');
+    }
+
+    public function deleteSkill(Request $request, \App\Models\Skill $skill)
+    {
+        $this->ensureAdmin($request);
+        $skill->delete();
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Skill gelöscht.');
+    }
+
+    /** SOLL §10/§15 P27 — set the advisory-review policy for a use case. */
+    public function updateUseCaseReview(Request $request, ModelUseCase $modelUseCase)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'review_enabled' => ['nullable', 'boolean'],
+            'review_use_case_id' => ['nullable', 'integer', 'different:'.$modelUseCase->id, 'exists:model_use_cases,id'],
+        ]);
+        $modelUseCase->update([
+            'review_enabled' => (bool) ($data['review_enabled'] ?? false),
+            'review_use_case_id' => $data['review_use_case_id'] ?? null,
+        ]);
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Review-Policy gespeichert: '.$modelUseCase->name);
     }
 
     public function activatePersona(Request $request, Persona $persona)

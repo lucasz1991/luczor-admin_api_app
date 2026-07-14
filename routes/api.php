@@ -141,6 +141,17 @@ Route::prefix('v1')->group(function () {
     Route::get('/workflows/task-catalog', fn () => response()->json(['data' => \App\Services\WorkflowTaskCatalog::options()]))
         ->middleware('luczor.api:brain.read')->name('api.v1.workflows.task-catalog');
 
+    // SOLL §15 P27 — reusable skill bundles the client/AI may discover and apply.
+    Route::get('/skills', function (\Illuminate\Http\Request $request) {
+        $userId = app(\App\Services\ApiActor::class)->userId($request);
+        $skills = \App\Models\Skill::active()
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $userId))
+            ->orderByDesc('use_count')->orderBy('name')
+            ->get(['id', 'slug', 'name', 'description', 'kind', 'tags', 'workflow_definition_id']);
+
+        return response()->json(['data' => $skills]);
+    })->middleware('luczor.api:brain.read')->name('api.v1.skills.index');
+
     Route::middleware('luczor.api:brain.write')->group(function () {
         Route::post('/agent-runs', [AgentRunController::class, 'store'])->name('api.v1.agent-runs.store');
         Route::patch('/agent-runs/{agentRun}', [AgentRunController::class, 'update'])->name('api.v1.agent-runs.update');

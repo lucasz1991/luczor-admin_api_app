@@ -38,6 +38,26 @@ class WorkflowStepExecutor
         // P15 — expose the currently executing step as a run cursor for the UI.
         $step->run?->update(['current_workflow_step_id' => $step->id]);
 
+        // P27 — in a sandbox run, mutating and client/device tasks are simulated
+        // (completed with a synthetic result) instead of performing real side
+        // effects; read-only server tasks still run normally.
+        if ($step->run?->sandbox && $this->isSandboxSuppressed($step->type)) {
+            $output = ['sandbox' => true, 'simulated' => $step->type, 'note' => 'In Sandbox nicht real ausgeführt.'];
+            $this->workflows->complete($step->fresh(), $output);
+            $this->audit->record([
+                'actor_user_id' => $step->user_id,
+                'project_id' => $step->run->project_id,
+                'event_type' => 'workflow.step_simulated',
+                'tool' => 'workflow.'.$step->type,
+                'risk_level' => 'normal',
+                'outcome' => 'completed',
+                'payload' => ['workflow_step_id' => $step->id, 'step_key' => $step->step_key, 'sandbox' => true],
+                'result' => $output,
+            ]);
+
+            return;
+        }
+
         // P14 — a nested-workflow step starts a child run and stays 'running'
         // until the child terminates (settled by syncChildWorkflows()).
         if ($step->type === 'workflow') {
@@ -219,6 +239,17 @@ class WorkflowStepExecutor
         ]);
 
         return ['task_id' => $task->id, 'external_id' => $task->external_id, 'title' => $task->title];
+    }
+
+    /** P27 — tasks a sandbox run must not really perform (client + mutating). */
+    private function isSandboxSuppressed(string $type): bool
+    {
+        $task = WorkflowTaskCatalog::task($type);
+        if ($task === null) {
+            return false;
+        }
+
+        return WorkflowTaskCatalog::isClientTask($type) || (bool) ($task['mutating'] ?? false);
     }
 
     /** P15b — dispatch a client task as a signed device_job bundle. */
