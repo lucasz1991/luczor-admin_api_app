@@ -584,9 +584,21 @@ class DashboardController extends Controller
             'personas' => $page === 'optimizer' ? Persona::orderBy('name')->get() : collect(),
             'agentRuns' => $page === 'agents' ? AgentRun::withCount('tasks')->latest()->limit(30)->get() : collect(),
             'agentEvents' => $page === 'agents' ? AuditEvent::latest()->limit(50)->get() : collect(),
-            'workflowDefinitions' => WorkflowDefinition::withCount('runs')->latest()->limit(50)->get(),
-            'workflowRuns' => WorkflowRun::with('definition')->latest()->limit(20)->get(),
-            'taskCatalog' => WorkflowTaskCatalog::options(),
+            'workflowDefinitions' => $page === 'workflows'
+                ? WorkflowDefinition::withCount(['runs',
+                    'runs as successful_runs_count' => fn ($q) => $q->where('status', 'completed'),
+                    'runs as failed_runs_count' => fn ($q) => $q->where('status', 'failed'),
+                ])->latest()->limit(50)->get()
+                : collect(),
+            'workflowRuns' => $page === 'workflows' ? WorkflowRun::with('definition')->latest()->limit(20)->get() : collect(),
+            'taskCatalog' => $page === 'workflows' ? WorkflowTaskCatalog::options() : [],
+            // Board editor (?wf=) and run preview (?run=) context of the workflows page.
+            'workflowEditing' => $page === 'workflows' && request()->filled('wf')
+                ? WorkflowDefinition::find((int) request()->query('wf'))
+                : null,
+            'workflowPreviewRun' => $page === 'workflows' && request()->filled('run')
+                ? WorkflowRun::with('definition')->find((int) request()->query('run'))
+                : null,
         ];
     }
 
@@ -611,10 +623,15 @@ class DashboardController extends Controller
     public function startWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
     {
         $this->ensureAdmin($request);
+        if ($workflowDefinition->status !== 'active') {
+            return $this->workflowError($request, 'Deaktivierter Workflow kann nicht gestartet werden.');
+        }
         $svc = app(WorkflowService::class);
-        $svc->advance($svc->createRun($workflowDefinition));
+        $run = $svc->advance($svc->createRun($workflowDefinition));
 
-        return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow-Lauf gestartet.');
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Workflow-Lauf gestartet.', 'run' => ['id' => $run->id, 'public_id' => $run->public_id, 'status' => $run->status]])
+            : Redirect::route('admin.page', ['page' => 'workflows', 'run' => $run->id])->with('status', 'Workflow-Lauf gestartet.');
     }
 
     public function exportWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
@@ -660,6 +677,145 @@ class DashboardController extends Controller
         $workflowDefinition->delete();
 
         return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow gelöscht.');
+    }
+
+    /** Board editor save (P16): replaces the definition, bumps the version. */
+    public function updateWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
+    {
+        $this->ensureAdmin($request);
+        if ($workflowDefinition->is_edit_locked) {
+            return $this->workflowError($request, 'Eingebundener/gesperrter Workflow kann nicht bearbeitet werden.');
+        }
+        $data = $request->validate(['name' => ['required', 'string', 'max:160'], 'definition_json' => ['required', 'string', 'max:200000']]);
+        $definition = json_decode($data['definition_json'], true);
+        if (! is_array($definition) || ! isset($definition['steps'])) {
+            return $this->workflowError($request, 'Ungültiges JSON — erwartet {"steps":[...]}.');
+        }
+        try {
+            app(WorkflowService::class)->assertDefinition($definition);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return $this->workflowError($request, $e->getMessage());
+        }
+        $workflowDefinition->update(['name' => $data['name'], 'definition' => $definition, 'version' => $workflowDefinition->version + 1]);
+
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Workflow gespeichert (v'.$workflowDefinition->version.').', 'workflow' => ['id' => $workflowDefinition->id, 'version' => $workflowDefinition->version]])
+            : Redirect::route('admin.page', ['page' => 'workflows', 'wf' => $workflowDefinition->id])->with('status', 'Workflow gespeichert (v'.$workflowDefinition->version.').');
+    }
+
+    public function duplicateWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
+    {
+        $this->ensureAdmin($request);
+        $copy = WorkflowDefinition::create([
+            'user_id' => $request->user()->id,
+            'name' => Str::limit($workflowDefinition->name, 148, '').' (Kopie)',
+            'version' => 1,
+            'status' => $workflowDefinition->status,
+            'definition' => $workflowDefinition->definition,
+        ]);
+
+        return Redirect::route('admin.page', ['page' => 'workflows', 'wf' => $copy->id])->with('status', 'Workflow dupliziert.');
+    }
+
+    public function toggleWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
+    {
+        $this->ensureAdmin($request);
+        $workflowDefinition->update(['status' => $workflowDefinition->status === 'active' ? 'disabled' : 'active']);
+
+        return Redirect::route('admin.page', 'workflows')
+            ->with('status', $workflowDefinition->status === 'active' ? 'Workflow aktiviert.' : 'Workflow deaktiviert.');
+    }
+
+    /** Explicit edit-lock toggle; the implicit include-lock stays untouched. */
+    public function toggleWorkflowLock(Request $request, WorkflowDefinition $workflowDefinition)
+    {
+        $this->ensureAdmin($request);
+        $workflowDefinition->update(['is_locked' => ! $workflowDefinition->is_locked]);
+
+        return Redirect::route('admin.page', 'workflows')
+            ->with('status', $workflowDefinition->is_locked ? 'Workflow gesperrt (Edit-Lock).' : 'Workflow entsperrt.');
+    }
+
+    /** Poll target of the run preview (P16) — run, steps and artifacts as JSON. */
+    public function workflowRunStatus(Request $request, WorkflowRun $workflowRun)
+    {
+        $this->ensureAdmin($request);
+        $workflowRun->load(['definition', 'steps' => fn ($q) => $q->orderBy('position'), 'artifacts' => fn ($q) => $q->latest()->limit(100)]);
+
+        return response()->json([
+            'run' => [
+                'id' => $workflowRun->id,
+                'public_id' => $workflowRun->public_id,
+                'workflow' => $workflowRun->definition?->name,
+                'workflow_definition_id' => $workflowRun->workflow_definition_id,
+                'status' => $workflowRun->status,
+                'started_at' => $workflowRun->started_at?->toIso8601String(),
+                'finished_at' => $workflowRun->finished_at?->toIso8601String(),
+                'duration_ms' => $workflowRun->duration_ms,
+                'current_workflow_step_id' => $workflowRun->current_workflow_step_id,
+                'output' => $workflowRun->output,
+            ],
+            'steps' => $workflowRun->steps->map(fn ($s) => [
+                'id' => $s->id,
+                'key' => $s->step_key,
+                'type' => $s->type,
+                'status' => $s->status,
+                'position' => $s->position,
+                'attempts' => $s->attempts,
+                'max_attempts' => $s->max_attempts,
+                'depends_on' => $s->depends_on ?? [],
+                'requires_approval' => (bool) $s->requires_approval,
+                'title' => is_string($s->payload['title'] ?? null) ? $s->payload['title'] : null,
+                'error' => $s->error,
+                'duration_ms' => $s->duration_ms,
+                'started_at' => $s->started_at?->toIso8601String(),
+                'finished_at' => $s->finished_at?->toIso8601String(),
+                'logs' => $s->logs,
+                'output' => $s->output,
+            ])->values(),
+            'artifacts' => $workflowRun->artifacts->map(fn ($a) => [
+                'id' => $a->id,
+                'step_key' => $a->step_key,
+                'phase' => $a->phase,
+                'artifact_type' => $a->artifact_type,
+                'label' => $a->label,
+                'status' => $a->status,
+                'error_message' => $a->error_message,
+                'metadata' => $a->metadata,
+                'created_at' => $a->created_at?->toIso8601String(),
+            ])->values(),
+        ]);
+    }
+
+    public function cancelWorkflowRun(Request $request, WorkflowRun $workflowRun)
+    {
+        $this->ensureAdmin($request);
+        app(WorkflowService::class)->cancel($workflowRun);
+
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Lauf abgebrochen.', 'status' => $workflowRun->fresh()->status])
+            : Redirect::route('admin.page', ['page' => 'workflows', 'run' => $workflowRun->id])->with('status', 'Lauf abgebrochen.');
+    }
+
+    /** Approve a gate step (type approval / requires_approval) from the preview. */
+    public function approveWorkflowStep(Request $request, \App\Models\WorkflowStep $workflowStep)
+    {
+        $this->ensureAdmin($request);
+        if ($workflowStep->status !== 'awaiting_approval') {
+            return $this->workflowError($request, 'Dieser Schritt wartet nicht auf Freigabe.');
+        }
+        app(WorkflowService::class)->complete($workflowStep, ['approved' => true, 'approved_by' => $request->user()->id]);
+
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Schritt freigegeben.'])
+            : Redirect::route('admin.page', ['page' => 'workflows', 'run' => $workflowStep->workflow_run_id])->with('status', 'Schritt freigegeben.');
+    }
+
+    private function workflowError(Request $request, string $message)
+    {
+        return $request->wantsJson()
+            ? response()->json(['message' => $message], 422)
+            : Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => $message]);
     }
 
     public function storePersona(Request $request)

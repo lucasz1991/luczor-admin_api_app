@@ -12,7 +12,7 @@
             <span class="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-400/10 font-mono font-bold text-cyan-200">LZ</span>
             <span><b class="block uppercase tracking-[.25em]">Luczor</b><small class="text-cyan-300/60">Admin Control Plane</small></span>
         </a>
-        @php($navigation = ['System'=>['Overview'=>'overview','Provider & Preise'=>'providers','Modelle & Routing'=>'models'],'Optimierung'=>['Telemetry & Kosten'=>'telemetry','Prompt & Kontext'=>'optimizer','Experimente'=>'experiments'],'Operations'=>['Geraete-Debug'=>'devices','Geraete & Keys'=>'api-keys','Archive & Audit'=>'archives','Server Settings'=>'settings']])
+        @php($navigation = ['System'=>['Overview'=>'overview','Provider & Preise'=>'providers','Modelle & Routing'=>'models'],'Optimierung'=>['Telemetry & Kosten'=>'telemetry','Prompt & Kontext'=>'optimizer','Experimente'=>'experiments'],'Automation'=>['Workflows'=>'workflows','Agenten & Ereignisse'=>'agents'],'Operations'=>['Geraete-Debug'=>'devices','Geraete & Keys'=>'api-keys','Archive & Audit'=>'archives','Server Settings'=>'settings']])
         <nav class="flex-1 space-y-6 overflow-y-auto px-4 py-6 text-sm">
             @foreach ($navigation as $group => $items)
                 <div><div class="px-3 text-[10px] font-semibold uppercase tracking-[.22em] text-slate-600">{{ $group }}</div>

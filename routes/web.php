@@ -45,5 +45,12 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/workflows/{workflowDefinition}/start', [DashboardController::class, 'startWorkflow'])->name('dashboard.workflows.start');
         Route::get('/dashboard/workflows/{workflowDefinition}/export', [DashboardController::class, 'exportWorkflow'])->name('dashboard.workflows.export');
         Route::delete('/dashboard/workflows/{workflowDefinition}', [DashboardController::class, 'deleteWorkflow'])->name('dashboard.workflows.destroy');
+        Route::put('/dashboard/workflows/{workflowDefinition}', [DashboardController::class, 'updateWorkflow'])->name('dashboard.workflows.update');
+        Route::post('/dashboard/workflows/{workflowDefinition}/duplicate', [DashboardController::class, 'duplicateWorkflow'])->name('dashboard.workflows.duplicate');
+        Route::post('/dashboard/workflows/{workflowDefinition}/toggle', [DashboardController::class, 'toggleWorkflow'])->name('dashboard.workflows.toggle');
+        Route::post('/dashboard/workflows/{workflowDefinition}/lock', [DashboardController::class, 'toggleWorkflowLock'])->name('dashboard.workflows.lock');
+        Route::get('/dashboard/workflow-runs/{workflowRun}/status', [DashboardController::class, 'workflowRunStatus'])->name('dashboard.workflow-runs.status');
+        Route::post('/dashboard/workflow-runs/{workflowRun}/cancel', [DashboardController::class, 'cancelWorkflowRun'])->name('dashboard.workflow-runs.cancel');
+        Route::post('/dashboard/workflow-steps/{workflowStep}/approve', [DashboardController::class, 'approveWorkflowStep'])->name('dashboard.workflow-steps.approve');
     });
 });

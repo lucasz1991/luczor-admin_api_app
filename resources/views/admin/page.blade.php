@@ -201,38 +201,7 @@ function setChainStatus(list, message, state){
         <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Modell-Telemetrie <span class="text-xs text-slate-500">(30 T)</span></h2><table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Modell</th><th>Task</th><th>Runs</th><th>Erfolg</th><th>Tempo</th><th>Kosten</th></tr></thead><tbody>@foreach($modelTelemetry as $item)<tr class="border-t border-slate-800"><td class="py-2 text-cyan-100">{{ $item->model_id }}</td><td>{{ $item->task_type }}</td><td>{{ $item->runs }}</td><td>{{ number_format($item->success_rate*100,1) }}%</td><td>{{ round($item->avg_latency_ms) }} ms</td><td>${{ number_format($item->total_cost,6) }}</td></tr>@endforeach</tbody></table></section>
         <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Modell-Benchmark <span class="text-xs text-slate-500">(gemessenes Ranking)</span></h2><table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Modell</th><th>Task</th><th>Läufe</th><th>Score</th><th>Erfolg</th><th>Ø Latenz</th><th>Kosten/Erfolg</th></tr></thead><tbody>@forelse($modelRankings as $r)<tr class="border-t border-slate-800"><td class="py-2 text-cyan-100">{{ $r->model_id }}</td><td>{{ $r->task_type }}</td><td>{{ $r->sample_count }}</td><td><div class="flex items-center gap-2"><div class="h-1.5 w-16 rounded bg-slate-800"><div class="h-1.5 rounded" style="width:{{ round(min(1,max(0,$r->score))*100) }}%;background:rgba(34,211,238,.7)"></div></div><span>{{ number_format($r->score,3) }}</span></div></td><td>{{ number_format(($r->success_rate ?? 0)*100,1) }}%</td><td>{{ round($r->avg_latency_ms) }} ms</td><td>${{ number_format($r->cost_per_success ?? 0,6) }}</td></tr>@empty<tr><td colspan="7" class="py-3 text-slate-500">Noch keine Rankings (mind. einige Läufe nötig).</td></tr>@endforelse</tbody></table></section>
     @elseif($page === 'workflows')
-        <div class="grid gap-6 lg:grid-cols-2">
-            <section class="luczor-card p-5"><h2 class="font-semibold">Neuer Workflow (JSON-Definition)</h2>
-                <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.workflows.store') }}">@csrf
-                    <input class="luczor-input" name="name" placeholder="Name" required>
-                    <textarea class="luczor-input font-mono text-xs" name="definition_json" rows="8" placeholder='{"steps":[{"key":"start","type":"manual","routes":{"success":{"type":"end"}}}]}' required></textarea>
-                    <button class="luczor-btn">Speichern &amp; validieren</button>
-                </form>
-                <form class="mt-4 flex items-center gap-2" method="POST" action="{{ route('dashboard.workflows.import') }}" enctype="multipart/form-data">@csrf
-                    <input class="luczor-input" type="file" name="file" accept="application/json,.json" required>
-                    <button class="luczor-btn-secondary">Import</button>
-                </form>
-            </section>
-            <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Freigegebene Task-Bibliothek</h2>
-                <p class="mt-1 text-xs text-slate-500">Nur diese Task-Keys sind in Definitionen erlaubt.</p>
-                <div class="mt-3 flex flex-wrap gap-2">@foreach($taskCatalog as $task)<span class="rounded border border-slate-800 px-2 py-1 text-xs {{ $task['allowed_in_definition'] ? 'text-cyan-100' : 'text-slate-500' }}" title="{{ $task['runner'] }} · {{ $task['kind'] }}{{ $task['allowed_in_definition'] ? '' : ' (geplant)' }}">{{ $task['key'] }}</span>@endforeach</div>
-            </section>
-        </div>
-        <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Workflows</h2>
-            <table class="mt-4 min-w-full text-left text-sm"><thead class="text-xs uppercase text-slate-500"><tr><th>Name</th><th>v</th><th>Status</th><th>Läufe</th><th></th></tr></thead>
-            <tbody class="divide-y divide-slate-800">@foreach($workflowDefinitions as $wf)<tr>
-                <td class="py-2"><b class="text-cyan-100">{{ $wf->name }}</b>@if($wf->is_edit_locked)<span class="ml-2 rounded border border-amber-400/30 px-1.5 text-[10px] text-amber-200">gesperrt</span>@endif</td>
-                <td>{{ $wf->version }}</td><td>{{ $wf->status }}</td><td>{{ $wf->runs_count }}</td>
-                <td class="flex flex-wrap gap-2 py-2">
-                    <form method="POST" action="{{ route('dashboard.workflows.start',$wf) }}">@csrf<button class="luczor-btn-secondary">Start</button></form>
-                    <a class="luczor-btn-secondary" href="{{ route('dashboard.workflows.export',$wf) }}">Export</a>
-                    @unless($wf->is_edit_locked)<form method="POST" action="{{ route('dashboard.workflows.destroy',$wf) }}" data-wf-delete>@csrf @method('DELETE')<button class="text-rose-300">Löschen</button></form>@endunless
-                </td></tr>@endforeach</tbody></table>
-        </section>
-        <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Letzte Läufe</h2>
-            <table class="mt-4 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Workflow</th><th>Status</th><th>Dauer</th><th>Gestartet</th></tr></thead>
-            <tbody>@foreach($workflowRuns as $run)<tr class="border-t border-slate-800"><td class="py-2 text-cyan-100">{{ $run->definition?->name ?? '—' }}</td><td>{{ $run->status }}</td><td>{{ $run->duration_ms ? round($run->duration_ms/1000,1).' s' : '—' }}</td><td>{{ optional($run->started_at)->format('d.m. H:i') ?? '—' }}</td></tr>@endforeach</tbody></table>
-        </section>
+        @include('admin.workflows')
     @elseif($page === 'agents')
         <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Agent-Läufe</h2>
             <table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Ziel / Task</th><th>Status</th><th>Modell</th><th>Aufgaben</th><th>Gestartet</th></tr></thead>
