@@ -969,6 +969,27 @@
         </section>
     </div>
 
+    <section class="mt-6 luczor-card p-5"><h2 class="font-semibold">Vorlagen</h2>
+        <p class="mt-1 text-xs text-slate-500">Katalog-hydrierte Start-Workflows — anlegen und im Board anpassen.</p>
+        <div class="mt-3 grid gap-3 md:grid-cols-3">
+            @foreach($workflowTemplates as $tplKey => $tpl)
+                <div class="flex flex-col rounded border border-slate-800 p-4">
+                    <b class="text-cyan-100">{{ $tpl['name'] }}</b>
+                    <p class="mt-1 flex-1 text-xs text-slate-400">{{ $tpl['description'] }}</p>
+                    <div class="mt-2 flex flex-wrap gap-1">
+                        @foreach(array_slice(array_column($tpl['definition']['steps'], 'type'), 0, 6) as $tplType)
+                            <span class="rounded border border-slate-800 px-1.5 py-0.5 font-mono text-[9px] text-slate-500">{{ $tplType }}</span>
+                        @endforeach
+                    </div>
+                    <form class="mt-3" method="POST" action="{{ route('dashboard.workflows.template') }}">@csrf
+                        <input type="hidden" name="template" value="{{ $tplKey }}">
+                        <button class="luczor-btn-secondary w-full !px-3 !py-1.5 text-xs">Anlegen &amp; im Board öffnen</button>
+                    </form>
+                </div>
+            @endforeach
+        </div>
+    </section>
+
     <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Letzte Läufe</h2>
         <table class="mt-4 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th class="pb-1">Workflow</th><th class="pb-1">Status</th><th class="pb-1">Dauer</th><th class="pb-1">Gestartet</th><th class="pb-1"></th></tr></thead>
         <tbody>@forelse($workflowRuns as $run)<tr class="border-t border-slate-800">

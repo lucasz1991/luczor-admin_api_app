@@ -581,6 +581,7 @@ class DashboardController extends Controller
             'charts' => $page === 'overview' ? $this->dashboardCharts() : [],
             'telemetryCharts' => $page === 'telemetry' ? $this->telemetryCharts() : [],
             'memoryOverview' => $page === 'archives' ? $this->memoryOverview() : [],
+            'memoryGraph' => $page === 'archives' ? $this->memoryGraph() : [],
             'personas' => $page === 'optimizer' ? Persona::orderBy('name')->get() : collect(),
             'agentRuns' => $page === 'agents' ? AgentRun::withCount('tasks')->latest()->limit(30)->get() : collect(),
             'agentEvents' => $page === 'agents' ? AuditEvent::latest()->limit(50)->get() : collect(),
@@ -592,6 +593,7 @@ class DashboardController extends Controller
                 : collect(),
             'workflowRuns' => $page === 'workflows' ? WorkflowRun::with('definition')->latest()->limit(20)->get() : collect(),
             'taskCatalog' => $page === 'workflows' ? WorkflowTaskCatalog::options() : [],
+            'workflowTemplates' => $page === 'workflows' ? \App\Services\WorkflowTemplateService::templates() : [],
             // Board editor (?wf=) and run preview (?run=) context of the workflows page.
             'workflowEditing' => $page === 'workflows' && request()->filled('wf')
                 ? WorkflowDefinition::find((int) request()->query('wf'))
@@ -677,6 +679,17 @@ class DashboardController extends Controller
         $workflowDefinition->delete();
 
         return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow gelöscht.');
+    }
+
+    /** P16 — create a starter workflow from a catalog-hydrated template. */
+    public function createWorkflowFromTemplate(Request $request)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate(['template' => ['required', 'string', 'max:60']]);
+        $definition = app(\App\Services\WorkflowTemplateService::class)->create($request->user()->id, $data['template']);
+
+        return Redirect::route('admin.page', ['page' => 'workflows', 'wf' => $definition->id])
+            ->with('status', 'Vorlage „'.$definition->name.'" angelegt.');
     }
 
     /** Board editor save (P16): replaces the definition, bumps the version. */
@@ -905,6 +918,40 @@ class DashboardController extends Controller
             'providers' => $providers, 'workflow_status' => $workflowStatus,
             'total_runs' => array_sum(array_column($series, 'runs')),
             'total_cost' => round(array_sum(array_column($series, 'cost')), 4),
+        ];
+    }
+
+    /**
+     * SOLL §15 P20 — data for the interactive relationship graph: the most
+     * relevant memories with their project/type anchors (rendered as an inline
+     * SVG tripartite network, no external libraries).
+     */
+    private function memoryGraph(): array
+    {
+        $memories = MemoryLink::query()
+            ->orderByDesc('importance')
+            ->orderByDesc('updated_at')
+            ->limit(60)
+            ->get(['id', 'scope', 'type', 'project_id', 'project_ref_id', 'feature_key', 'importance', 'summary', 'dataset', 'updated_at']);
+        $projects = \App\Models\Project::query()
+            ->whereIn('id', $memories->pluck('project_ref_id')->filter()->unique())
+            ->pluck('name', 'id');
+
+        return [
+            'total' => MemoryLink::count(),
+            'memories' => $memories->map(fn (MemoryLink $m) => [
+                'id' => $m->id,
+                'scope' => $m->scope,
+                'type' => $m->type ?: 'note',
+                'project' => $m->project_ref_id
+                    ? (string) ($projects[$m->project_ref_id] ?? 'Projekt #'.$m->project_ref_id)
+                    : ($m->project_id ?: 'Ohne Projekt'),
+                'feature_key' => $m->feature_key,
+                'importance' => (float) $m->importance,
+                'summary' => Str::limit((string) $m->summary, 220),
+                'dataset' => $m->dataset,
+                'updated_at' => $m->updated_at?->format('d.m.Y H:i'),
+            ])->values()->all(),
         ];
     }
 

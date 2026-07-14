@@ -224,6 +224,7 @@ function setChainStatus(list, message, state){
                 <div class="mt-3 space-y-2">@forelse(($memoryOverview['by_project'] ?? []) as $r)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $r['label'] }}</span><span class="text-slate-500">{{ $r['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $r['pct'] }}%;background:rgba(245,158,11,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">—</p>@endforelse</div>
             </section>
         </div>
+        @include('admin.memory-graph')
     @elseif($page === 'optimizer')
         <div class="grid gap-6 lg:grid-cols-2">
             <section class="luczor-card p-5"><h2 class="font-semibold">Prompt-Version veröffentlichen</h2>
