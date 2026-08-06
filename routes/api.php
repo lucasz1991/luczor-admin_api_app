@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AgentEventController;
 use App\Http\Controllers\Api\V1\AgentRunController;
 use App\Http\Controllers\Api\V1\AgentController;
+use App\Http\Controllers\Api\V1\AppNotificationController;
 use App\Http\Controllers\Api\V1\BootstrapController;
 use App\Http\Controllers\Api\V1\ContextController;
 use App\Http\Controllers\Api\V1\DeviceController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\V1\GithubController;
 use App\Http\Controllers\Api\V1\LlmController;
 use App\Http\Controllers\Api\V1\MemoryController;
 use App\Http\Controllers\Api\V1\McpController;
+use App\Http\Controllers\Api\V1\NotificationPreferenceController;
 use App\Http\Controllers\Api\V1\ProxyController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\PolicyController;
@@ -66,6 +68,8 @@ Route::prefix('v1')->group(function () {
         ->name('api.v1.agent-events.store');
 
     Route::middleware('luczor.api:device.connect')->group(function () {
+        Route::get('/realtime/config', [BootstrapController::class, 'realtime'])
+            ->name('api.v1.realtime.config');
         Route::post('/devices/register', [DeviceController::class, 'register'])->name('api.v1.devices.register');
         Route::post('/devices/heartbeat', [DeviceController::class, 'heartbeat'])->name('api.v1.devices.heartbeat');
         Route::get('/devices/signing-key', [DeviceController::class, 'signingKey'])->name('api.v1.devices.signing-key');
@@ -76,6 +80,15 @@ Route::prefix('v1')->group(function () {
         Route::post('/devices/jobs/{publicId}/start', [DeviceController::class, 'startJob'])->name('api.v1.devices.jobs.start');
         Route::post('/devices/jobs/{publicId}/complete', [DeviceController::class, 'completeJob'])->name('api.v1.devices.jobs.complete');
         Route::post('/reverb/auth', ReverbAuthController::class)->name('api.v1.reverb.auth');
+        Route::get('/notifications', [AppNotificationController::class, 'index'])->name('api.v1.notifications.index');
+        Route::post('/notifications/read-all', [AppNotificationController::class, 'readAll'])->name('api.v1.notifications.read-all');
+        Route::post('/notifications/{notificationId}/read', [AppNotificationController::class, 'read'])
+            ->where('notificationId', '[A-Za-z0-9][A-Za-z0-9:._-]{0,159}')
+            ->name('api.v1.notifications.read');
+        Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show'])
+            ->name('api.v1.notification-preferences.show');
+        Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update'])
+            ->name('api.v1.notification-preferences.update');
     });
     Route::get('/devices', [DeviceController::class, 'index'])
         ->middleware('luczor.api:device.jobs.read')->name('api.v1.devices.index');

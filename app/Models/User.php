@@ -49,6 +49,16 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(OAuthConnection::class);
     }
 
+    public function appNotifications()
+    {
+        return $this->hasMany(AppNotification::class);
+    }
+
+    public function notificationPreferences()
+    {
+        return $this->hasMany(NotificationPreference::class);
+    }
+
     public function isAdmin(): bool
     {
         return in_array($this->role, ['admin', 'superadmin'], true);

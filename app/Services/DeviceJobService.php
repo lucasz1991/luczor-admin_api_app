@@ -8,7 +8,9 @@ use App\Models\Device;
 use App\Models\DeviceJob;
 use App\Models\WorkflowStep;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /** Creates the only permitted class of remote device work: signed, fixed profiles. */
 class DeviceJobService
@@ -59,6 +61,7 @@ class DeviceJobService
         if (config('queue.default') !== 'sync') {
             DeviceJobCreated::dispatch($job->fresh(['device']));
         }
+        $this->notifyDeviceJob($job, $device, $requiresApproval);
 
         $audit->record([
             'actor_user_id' => $actorUserId,
@@ -117,6 +120,7 @@ class DeviceJobService
         if (config('queue.default') !== 'sync') {
             DeviceJobCreated::dispatch($job->fresh(['device']));
         }
+        $this->notifyDeviceJob($job, $device, $requiresApproval);
 
         $audit->record([
             'actor_user_id' => $step->user_id,
@@ -132,5 +136,35 @@ class DeviceJobService
         ]);
 
         return $job->fresh(['device']);
+    }
+
+    private function notifyDeviceJob(DeviceJob $job, Device $device, bool $requiresApproval): void
+    {
+        try {
+            app(AppNotificationService::class)->send(
+                user: (int) $device->user_id,
+                notificationId: 'device-job:'.$job->public_id,
+                title: $requiresApproval ? 'Freigabe erforderlich' : 'Neue Geräteaktion',
+                body: $requiresApproval
+                    ? 'Eine Aktion wartet auf deine Freigabe.'
+                    : 'Eine neue Aktion ist für dieses Gerät verfügbar.',
+                category: 'device',
+                data: [
+                    'device_job_id' => $job->public_id,
+                    'status' => $job->status,
+                    'tool_profile' => $job->tool_profile,
+                ],
+                priority: $requiresApproval ? 'high' : 'normal',
+                expiresAt: $job->expires_at,
+                targetDevice: $device,
+            );
+        } catch (Throwable $exception) {
+            // A notification outage must never prevent the signed job itself.
+            Log::notice('Luczor device notification could not be persisted or queued.', [
+                'notification_id' => 'device-job:'.$job->public_id,
+                'user_id' => $device->user_id,
+                'error_class' => $exception::class,
+            ]);
+        }
     }
 }

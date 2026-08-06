@@ -28,6 +28,9 @@ return [
         'public_port' => (int) env('LUCZOR_REVERB_PUBLIC_PORT', parse_url(env('APP_URL', ''), PHP_URL_PORT) ?: 443),
         'public_scheme' => env('LUCZOR_REVERB_PUBLIC_SCHEME', parse_url(env('APP_URL', ''), PHP_URL_SCHEME) ?: 'https'),
     ],
+    'notifications' => [
+        'queue' => env('LUCZOR_NOTIFICATION_QUEUE', 'default'),
+    ],
 
     // Cognee memory engine (server-side). Empty base_url => memory disabled,
     // the sync archive still works. See App\Services\LuczorMemoryService.

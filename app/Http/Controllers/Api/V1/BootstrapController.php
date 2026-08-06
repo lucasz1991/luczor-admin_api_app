@@ -25,12 +25,7 @@ class BootstrapController extends Controller
                 'email' => $request->user()?->email,
             ],
             'runtime_settings' => $this->runtimeSettingsPayload(),
-            'realtime' => [
-                'key' => config('broadcasting.connections.pusher.key'),
-                'host' => config('luczor.realtime.public_host'),
-                'port' => (int) config('luczor.realtime.public_port'),
-                'scheme' => config('luczor.realtime.public_scheme'),
-            ],
+            'realtime' => $this->realtimePayload(),
             // Model/provider selection is an admin-only server concern.
             'routing' => ['managed_by' => 'server', 'client_model_selection' => false],
         ]);
@@ -39,6 +34,7 @@ class BootstrapController extends Controller
     public function modelProfiles(Request $request)
     {
         abort_unless($request->user()?->isAdmin(), 403);
+
         return response()->json([
             'data' => ModelProfile::query()
                 ->where('active', true)
@@ -55,6 +51,13 @@ class BootstrapController extends Controller
         ]);
     }
 
+    public function realtime()
+    {
+        return response()->json([
+            'data' => $this->realtimePayload(),
+        ]);
+    }
+
     private function runtimeSettingsPayload(): array
     {
         return [
@@ -65,4 +68,15 @@ class BootstrapController extends Controller
         ];
     }
 
+    /** @return array{key: ?string, host: ?string, port: int, scheme: ?string} */
+    private function realtimePayload(): array
+    {
+        return [
+            'key' => config('broadcasting.connections.reverb.key')
+                ?: config('broadcasting.connections.pusher.key'),
+            'host' => config('luczor.realtime.public_host'),
+            'port' => (int) config('luczor.realtime.public_port'),
+            'scheme' => config('luczor.realtime.public_scheme'),
+        ];
+    }
 }

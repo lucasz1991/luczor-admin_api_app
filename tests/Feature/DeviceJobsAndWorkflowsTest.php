@@ -38,6 +38,11 @@ class DeviceJobsAndWorkflowsTest extends TestCase
         $this->assertSame('approval_required', $job['status']);
         $this->assertNotEmpty($job['signature']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'device_job.created', 'actor_user_id' => $user->id]);
+        $this->assertDatabaseHas('app_notifications', [
+            'user_id' => $user->id,
+            'notification_id' => 'device-job:'.$job['public_id'],
+            'category' => 'device',
+        ]);
 
         $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/devices/jobs/next?client_id=desktop-1')
             ->assertOk()
@@ -107,6 +112,10 @@ class DeviceJobsAndWorkflowsTest extends TestCase
         $this->assertSame('awaiting_approval', $review['status']);
         $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/workflow-runs/'.$run['id'].'/cancel', [])
             ->assertOk()->assertJsonPath('data.status', 'cancelled');
+        $this->assertDatabaseHas('app_notifications', [
+            'notification_id' => 'workflow-run:'.$run['public_id'],
+            'category' => 'workflow',
+        ]);
     }
 
     public function test_safe_context_workflow_step_is_queued_and_completed_automatically(): void
@@ -142,6 +151,7 @@ class DeviceJobsAndWorkflowsTest extends TestCase
     {
         $user = User::factory()->create();
         $minted = ApiKey::mint(['user_id' => $user->id, 'name' => 'Device', 'abilities' => $abilities, 'active' => true]);
+
         return [$user, $minted['plain']];
     }
 }

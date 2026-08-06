@@ -28,8 +28,14 @@ class ReverbAuthController extends Controller
         abort_unless($session, 401, 'Device session expired.');
         $session->update(['last_seen_at' => now()]);
 
-        $key = (string) config('broadcasting.connections.pusher.key');
-        $secret = (string) config('broadcasting.connections.pusher.secret');
+        $key = (string) (
+            config('broadcasting.connections.reverb.key')
+            ?: config('broadcasting.connections.pusher.key')
+        );
+        $secret = (string) (
+            config('broadcasting.connections.reverb.secret')
+            ?: config('broadcasting.connections.pusher.secret')
+        );
         abort_unless($key !== '' && $secret !== '', 503, 'Reverb credentials are not configured.');
         $signature = hash_hmac('sha256', $data['socket_id'].':'.$data['channel_name'], $secret);
 

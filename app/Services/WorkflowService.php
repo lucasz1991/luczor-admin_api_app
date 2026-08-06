@@ -2,15 +2,18 @@
 
 namespace App\Services;
 
+use App\Jobs\ExecuteWorkflowStep;
+use App\Jobs\MonitorWorkflowStep;
 use App\Models\DeviceJob;
+use App\Models\Setting;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
 use App\Models\WorkflowRunArtifact;
 use App\Models\WorkflowStep;
-use App\Jobs\ExecuteWorkflowStep;
-use App\Jobs\MonitorWorkflowStep;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /** Persistent dependency scheduler. It never executes arbitrary shell code. */
 class WorkflowService
@@ -21,7 +24,7 @@ class WorkflowService
         $steps = $this->assertDefinition($definition->definition ?? []);
         // P27 — a server-wide sandbox setting forces every run into sandbox mode;
         // an explicit per-run flag can only add to that, never override it off.
-        $sandbox = $sandbox || \App\Models\Setting::getValue('sandbox_enabled', false) === true;
+        $sandbox = $sandbox || Setting::getValue('sandbox_enabled', false) === true;
 
         return DB::transaction(function () use ($definition, $input, $agentRunId, $steps, $sandbox) {
             $run = WorkflowRun::create([
@@ -107,6 +110,7 @@ class WorkflowService
                 $this->scheduleMonitor($parent, 1);
             }
         }
+        $this->notifyTerminalRun($result);
 
         return $result;
     }
@@ -122,7 +126,10 @@ class WorkflowService
         // P13 — outcome-based routing (branch / loop / terminate) if declared.
         $routed = $this->applyRoutes($step->fresh(), WorkflowResultNormalizer::outcome($output, 'success'));
 
-        return $routed ?? $this->advance($step->run);
+        $result = $routed ?? $this->advance($step->run);
+        $this->notifyTerminalRun($result);
+
+        return $result;
     }
 
     public function fail(WorkflowStep $step, string $error, string $outcome = 'failed'): WorkflowRun
@@ -144,6 +151,8 @@ class WorkflowService
         if (! $retry) {
             $routed = $this->applyRoutes($step->fresh(), $outcome);
             if ($routed) {
+                $this->notifyTerminalRun($routed);
+
                 return $routed;
             }
         }
@@ -297,7 +306,7 @@ class WorkflowService
      * SOLL §14 P15 — record a step artifact (screenshot/DOM/log/json) with
      * secret-masked metadata for run visualization.
      *
-     * @param array<string,mixed> $data
+     * @param  array<string,mixed>  $data
      */
     public function recordArtifact(WorkflowStep $step, array $data): WorkflowRunArtifact
     {
@@ -320,7 +329,7 @@ class WorkflowService
     /**
      * Recursively redact secret-ish keys before persisting to logs/artifacts.
      *
-     * @param array<mixed,mixed> $data
+     * @param  array<mixed,mixed>  $data
      * @return array<mixed,mixed>
      */
     public function maskSecrets(array $data): array
@@ -405,7 +414,7 @@ class WorkflowService
 
     public function cancel(WorkflowRun $run): WorkflowRun
     {
-        return DB::transaction(function () use ($run) {
+        $result = DB::transaction(function () use ($run) {
             $run = WorkflowRun::query()->lockForUpdate()->findOrFail($run->id);
             if (! in_array($run->status, ['completed', 'failed', 'cancelled'], true)) {
                 $run->update(['status' => 'cancelled', 'finished_at' => now()]);
@@ -413,8 +422,60 @@ class WorkflowService
                     'status' => 'cancelled', 'finished_at' => now(),
                 ]);
             }
+
             return $run->fresh(['steps', 'definition']);
         });
+        $this->notifyTerminalRun($result);
+
+        return $result;
+    }
+
+    private function notifyTerminalRun(WorkflowRun $run): void
+    {
+        if (! in_array($run->status, ['completed', 'failed', 'cancelled'], true)
+            || $run->parent_workflow_run_id) {
+            return;
+        }
+
+        $title = match ($run->status) {
+            'completed' => 'Workflow abgeschlossen',
+            'failed' => 'Workflow fehlgeschlagen',
+            default => 'Workflow abgebrochen',
+        };
+        $body = $run->definition?->name
+            ? '„'.$run->definition->name.'“ ist '.$this->workflowStatusLabel($run->status).'.'
+            : 'Der Workflow ist '.$this->workflowStatusLabel($run->status).'.';
+
+        try {
+            app(AppNotificationService::class)->send(
+                user: (int) $run->user_id,
+                notificationId: 'workflow-run:'.$run->public_id,
+                title: $title,
+                body: $body,
+                category: 'workflow',
+                data: [
+                    'workflow_run_id' => $run->public_id,
+                    'workflow_definition_id' => $run->workflow_definition_id,
+                    'status' => $run->status,
+                ],
+                priority: $run->status === 'failed' ? 'high' : 'normal',
+            );
+        } catch (Throwable $exception) {
+            Log::notice('Luczor workflow notification could not be persisted or queued.', [
+                'notification_id' => 'workflow-run:'.$run->public_id,
+                'user_id' => $run->user_id,
+                'error_class' => $exception::class,
+            ]);
+        }
+    }
+
+    private function workflowStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'completed' => 'abgeschlossen',
+            'failed' => 'fehlgeschlagen',
+            default => 'abgebrochen',
+        };
     }
 
     /** @return array<int,array{key:string,type:string,depends_on:array<int,string>,requires_approval:bool,max_attempts:int,payload:array<string,mixed>}> */

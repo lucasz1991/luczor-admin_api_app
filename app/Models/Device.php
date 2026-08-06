@@ -19,4 +19,5 @@ class Device extends Model
     public function user() { return $this->belongsTo(User::class); }
     public function apiKey() { return $this->belongsTo(ApiKey::class); }
     public function jobs() { return $this->hasMany(DeviceJob::class); }
+    public function targetedNotifications() { return $this->hasMany(AppNotification::class, 'target_device_id'); }
 }
