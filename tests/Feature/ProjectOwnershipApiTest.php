@@ -32,6 +32,7 @@ class ProjectOwnershipApiTest extends TestCase
     {
         $user = User::factory()->create();
         $minted = ApiKey::mint(['user_id' => $user->id, 'name' => 'Project client', 'abilities' => $abilities, 'active' => true]);
+
         return [$user, $minted['plain']];
     }
 }

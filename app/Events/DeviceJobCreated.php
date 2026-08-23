@@ -13,9 +13,7 @@ class DeviceJobCreated implements ShouldBroadcast
     use Dispatchable;
     use SerializesModels;
 
-    public function __construct(public DeviceJob $job)
-    {
-    }
+    public function __construct(public DeviceJob $job) {}
 
     public function broadcastOn(): array
     {

@@ -63,5 +63,4 @@ class GitFreshnessService
             ->values()
             ->all();
     }
-
 }

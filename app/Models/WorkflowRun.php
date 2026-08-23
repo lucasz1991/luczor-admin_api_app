@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WorkflowRun extends Model
 {
@@ -12,12 +14,28 @@ class WorkflowRun extends Model
         'current_workflow_step_id', 'status', 'sandbox', 'input', 'output', 'context',
         'started_at', 'finished_at', 'duration_ms',
     ];
+
     protected $casts = [
         'sandbox' => 'boolean',
         'input' => 'array', 'output' => 'array', 'context' => 'array',
         'started_at' => 'datetime', 'finished_at' => 'datetime', 'duration_ms' => 'integer',
     ];
-    public function steps() { return $this->hasMany(WorkflowStep::class); }
-    public function definition() { return $this->belongsTo(WorkflowDefinition::class, 'workflow_definition_id'); }
-    public function artifacts() { return $this->hasMany(WorkflowRunArtifact::class); }
+
+    /** @return HasMany<WorkflowStep, $this> */
+    public function steps(): HasMany
+    {
+        return $this->hasMany(WorkflowStep::class);
+    }
+
+    /** @return BelongsTo<WorkflowDefinition, $this> */
+    public function definition(): BelongsTo
+    {
+        return $this->belongsTo(WorkflowDefinition::class, 'workflow_definition_id');
+    }
+
+    /** @return HasMany<WorkflowRunArtifact, $this> */
+    public function artifacts(): HasMany
+    {
+        return $this->hasMany(WorkflowRunArtifact::class);
+    }
 }

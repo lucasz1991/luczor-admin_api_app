@@ -5,7 +5,7 @@ namespace Facades\Livewire\Features\SupportFileUploads;
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @see \Livewire\Features\SupportFileUploads\GenerateSignedUploadUrl
+ * @mixin \Livewire\Features\SupportFileUploads\GenerateSignedUploadUrl
  */
 class GenerateSignedUploadUrl extends Facade
 {

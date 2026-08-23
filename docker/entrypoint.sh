@@ -16,5 +16,7 @@ export GITHUB_CLIENT_SECRET="$(read_secret github_client_secret)"
 export GITHUB_WEBHOOK_SECRET="$(read_secret github_webhook_secret)"
 export REVERB_APP_SECRET="$(read_secret reverb_app_secret)"
 export PUSHER_APP_SECRET="$REVERB_APP_SECRET"
+export GRAPHIFY_API_KEY="$(read_secret internal_service_key)"
+export COGNEE_API_KEY="$(read_secret cognee_api_key)"
 
 exec "$@"

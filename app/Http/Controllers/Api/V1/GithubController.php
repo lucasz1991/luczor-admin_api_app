@@ -9,11 +9,10 @@ use App\Models\Repository;
 use App\Models\RepositoryCommit;
 use App\Services\ApiActor;
 use App\Services\AuditLogger;
+use App\Services\ContextCache;
 use App\Services\GithubService;
 use App\Services\GitWritePolicy;
-use App\Services\GraphContextService;
 use Illuminate\Http\Request;
-use App\Services\ContextCache;
 
 class GithubController extends Controller
 {
@@ -55,6 +54,7 @@ class GithubController extends Controller
             'event_type' => 'github.branch_created', 'tool' => 'github.branches',
             'risk_level' => 'normal', 'outcome' => 'completed', 'payload' => ['repository' => $repository->full_name, 'branch' => $data['name']],
         ]);
+
         return response()->json(['data' => $result], 201);
     }
 
@@ -73,6 +73,7 @@ class GithubController extends Controller
             'event_type' => 'github.pull_request_created', 'tool' => 'github.pull_requests',
             'risk_level' => 'normal', 'outcome' => 'completed', 'payload' => ['repository' => $repository->full_name, 'number' => $result['number'] ?? null],
         ]);
+
         return response()->json(['data' => $result], 201);
     }
 
@@ -94,10 +95,11 @@ class GithubController extends Controller
             'event_type' => 'github.file_written', 'tool' => 'github.files', 'risk_level' => 'critical',
             'outcome' => 'completed', 'payload' => ['repository' => $repository->full_name, 'branch' => $data['branch'], 'path' => $data['path']],
         ]);
+
         return response()->json(['data' => $result], 201);
     }
 
-    public function webhook(Request $request, AuditLogger $audit, ContextCache $contextCache, GraphContextService $graph)
+    public function webhook(Request $request, AuditLogger $audit, ContextCache $contextCache)
     {
         $raw = $request->getContent();
         $signature = (string) $request->header('X-Hub-Signature-256');
@@ -138,14 +140,6 @@ class GithubController extends Controller
                 }
                 $repository->update(['last_commit_sha' => $head]);
                 $contextCache->invalidate((int) $repository->user_id, (string) $repository->id, $branch ?: null);
-                $graph->index([
-                    'user_id' => (int) $repository->user_id,
-                    'repo_id' => (string) $repository->id,
-                    'branch' => $branch ?: $repository->default_branch,
-                    'commit_sha' => $head,
-                    'changed_files' => $commit->files()->pluck('path')->all(),
-                    'symbols' => [],
-                ]);
             }
         }
         $delivery->update(['status' => 'processed', 'processed_at' => now()]);
@@ -154,6 +148,7 @@ class GithubController extends Controller
             'event_type' => 'github.webhook', 'tool' => 'github.webhook', 'outcome' => 'processed',
             'payload' => ['delivery_id' => $deliveryId, 'event' => $event, 'repository' => $fullName],
         ]);
+
         return response()->json(['ok' => true]);
     }
 

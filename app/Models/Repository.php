@@ -23,6 +23,13 @@ class Repository extends Model
         return $this->belongsTo(Project::class);
     }
 
-    public function branches() { return $this->hasMany(RepositoryBranch::class); }
-    public function commits() { return $this->hasMany(RepositoryCommit::class); }
+    public function branches()
+    {
+        return $this->hasMany(RepositoryBranch::class);
+    }
+
+    public function commits()
+    {
+        return $this->hasMany(RepositoryCommit::class);
+    }
 }

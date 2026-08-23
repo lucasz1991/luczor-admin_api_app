@@ -12,11 +12,20 @@ class WorkflowStep extends Model
         'output', 'logs', 'error', 'available_at', 'started_at', 'finished_at', 'duration_ms',
         'external_run_type', 'external_run_id',
     ];
+
     protected $casts = [
         'requires_approval' => 'boolean', 'depends_on' => 'array', 'payload' => 'array',
         'output' => 'array', 'logs' => 'array', 'duration_ms' => 'integer',
         'available_at' => 'datetime', 'started_at' => 'datetime', 'finished_at' => 'datetime',
     ];
-    public function run() { return $this->belongsTo(WorkflowRun::class, 'workflow_run_id'); }
-    public function artifacts() { return $this->hasMany(WorkflowRunArtifact::class); }
+
+    public function run()
+    {
+        return $this->belongsTo(WorkflowRun::class, 'workflow_run_id');
+    }
+
+    public function artifacts()
+    {
+        return $this->hasMany(WorkflowRunArtifact::class);
+    }
 }

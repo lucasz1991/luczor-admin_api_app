@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\LuczorAgentEventArchive;
 use App\Models\LlmRun;
+use App\Models\LuczorAgentEventArchive;
 use App\Models\ToolCall;
 use App\Services\ApiActor;
 use Carbon\Carbon;
@@ -50,7 +50,9 @@ class AgentEventController extends Controller
                 'finished_at' => $event->occurred_at_client,
                 'result_hash' => hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
             ]);
-            if ($run) $run->update(['tool_call_count' => $run->tool_call_count + 1]);
+            if ($run) {
+                $run->update(['tool_call_count' => $run->tool_call_count + 1]);
+            }
         }
 
         return response()->json([
@@ -67,6 +69,7 @@ class AgentEventController extends Controller
 
         if (is_numeric($value)) {
             $number = (int) $value;
+
             return $number > 9999999999 ? Carbon::createFromTimestampMs($number) : Carbon::createFromTimestamp($number);
         }
 

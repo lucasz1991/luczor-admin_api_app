@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Services\ContextController as ContextService;
-use App\Services\LuczorMemoryService;
 use App\Models\ContextArtifact;
 use App\Services\ApiActor;
+use App\Services\ContextController as ContextService;
+use App\Services\MemoryOrchestrator;
 use Illuminate\Http\Request;
 
 class ContextController extends Controller
@@ -45,15 +45,17 @@ class ContextController extends Controller
         return $this->ask($request, $context);
     }
 
-    public function memory(Request $request, LuczorMemoryService $memory)
+    public function memory(Request $request, MemoryOrchestrator $memory)
     {
         $data = $request->validate([
             'query' => ['nullable', 'string', 'max:2000'],
             'project_id' => ['nullable', 'string', 'max:120'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:20'],
         ]);
+
         return response()->json(['data' => $memory->recall($data['query'] ?? '', 'project', [
             'user_id' => $request->user()?->id,
+            'tenant_id' => $request->user()?->tenant_id,
             'project_id' => $data['project_id'] ?? null,
         ], (int) ($data['limit'] ?? 6))]);
     }
@@ -62,6 +64,7 @@ class ContextController extends Controller
     {
         $artifact = ContextArtifact::query()->where('context_id', $contextId)->firstOrFail();
         $actor->assertOwned($request, $artifact);
+
         return response()->json(['data' => [
             'context_id' => $artifact->context_id,
             'budget' => $artifact->budget,
@@ -70,7 +73,7 @@ class ContextController extends Controller
         ]]);
     }
 
-    public function updateMemory(Request $request, LuczorMemoryService $memory, ApiActor $actor)
+    public function updateMemory(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
     {
         $data = $request->validate([
             'content' => ['required', 'string', 'max:8000'],
@@ -79,13 +82,17 @@ class ContextController extends Controller
             'importance' => ['nullable', 'numeric', 'min:0', 'max:1'],
         ]);
         $project = $actor->project($request, $data['project_id'] ?? null);
-        $link = $memory->remember($data + [
+        $result = $memory->remember($data + [
             'user_id' => $actor->userId($request),
+            'tenant_id' => $request->user()?->tenant_id,
             'project_ref_id' => $project?->id,
             'scope' => 'project',
             'visibility' => 'syncable',
             'type' => 'context_update',
+            'write_intent' => 'confirmed',
+            'source_type' => 'user',
         ]);
-        return response()->json(['data' => $link], 201);
+
+        return response()->json(['data' => $result->toArray()], 201);
     }
 }

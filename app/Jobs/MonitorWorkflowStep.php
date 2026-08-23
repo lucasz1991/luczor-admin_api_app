@@ -21,9 +21,7 @@ class MonitorWorkflowStep implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public int $workflowRunId)
-    {
-    }
+    public function __construct(public int $workflowRunId) {}
 
     public function handle(WorkflowService $workflows): void
     {

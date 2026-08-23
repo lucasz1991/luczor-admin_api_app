@@ -7,7 +7,6 @@ use App\Models\LlmRun;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\WorkflowStep;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -19,10 +18,9 @@ class WorkflowStepExecutor
         private ContextController $context,
         private EvaluationService $evaluator,
         private AuditLogger $audit,
-        private LuczorMemoryService $memory,
+        private MemoryOrchestrator $memory,
         private DeviceJobService $deviceJobs,
-    ) {
-    }
+    ) {}
 
     public function execute(int $stepId): void
     {
@@ -178,11 +176,14 @@ class WorkflowStepExecutor
         $content = trim((string) ($payload['content'] ?? ''));
         abort_if($content === '', 422, 'memory.remember requires payload.content.');
         $scope = (string) ($payload['scope'] ?? 'project');
-        if (! in_array($scope, ['private', 'project', 'skill', 'agent'], true)) {
+        if (in_array($scope, ['device', 'private'], true)) {
+            throw new \RuntimeException('Device-local memory cannot be written by a server workflow.');
+        }
+        if (! in_array($scope, ['project', 'skill', 'agent'], true)) {
             $scope = 'project';
         }
         $project = $step->run->project_id ? Project::find($step->run->project_id) : null;
-        $link = $this->memory->remember([
+        $result = $this->memory->remember([
             'user_id' => $step->user_id,
             'content' => mb_substr($content, 0, 8000),
             'scope' => $scope,
@@ -190,10 +191,13 @@ class WorkflowStepExecutor
             'project_ref_id' => $project?->id,
             'type' => Str::limit((string) ($payload['type'] ?? 'workflow'), 60, ''),
             'importance' => max(0, min(1, (float) ($payload['importance'] ?? 0.5))),
+            'write_intent' => (string) ($payload['write_intent'] ?? 'inferred'),
+            'retention' => (string) ($payload['retention'] ?? 'durable'),
+            'source_type' => 'workflow',
             'meta' => ['workflow_run' => $step->run->public_id, 'step_key' => $step->step_key],
         ]);
 
-        return ['memory_link_id' => $link->id, 'external_id' => $link->external_id, 'dataset' => $link->dataset];
+        return array_merge($result->toArray(), ['dataset' => $result->link?->dataset]);
     }
 
     /** P15b — recall memories into the step output AND the run's context store. @return array<string,mixed> */
@@ -203,7 +207,10 @@ class WorkflowStepExecutor
         $query = trim((string) ($payload['query'] ?? ''));
         $topK = max(1, min(20, (int) ($payload['top_k'] ?? 6)));
         $scope = (string) ($payload['scope'] ?? 'project');
-        if (! in_array($scope, ['private', 'project', 'skill', 'agent'], true)) {
+        if (in_array($scope, ['device', 'private'], true)) {
+            throw new \RuntimeException('Device-local memory cannot be read by a server workflow.');
+        }
+        if (! in_array($scope, ['project', 'skill', 'agent'], true)) {
             $scope = 'project';
         }
         $project = $step->run->project_id ? Project::find($step->run->project_id) : null;

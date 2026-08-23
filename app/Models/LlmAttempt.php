@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class LlmAttempt extends Model
 {
@@ -22,5 +23,9 @@ class LlmAttempt extends Model
         'started_at' => 'datetime', 'first_token_at' => 'datetime', 'finished_at' => 'datetime',
     ];
 
-    public function run() { return $this->belongsTo(LlmRun::class, 'llm_run_id'); }
+    /** @return BelongsTo<LlmRun, $this> */
+    public function run(): BelongsTo
+    {
+        return $this->belongsTo(LlmRun::class, 'llm_run_id');
+    }
 }

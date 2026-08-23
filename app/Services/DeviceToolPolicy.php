@@ -68,7 +68,7 @@ class DeviceToolPolicy
      * P15b — bundle payload for a workflow client task: only catalogued client
      * tasks, bounded params, plus the workflow back-reference for the device.
      *
-     * @param array<string,mixed> $payload
+     * @param  array<string,mixed>  $payload
      * @return array<string,mixed>
      */
     private function workflowTask(array $payload): array
@@ -102,6 +102,7 @@ class DeviceToolPolicy
             ->get()
             ->first(function (Policy $candidate) use ($device, $tool) {
                 $rules = $candidate->rules ?? [];
+
                 return ($rules['allow_unattended'] ?? false) === true
                     && in_array($tool, (array) ($rules['tools'] ?? []), true)
                     && in_array($device->device_id, (array) ($rules['device_ids'] ?? []), true);
@@ -113,12 +114,14 @@ class DeviceToolPolicy
     private function coordinate(mixed $value): int
     {
         abort_unless(is_numeric($value) && (int) $value >= -100000 && (int) $value <= 100000, 422, 'Invalid coordinate.');
+
         return (int) $value;
     }
 
     private function string(mixed $value, int $max): string
     {
         abort_unless(is_string($value) && trim($value) !== '' && mb_strlen($value) <= $max, 422, 'Invalid text payload.');
+
         return $value;
     }
 
@@ -126,6 +129,7 @@ class DeviceToolPolicy
     {
         $key = strtolower($this->string($value, 20));
         abort_unless(in_array($key, ['enter', 'return', 'tab', 'escape', 'esc', 'space', 'backspace', 'delete', 'del', 'up', 'down', 'left', 'right', 'home', 'end'], true) || mb_strlen($key) === 1, 422, 'Invalid key.');
+
         return $key;
     }
 
@@ -134,6 +138,7 @@ class DeviceToolPolicy
         $url = $this->string($value, 2048);
         $scheme = parse_url($url, PHP_URL_SCHEME);
         abort_unless(in_array($scheme, ['https', 'http'], true), 422, 'Only http(s) URLs may be opened remotely.');
+
         return $url;
     }
 }

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 class WorkflowDefinition extends Model
 {
     protected $fillable = ['user_id', 'project_id', 'name', 'version', 'status', 'is_locked', 'definition'];
+
     protected $casts = ['definition' => 'array', 'is_locked' => 'boolean'];
 
     protected static function booted(): void

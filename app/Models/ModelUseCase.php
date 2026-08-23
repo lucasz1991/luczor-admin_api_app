@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ModelUseCase extends Model
 {
@@ -31,7 +32,8 @@ class ModelUseCase extends Model
         'review_enabled' => 'boolean',
     ];
 
-    public function entries()
+    /** @return HasMany<ModelUseCaseEntry, $this> */
+    public function entries(): HasMany
     {
         return $this->hasMany(ModelUseCaseEntry::class)->orderBy('sort_order');
     }

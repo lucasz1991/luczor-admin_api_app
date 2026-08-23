@@ -16,9 +16,7 @@ class ExecuteWorkflowStep implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public int $workflowStepId)
-    {
-    }
+    public function __construct(public int $workflowStepId) {}
 
     public function handle(WorkflowStepExecutor $executor): void
     {

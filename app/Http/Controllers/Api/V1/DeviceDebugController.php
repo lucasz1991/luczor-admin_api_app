@@ -18,9 +18,12 @@ class DeviceDebugController extends Controller
             ->where('device_id', $device->id)->where('status', 'pending')
             ->oldest('requested_at')->first();
 
-        if (! $debug) return response()->json(['data' => null]);
+        if (! $debug) {
+            return response()->json(['data' => null]);
+        }
 
         $debug->update(['status' => 'collecting', 'claimed_at' => now()]);
+
         return response()->json(['data' => ['id' => $debug->public_id, 'requested_at' => $debug->requested_at?->toIso8601String()]]);
     }
 
@@ -47,6 +50,7 @@ class DeviceDebugController extends Controller
     private function device(Request $request, ApiActor $actor, string $clientId): Device
     {
         $deviceId = $actor->deviceId($request, $clientId, true);
+
         return Device::query()->where('device_id', $deviceId)
             ->where('user_id', $actor->userId($request))->whereNull('revoked_at')->firstOrFail();
     }

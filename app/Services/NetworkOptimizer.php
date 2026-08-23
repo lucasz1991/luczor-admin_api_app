@@ -34,6 +34,8 @@ class NetworkOptimizer
     public function backoff(NetworkPolicy $policy, int $attempt): void
     {
         $base = max(0, (int) $policy->backoff_ms);
-        if ($base > 0) usleep(($base * (2 ** max(0, $attempt - 1)) + random_int(0, 100)) * 1000);
+        if ($base > 0) {
+            usleep(($base * (2 ** max(0, $attempt - 1)) + random_int(0, 100)) * 1000);
+        }
     }
 }

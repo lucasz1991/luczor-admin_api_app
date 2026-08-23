@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class AdvanceWorkflowRuns extends Command
 {
     protected $signature = 'luczor:advance-workflows {--limit=250 : Maximum active workflow runs to scan}';
+
     protected $description = 'Advance due workflow steps and enqueue safe automated steps.';
 
     public function handle(WorkflowService $workflows): int
@@ -27,6 +28,7 @@ class AdvanceWorkflowRuns extends Command
                 $count++;
             });
         $this->info("Advanced {$count} workflow run(s).");
+
         return self::SUCCESS;
     }
 }

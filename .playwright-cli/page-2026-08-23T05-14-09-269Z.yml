@@ -1,0 +1,674 @@
+- generic [ref=f1e1]:
+  - link "Zum Inhalt springen" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=f1e3]:
+    - banner [ref=f1e4]:
+      - link "Luczor Dashboard" [ref=f1e6] [cursor=pointer]:
+        - /url: http://127.0.0.1:8011/dashboard
+        - generic [ref=f1e7]: LZ
+        - generic:
+          - generic: Luczor
+          - generic: Admin Control Plane
+      - button "Navigation öffnen oder schließen" [expanded] [ref=f1e737] [cursor=pointer]
+      - generic [ref=f1e8]:
+        - generic [ref=f1e9]: Admin Control
+        - generic [ref=f1e12]:
+          - link "Server Settings" [ref=f1e13] [cursor=pointer]:
+            - /url: http://127.0.0.1:8011/admin/settings
+          - button "LA" [ref=f1e742] [cursor=pointer]
+    - button "Navigation schließen" [ref=f1e743] [cursor=pointer]
+    - complementary "Hauptnavigation" [ref=f1e25]:
+      - navigation "Luczor Navigation" [ref=f1e26]:
+        - region [ref=f1e27]:
+          - heading "System" [level=2] [ref=f1e695]
+          - generic [ref=f1e28]:
+            - link "Übersicht" [active] [ref=f1e29] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/overview
+            - link "Provider & Preise" [ref=f1e35] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/providers
+            - link "Modelle & Routing" [ref=f1e39] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/models
+        - region [ref=f1e45]:
+          - heading "Optimierung" [level=2] [ref=f1e699]
+          - generic [ref=f1e46]:
+            - link "Telemetrie & Kosten" [ref=f1e47] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/telemetry
+            - link "Prompt & Kontext" [ref=f1e51] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/optimizer
+            - link "Experimente" [ref=f1e56] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/experiments
+        - region [ref=f1e60]:
+          - heading "Automation" [level=2] [ref=f1e703]
+          - generic [ref=f1e61]:
+            - link "Workflows" [ref=f1e62] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/workflows
+            - link "Agenten & Ereignisse" [ref=f1e68] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/agents
+        - region [ref=f1e74]:
+          - heading "Betrieb" [level=2] [ref=f1e706]
+          - generic [ref=f1e75]:
+            - link "Geräte-Debug" [ref=f1e76] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/devices
+            - link "Geräte & Keys" [ref=f1e81] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/api-keys
+            - link "Archive & Audit" [ref=f1e86] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/archives
+            - link "Server Settings" [ref=f1e91] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/admin/settings
+      - generic [ref=f1e96]:
+        - generic [ref=f1e97]: LA
+        - generic [ref=f1e711]:
+          - generic [ref=f1e712]: Administrator
+          - generic [ref=f1e713]: Sicher angemeldet
+    - main [ref=f1e98]:
+      - generic [ref=f1e99]:
+        - generic [ref=f1e100]:
+          - generic [ref=f1e101]:
+            - heading "Luczor Admin Control" [level=1] [ref=f1e102]
+            - paragraph [ref=f1e103]: Provider, Routing, Telemetrie, Policies und Systembetrieb.
+          - generic [ref=f1e104]:
+            - generic [ref=f1e105]:
+              - generic [ref=f1e106]: users
+              - generic [ref=f1e107]: "2"
+            - generic [ref=f1e108]:
+              - generic [ref=f1e109]: devices online
+              - generic [ref=f1e110]: "0"
+            - generic [ref=f1e111]:
+              - generic [ref=f1e112]: device jobs open
+              - generic [ref=f1e113]: "0"
+            - generic [ref=f1e114]:
+              - generic [ref=f1e115]: llm runs 24h
+              - generic [ref=f1e116]: "0"
+            - generic [ref=f1e117]:
+              - generic [ref=f1e118]: evaluations 24h
+              - generic [ref=f1e119]: "0"
+            - generic [ref=f1e120]:
+              - generic [ref=f1e121]: audit events 24h
+              - generic [ref=f1e122]: "0"
+          - generic [ref=f1e123]:
+            - generic [ref=f1e124]:
+              - generic [ref=f1e125]:
+                - heading "Geräte-Debug" [level=2] [ref=f1e126]
+                - paragraph [ref=f1e127]: Nur Admins können eine stille Diagnose vom Gerät anfordern. Nutzer sehen keinen Dialog und keine Meldung.
+              - generic [ref=f1e128]: Serverseitig verschlüsselt
+            - paragraph [ref=f1e130]: Noch keine registrierten Geräte.
+            - table [ref=f1e132]:
+              - rowgroup [ref=f1e133]:
+                - row [ref=f1e134]:
+                  - columnheader "Zeit" [ref=f1e135]
+                  - columnheader "Gerät" [ref=f1e136]
+                  - columnheader "Status" [ref=f1e137]
+                  - columnheader [ref=f1e138]
+              - rowgroup [ref=f1e139]:
+                - row [ref=f1e140]:
+                  - cell "Noch keine Debug-Anforderungen." [ref=f1e141]
+          - generic [ref=f1e142]:
+            - generic [ref=f1e143]:
+              - generic [ref=f1e144]:
+                - heading "Provider- und Modell-Telemetrie" [level=2] [ref=f1e145]
+                - paragraph [ref=f1e146]: 30 Tage · Kosten, Nutzen, Geschwindigkeit, Fallbacks und Ergebnisqualität.
+              - generic [ref=f1e147]:
+                - link "JSONL Export" [ref=f1e148] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8011/dashboard/telemetry/export?format=jsonl&days=30
+                - link "CSV Export" [ref=f1e149] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8011/dashboard/telemetry/export?format=csv&days=30
+                - generic [ref=f1e150]: Admin only
+            - generic [ref=f1e151]:
+              - generic [ref=f1e152]:
+                - generic [ref=f1e153]: Runs
+                - generic [ref=f1e154]: "0"
+              - generic [ref=f1e155]:
+                - generic [ref=f1e156]: Erfolg
+                - generic [ref=f1e157]: 0.0 %
+              - generic [ref=f1e158]:
+                - generic [ref=f1e159]: Kosten
+                - generic [ref=f1e160]: $ 0.000000
+              - generic [ref=f1e161]:
+                - generic [ref=f1e162]: Kosten / Erfolg
+                - generic [ref=f1e163]: $ 0.000000
+              - generic [ref=f1e164]:
+                - generic [ref=f1e165]: Fallback-Rate
+                - generic [ref=f1e166]: 0.0 %
+              - generic [ref=f1e167]:
+                - generic [ref=f1e168]: Ø Latenz
+                - generic [ref=f1e169]: 0 ms
+              - generic [ref=f1e170]:
+                - generic [ref=f1e171]: Ø TTFT
+                - generic [ref=f1e172]: 0 ms
+              - generic [ref=f1e173]:
+                - generic [ref=f1e174]: Ø Tokens/s
+                - generic [ref=f1e175]: "0.00"
+              - generic [ref=f1e176]:
+                - generic [ref=f1e177]: Input Tokens
+                - generic [ref=f1e178]: "0"
+              - generic [ref=f1e179]:
+                - generic [ref=f1e180]: Output Tokens
+                - generic [ref=f1e181]: "0"
+            - generic [ref=f1e182]:
+              - heading "Leistung je Modell und Aufgabentyp" [level=3] [ref=f1e183]
+              - table [ref=f1e184]:
+                - rowgroup [ref=f1e185]:
+                  - row [ref=f1e186]:
+                    - columnheader "Modell / Task" [ref=f1e187]
+                    - columnheader "Runs" [ref=f1e188]
+                    - columnheader "Erfolg" [ref=f1e189]
+                    - columnheader "Qualität" [ref=f1e190]
+                    - columnheader "Latenz" [ref=f1e191]
+                    - columnheader "TTFT" [ref=f1e192]
+                    - columnheader "Tok/s" [ref=f1e193]
+                    - columnheader "Kosten gesamt" [ref=f1e194]
+                    - columnheader "Ø Kosten" [ref=f1e195]
+                - rowgroup [ref=f1e196]:
+                  - row [ref=f1e197]:
+                    - cell "Noch keine LLM-Läufe. Daten entstehen automatisch über den Provider-Proxy." [ref=f1e198]
+            - generic [ref=f1e199]:
+              - generic [ref=f1e200]:
+                - heading "Aktuelle Rankings" [level=3] [ref=f1e201]
+                - paragraph [ref=f1e203]: Rankings werden ab fünf Messwerten je Modell aktiv.
+              - generic [ref=f1e204]:
+                - heading "Letzte Provider-Versuche" [level=3] [ref=f1e205]
+                - table [ref=f1e206]:
+                  - rowgroup [ref=f1e207]:
+                    - row [ref=f1e208]:
+                      - columnheader "Run" [ref=f1e209]
+                      - columnheader "Versuch" [ref=f1e210]
+                      - columnheader "Modell" [ref=f1e211]
+                      - columnheader "Status" [ref=f1e212]
+                      - columnheader "TTFT / Gesamt" [ref=f1e213]
+                      - columnheader "Tokens" [ref=f1e214]
+                      - columnheader "Kosten" [ref=f1e215]
+                  - rowgroup
+          - generic [ref=f1e216]:
+            - generic [ref=f1e217]:
+              - generic [ref=f1e218]: projects
+              - generic [ref=f1e219]: "0"
+            - generic [ref=f1e220]:
+              - generic [ref=f1e221]: messages
+              - generic [ref=f1e222]: "0"
+            - generic [ref=f1e223]:
+              - generic [ref=f1e224]: memories
+              - generic [ref=f1e225]: "0"
+            - generic [ref=f1e226]:
+              - generic [ref=f1e227]: summaries
+              - generic [ref=f1e228]: "0"
+            - generic [ref=f1e229]:
+              - generic [ref=f1e230]: agent events
+              - generic [ref=f1e231]: "0"
+          - generic [ref=f1e233]:
+            - heading "Client-Einstellungen (Server-Defaults)" [level=2] [ref=f1e234]
+            - paragraph [ref=f1e235]:
+              - text: Werden an die Desktop-App ausgeliefert (
+              - code [ref=f1e236]: /api/v1/runtime-settings
+              - text: ).
+            - generic [ref=f1e237]:
+              - generic [ref=f1e238]:
+                - generic [ref=f1e239]:
+                  - generic [ref=f1e240]: Vollzugriff erlauben (allow_unrestricted)
+                  - generic [ref=f1e242]:
+                    - checkbox "aktiviert" [checked] [ref=f1e243]
+                    - text: aktiviert
+                - generic [ref=f1e244]:
+                  - generic [ref=f1e245]: Assistenten-Name (assistant_name)
+                  - textbox [ref=f1e247]: Luczor
+                - generic [ref=f1e248]:
+                  - generic [ref=f1e249]: Standard-Modus (observe|act|unrestricted) (default_mode)
+                  - textbox [ref=f1e251]: observe
+                - generic [ref=f1e252]:
+                  - generic [ref=f1e253]: Erinnerungen einblenden (memory_inject)
+                  - generic [ref=f1e255]:
+                    - checkbox "aktiviert" [checked] [ref=f1e256]
+                    - text: aktiviert
+                - generic [ref=f1e257]:
+                  - generic [ref=f1e258]: Anzahl Erinnerungen (memory_inject_count)
+                  - spinbutton [ref=f1e260]: "5"
+                - generic [ref=f1e261]:
+                  - generic [ref=f1e262]: Auto-Sync (sync_auto)
+                  - generic [ref=f1e264]:
+                    - checkbox "aktiviert" [ref=f1e265]
+                    - text: aktiviert
+                - generic [ref=f1e266]:
+                  - generic [ref=f1e267]: Auto-Sync Schwelle (sync_auto_threshold)
+                  - spinbutton [ref=f1e269]: "20"
+                - generic [ref=f1e270]:
+                  - generic [ref=f1e271]: Akzentfarbe (ui_accent)
+                  - textbox [ref=f1e273]: cyan
+                - generic [ref=f1e274]:
+                  - generic [ref=f1e275]: Chat-Historie Tokenbudget (client_history_token_budget)
+                  - spinbutton [ref=f1e277]: "2400"
+                - generic [ref=f1e278]:
+                  - generic [ref=f1e279]: Antworten automatisch vorlesen (chat_auto_speech)
+                  - generic [ref=f1e281]:
+                    - checkbox "aktiviert" [ref=f1e282]
+                    - text: aktiviert
+                - generic [ref=f1e283]:
+                  - generic [ref=f1e284]: Freihand-Strategie (safeword|continuous) (hands_free_strategy)
+                  - textbox [ref=f1e286]: safeword
+                - generic [ref=f1e287]:
+                  - generic [ref=f1e288]: "Dauerzuhören: Pause bis Abschluss (ms) (voice_continuous_silence_ms)"
+                  - spinbutton [ref=f1e290]: "5000"
+                - generic [ref=f1e291]:
+                  - generic [ref=f1e292]: Beendigungsphrase (voice_end_phrase)
+                  - textbox [ref=f1e294]: luczor stopp
+                - generic [ref=f1e295]:
+                  - generic [ref=f1e296]: TTS-Unterbrechung (on_speech|on_activation_phrase|off) (voice_interrupt_mode)
+                  - textbox [ref=f1e298]: on_speech
+                - generic [ref=f1e299]:
+                  - generic [ref=f1e300]: STT-Sprache (voice_local_stt_language)
+                  - textbox [ref=f1e302]: de
+                - generic [ref=f1e303]:
+                  - generic [ref=f1e304]: Lokaler Eingabemodus (voice_mode)
+                  - textbox [ref=f1e306]: wakeword
+                - generic [ref=f1e307]:
+                  - generic [ref=f1e308]: STT-Engine (whisper_local|whisper_rs) (voice_stt_engine)
+                  - textbox [ref=f1e310]: whisper_local
+                - generic [ref=f1e311]:
+                  - generic [ref=f1e312]: Aktivierungsphrase (voice_trigger_phrase)
+                  - textbox [ref=f1e314]: luczor start
+                - generic [ref=f1e315]:
+                  - generic [ref=f1e316]: TTS-Tempo (0.5–2.0) (voice_tts_rate)
+                  - spinbutton [ref=f1e318]: "1"
+                - generic [ref=f1e319]:
+                  - generic [ref=f1e320]: TTS-Lautstärke (0–100) (voice_tts_volume)
+                  - spinbutton [ref=f1e322]: "90"
+                - generic [ref=f1e323]:
+                  - generic [ref=f1e324]: Wake-Word (voice_wake_word)
+                  - textbox [ref=f1e326]: luczor
+                - generic [ref=f1e327]:
+                  - generic [ref=f1e328]: Sandbox erzwingen (alle Läufe simulieren) (sandbox_enabled)
+                  - generic [ref=f1e330]:
+                    - checkbox "aktiviert" [ref=f1e331]
+                    - text: aktiviert
+              - button "Einstellungen speichern" [ref=f1e332] [cursor=pointer]
+          - generic [ref=f1e333]:
+            - generic [ref=f1e334]:
+              - heading "Device API Key erstellen" [level=2] [ref=f1e335]
+              - generic [ref=f1e336]:
+                - textbox "Name, z.B. Desktop LZ" [ref=f1e337]
+                - generic [ref=f1e338]:
+                  - textbox "Device ID optional" [ref=f1e339]
+                  - textbox "Device Name optional" [ref=f1e340]
+                - textbox [ref=f1e341]
+                - generic [ref=f1e342]:
+                  - generic [ref=f1e343]:
+                    - checkbox "sync.read" [ref=f1e344]
+                    - text: sync.read
+                  - generic [ref=f1e345]:
+                    - checkbox "sync.write" [ref=f1e346]
+                    - text: sync.write
+                  - generic [ref=f1e347]:
+                    - checkbox "settings.read" [ref=f1e348]
+                    - text: settings.read
+                  - generic [ref=f1e349]:
+                    - checkbox "settings.write" [ref=f1e350]
+                    - text: settings.write
+                  - generic [ref=f1e351]:
+                    - checkbox "brain.read" [ref=f1e352]
+                    - text: brain.read
+                  - generic [ref=f1e353]:
+                    - checkbox "brain.write" [ref=f1e354]
+                    - text: brain.write
+                  - generic [ref=f1e355]:
+                    - checkbox "proxy.use" [ref=f1e356]
+                    - text: proxy.use
+                  - generic [ref=f1e357]:
+                    - checkbox "device.connect" [ref=f1e358]
+                    - text: device.connect
+                  - generic [ref=f1e359]:
+                    - checkbox "device.jobs.read" [ref=f1e360]
+                    - text: device.jobs.read
+                  - generic [ref=f1e361]:
+                    - checkbox "device.jobs.write" [ref=f1e362]
+                    - text: device.jobs.write
+                  - generic [ref=f1e363]:
+                    - checkbox "all" [checked] [ref=f1e364]
+                    - text: all
+                - button "Key erzeugen" [ref=f1e365] [cursor=pointer]
+            - generic [ref=f1e366]:
+              - heading "Provider Credential" [level=2] [ref=f1e367]
+              - generic [ref=f1e368]:
+                - generic [ref=f1e369]:
+                  - textbox "openrouter, elevenlabs, ..." [ref=f1e370]
+                  - textbox "Label" [ref=f1e371]
+                - textbox "API Key wird verschluesselt gespeichert" [ref=f1e372]
+                - textbox "Base URL optional" [ref=f1e373]
+                - button "Credential speichern" [ref=f1e374] [cursor=pointer]
+          - generic [ref=f1e375]:
+            - generic [ref=f1e376]:
+              - heading "Provider-Preissnapshot" [level=2] [ref=f1e377]
+              - paragraph [ref=f1e378]: Fallback, falls der Provider keine Kosten meldet. Historische Läufe behalten ihren Snapshot.
+              - generic [ref=f1e379]:
+                - textbox [ref=f1e380]: openrouter
+                - textbox "provider/model-id" [ref=f1e381]
+                - spinbutton "Input $ / 1M" [ref=f1e382]
+                - spinbutton "Output $ / 1M" [ref=f1e383]
+                - spinbutton "Cache read $ / 1M" [ref=f1e384]
+                - spinbutton "Cache write $ / 1M" [ref=f1e385]
+                - textbox [ref=f1e386]: 2026-08-23T05:10
+                - button "Preisversion speichern" [ref=f1e387] [cursor=pointer]
+            - generic [ref=f1e388]:
+              - heading "Provider-Status" [level=2] [ref=f1e389]
+              - paragraph [ref=f1e391]: Keine Provider.
+          - generic [ref=f1e392]:
+            - generic [ref=f1e393]:
+              - heading "Einzelnes Modellprofil" [level=2] [ref=f1e394]
+              - paragraph [ref=f1e395]: Diese Profile werden pro Use-Case in Fallback-Reihenfolge zusammengestellt.
+              - generic [ref=f1e396]:
+                - textbox "Name, z.B. Planner Fast" [ref=f1e397]
+                - generic [ref=f1e398]:
+                  - textbox "Provider" [ref=f1e399]
+                  - textbox "Model ID" [ref=f1e400]
+                - generic [ref=f1e401]:
+                  - spinbutton [ref=f1e402]: "0.20"
+                  - spinbutton [ref=f1e403]: "1200"
+                  - textbox "Zweck" [ref=f1e404]
+                - button "Modellprofil speichern" [ref=f1e405] [cursor=pointer]
+            - generic [ref=f1e406]:
+              - heading "Use-Case anlegen" [level=2] [ref=f1e407]
+              - paragraph [ref=f1e408]: Jeder Fall bekommt danach eine eigene Modellkette.
+              - generic [ref=f1e409]:
+                - textbox "z.B. Browser Agent, Vision, TTS" [ref=f1e410]
+                - textbox "Beschreibung optional" [ref=f1e411]
+                - button "Use-Case speichern" [ref=f1e412] [cursor=pointer]
+          - generic [ref=f1e413]:
+            - heading "Modell-Fallbacks pro Use-Case" [level=2] [ref=f1e414]
+            - paragraph [ref=f1e415]: Niedrige Sortierung wird zuerst genutzt. Faellt ein Modell aus, folgt das naechste aktive Profil.
+            - generic [ref=f1e416]:
+              - combobox [ref=f1e417]:
+                - option "Use-Case" [selected]
+                - option "chat"
+                - option "coding"
+                - option "planner"
+                - option "stt"
+                - option "tts"
+                - option "verifier"
+                - option "vision"
+              - combobox [ref=f1e418]:
+                - option "Modellprofil" [selected]
+                - option "Cohere North Mini Code Free / cohere/north-mini-code:free"
+                - option "Google Gemma 4 31B Free / google/gemma-4-31b-it:free"
+                - option "Local Speech To Text / whisper.cpp"
+                - option "Local Text To Speech / piper"
+                - option "Meta Llama 3.3 70B Free / meta-llama/llama-3.3-70b-instruct:free"
+                - option "NVIDIA Nemotron Nano Omni Free / nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+                - option "NVIDIA Nemotron Super Free / nvidia/nemotron-3-super-120b-a12b:free"
+                - option "NVIDIA Nemotron Ultra Free / nvidia/nemotron-3-ultra-550b-a55b:free"
+                - option "NVIDIA Nemotron Vision Free / nvidia/nemotron-nano-12b-v2-vl:free"
+                - option "OpenAI GPT-OSS 120B Free / openai/gpt-oss-120b:free"
+                - option "Qwen3 Coder Free / qwen/qwen3-coder:free"
+              - spinbutton [ref=f1e419]: "1"
+              - button "Fallback setzen" [ref=f1e420] [cursor=pointer]
+            - generic [ref=f1e421]:
+              - generic [ref=f1e422]:
+                - generic [ref=f1e423]:
+                  - generic [ref=f1e424]:
+                    - heading "Chat" [level=3] [ref=f1e425]
+                    - paragraph [ref=f1e426]: chat
+                  - generic [ref=f1e427]: 3 Modelle
+                - list [ref=f1e428]:
+                  - listitem [ref=f1e429]:
+                    - generic [ref=f1e430]: "#1 NVIDIA Nemotron Super Free (nvidia/nemotron-3-super-120b-a12b:free)"
+                    - generic [ref=f1e431]: aktiv
+                  - listitem [ref=f1e432]:
+                    - generic [ref=f1e433]: "#2 NVIDIA Nemotron Nano Omni Free (nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free)"
+                    - generic [ref=f1e434]: aktiv
+                  - listitem [ref=f1e435]:
+                    - generic [ref=f1e436]: "#3 Meta Llama 3.3 70B Free (meta-llama/llama-3.3-70b-instruct:free)"
+                    - generic [ref=f1e437]: aktiv
+              - generic [ref=f1e438]:
+                - generic [ref=f1e439]:
+                  - generic [ref=f1e440]:
+                    - heading "Coding Agent" [level=3] [ref=f1e441]
+                    - paragraph [ref=f1e442]: coding
+                  - generic [ref=f1e443]: 3 Modelle
+                - list [ref=f1e444]:
+                  - listitem [ref=f1e445]:
+                    - generic [ref=f1e446]: "#1 Qwen3 Coder Free (qwen/qwen3-coder:free)"
+                    - generic [ref=f1e447]: aktiv
+                  - listitem [ref=f1e448]:
+                    - generic [ref=f1e449]: "#2 Cohere North Mini Code Free (cohere/north-mini-code:free)"
+                    - generic [ref=f1e450]: aktiv
+                  - listitem [ref=f1e451]:
+                    - generic [ref=f1e452]: "#3 NVIDIA Nemotron Super Free (nvidia/nemotron-3-super-120b-a12b:free)"
+                    - generic [ref=f1e453]: aktiv
+              - generic [ref=f1e454]:
+                - generic [ref=f1e455]:
+                  - generic [ref=f1e456]:
+                    - heading "Planner" [level=3] [ref=f1e457]
+                    - paragraph [ref=f1e458]: planner
+                  - generic [ref=f1e459]: 3 Modelle
+                - list [ref=f1e460]:
+                  - listitem [ref=f1e461]:
+                    - generic [ref=f1e462]: "#1 NVIDIA Nemotron Ultra Free (nvidia/nemotron-3-ultra-550b-a55b:free)"
+                    - generic [ref=f1e463]: aktiv
+                  - listitem [ref=f1e464]:
+                    - generic [ref=f1e465]: "#2 NVIDIA Nemotron Super Free (nvidia/nemotron-3-super-120b-a12b:free)"
+                    - generic [ref=f1e466]: aktiv
+                  - listitem [ref=f1e467]:
+                    - generic [ref=f1e468]: "#3 OpenAI GPT-OSS 120B Free (openai/gpt-oss-120b:free)"
+                    - generic [ref=f1e469]: aktiv
+              - generic [ref=f1e470]:
+                - generic [ref=f1e471]:
+                  - generic [ref=f1e472]:
+                    - heading "Speech to Text" [level=3] [ref=f1e473]
+                    - paragraph [ref=f1e474]: stt
+                  - generic [ref=f1e475]: 1 Modelle
+                - list [ref=f1e476]:
+                  - listitem [ref=f1e477]:
+                    - generic [ref=f1e478]: "#1 Local Speech To Text (whisper.cpp)"
+                    - generic [ref=f1e479]: aktiv
+              - generic [ref=f1e480]:
+                - generic [ref=f1e481]:
+                  - generic [ref=f1e482]:
+                    - heading "Text to Speech" [level=3] [ref=f1e483]
+                    - paragraph [ref=f1e484]: tts
+                  - generic [ref=f1e485]: 1 Modelle
+                - list [ref=f1e486]:
+                  - listitem [ref=f1e487]:
+                    - generic [ref=f1e488]: "#1 Local Text To Speech (piper)"
+                    - generic [ref=f1e489]: aktiv
+              - generic [ref=f1e490]:
+                - generic [ref=f1e491]:
+                  - generic [ref=f1e492]:
+                    - heading "Verifier" [level=3] [ref=f1e493]
+                    - paragraph [ref=f1e494]: verifier
+                  - generic [ref=f1e495]: 3 Modelle
+                - list [ref=f1e496]:
+                  - listitem [ref=f1e497]:
+                    - generic [ref=f1e498]: "#1 OpenAI GPT-OSS 120B Free (openai/gpt-oss-120b:free)"
+                    - generic [ref=f1e499]: aktiv
+                  - listitem [ref=f1e500]:
+                    - generic [ref=f1e501]: "#2 NVIDIA Nemotron Super Free (nvidia/nemotron-3-super-120b-a12b:free)"
+                    - generic [ref=f1e502]: aktiv
+                  - listitem [ref=f1e503]:
+                    - generic [ref=f1e504]: "#3 Google Gemma 4 31B Free (google/gemma-4-31b-it:free)"
+                    - generic [ref=f1e505]: aktiv
+              - generic [ref=f1e506]:
+                - generic [ref=f1e507]:
+                  - generic [ref=f1e508]:
+                    - heading "Vision" [level=3] [ref=f1e509]
+                    - paragraph [ref=f1e510]: vision
+                  - generic [ref=f1e511]: 2 Modelle
+                - list [ref=f1e512]:
+                  - listitem [ref=f1e513]:
+                    - generic [ref=f1e514]: "#1 NVIDIA Nemotron Vision Free (nvidia/nemotron-nano-12b-v2-vl:free)"
+                    - generic [ref=f1e515]: aktiv
+                  - listitem [ref=f1e516]:
+                    - generic [ref=f1e517]: "#2 NVIDIA Nemotron Super Free (nvidia/nemotron-3-super-120b-a12b:free)"
+                    - generic [ref=f1e518]: aktiv
+          - generic [ref=f1e519]:
+            - generic [ref=f1e520]:
+              - heading "Prompt-Version" [level=2] [ref=f1e521]
+              - generic [ref=f1e522]:
+                - textbox "luczor.coding" [ref=f1e523]
+                - textbox "coding.fix_bug" [ref=f1e524]
+                - textbox "System-/Prompt-Template" [ref=f1e525]
+                - button "Neue Version" [ref=f1e526] [cursor=pointer]
+              - generic [ref=f1e527]: 1 Versionen gespeichert
+            - generic [ref=f1e528]:
+              - heading "Kontextstrategie" [level=2] [ref=f1e529]
+              - generic [ref=f1e530]:
+                - textbox [ref=f1e531]: context.memory_code_budgeted
+                - textbox [ref=f1e532]: Memory + Code budgetiert
+                - textbox [ref=f1e533]: "{\"git_tokens\":250,\"graph_tokens\":1000,\"memory_tokens\":600,\"raw_file_tokens\":3500,\"deduplicate\":true}"
+                - button "Strategie speichern" [ref=f1e534] [cursor=pointer]
+            - generic [ref=f1e535]:
+              - heading "Netzwerk-/Kostenpolicy" [level=2] [ref=f1e536]
+              - generic [ref=f1e537]:
+                - textbox [ref=f1e538]: proxy.openrouter.default
+                - textbox [ref=f1e539]: OpenRouter Default
+                - spinbutton [ref=f1e540]: "10000"
+                - spinbutton [ref=f1e541]: "90000"
+                - spinbutton [ref=f1e542]: "3"
+                - spinbutton [ref=f1e543]: "250"
+                - spinbutton "Max $ / Run" [ref=f1e544]
+                - spinbutton "Max Input" [ref=f1e545]: "24000"
+                - spinbutton [ref=f1e546]: "8192"
+                - button "Policy speichern" [ref=f1e547] [cursor=pointer]
+          - generic [ref=f1e548]:
+            - generic [ref=f1e549]:
+              - heading "A/B-Modellversuch" [level=2] [ref=f1e550]
+              - paragraph [ref=f1e551]: Varianten dürfen ausschließlich bereits administrierte Modellprofile referenzieren. Das Routing bleibt serverseitig.
+              - generic [ref=f1e552]:
+                - textbox "coding-fast-v1" [ref=f1e553]
+                - 'textbox "Coding: Qualität gegen Kosten" [ref=f1e554]'
+                - textbox [ref=f1e555]: coding
+                - combobox [ref=f1e556]:
+                  - option "Entwurf" [selected]
+                  - option "Aktiv"
+                  - option "Pausiert"
+                  - option "Beendet"
+                - spinbutton [ref=f1e557]: "10"
+                - textbox [ref=f1e558]: "[{\"model_profile_slug\":\"luczor-default\",\"weight\":100}]"
+                - textbox [ref=f1e559]: "{\"quality_min\":0.8,\"cost_max_usd\":0.05,\"latency_max_ms\":15000}"
+                - button "Experiment speichern" [ref=f1e560] [cursor=pointer]
+            - generic [ref=f1e561]:
+              - heading "Experimente" [level=2] [ref=f1e562]
+              - paragraph [ref=f1e564]: Noch keine Experimente angelegt.
+          - generic [ref=f1e565]:
+            - heading "Aktive Modellprofile (nur Admin)" [level=2] [ref=f1e566]
+            - generic [ref=f1e567]:
+              - generic [ref=f1e568]:
+                - generic [ref=f1e569]:
+                  - text: Cohere North Mini Code Free
+                  - generic [ref=f1e570]: cohere/north-mini-code:free · coding
+                - button "Deaktivieren" [ref=f1e572] [cursor=pointer]
+              - generic [ref=f1e573]:
+                - generic [ref=f1e574]:
+                  - text: Google Gemma 4 31B Free
+                  - generic [ref=f1e575]: google/gemma-4-31b-it:free · verifier
+                - button "Deaktivieren" [ref=f1e577] [cursor=pointer]
+              - generic [ref=f1e578]:
+                - generic [ref=f1e579]:
+                  - text: Local Speech To Text
+                  - generic [ref=f1e580]: whisper.cpp · stt
+                - button "Deaktivieren" [ref=f1e582] [cursor=pointer]
+              - generic [ref=f1e583]:
+                - generic [ref=f1e584]:
+                  - text: Local Text To Speech
+                  - generic [ref=f1e585]: piper · tts
+                - button "Deaktivieren" [ref=f1e587] [cursor=pointer]
+              - generic [ref=f1e588]:
+                - generic [ref=f1e589]:
+                  - text: Meta Llama 3.3 70B Free
+                  - generic [ref=f1e590]: meta-llama/llama-3.3-70b-instruct:free · chat
+                - button "Deaktivieren" [ref=f1e592] [cursor=pointer]
+              - generic [ref=f1e593]:
+                - generic [ref=f1e594]:
+                  - text: NVIDIA Nemotron Nano Omni Free
+                  - generic [ref=f1e595]: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free · chat
+                - button "Deaktivieren" [ref=f1e597] [cursor=pointer]
+              - generic [ref=f1e598]:
+                - generic [ref=f1e599]:
+                  - text: NVIDIA Nemotron Super Free
+                  - generic [ref=f1e600]: nvidia/nemotron-3-super-120b-a12b:free · chat
+                - button "Deaktivieren" [ref=f1e602] [cursor=pointer]
+              - generic [ref=f1e603]:
+                - generic [ref=f1e604]:
+                  - text: NVIDIA Nemotron Ultra Free
+                  - generic [ref=f1e605]: nvidia/nemotron-3-ultra-550b-a55b:free · planner
+                - button "Deaktivieren" [ref=f1e607] [cursor=pointer]
+              - generic [ref=f1e608]:
+                - generic [ref=f1e609]:
+                  - text: NVIDIA Nemotron Vision Free
+                  - generic [ref=f1e610]: nvidia/nemotron-nano-12b-v2-vl:free · vision
+                - button "Deaktivieren" [ref=f1e612] [cursor=pointer]
+              - generic [ref=f1e613]:
+                - generic [ref=f1e614]:
+                  - text: OpenAI GPT-OSS 120B Free
+                  - generic [ref=f1e615]: openai/gpt-oss-120b:free · verifier
+                - button "Deaktivieren" [ref=f1e617] [cursor=pointer]
+              - generic [ref=f1e618]:
+                - generic [ref=f1e619]:
+                  - text: Qwen3 Coder Free
+                  - generic [ref=f1e620]: qwen/qwen3-coder:free · coding
+                - button "Deaktivieren" [ref=f1e622] [cursor=pointer]
+          - generic [ref=f1e623]:
+            - generic [ref=f1e624]:
+              - heading "Agent-Profil" [level=2] [ref=f1e625]
+              - generic [ref=f1e626]:
+                - textbox "backend" [ref=f1e627]
+                - textbox "Backend Agent" [ref=f1e628]
+                - textbox "backend" [ref=f1e629]
+                - combobox [ref=f1e630]:
+                  - option "Aktiv" [selected]
+                  - option "Entwurf"
+                  - option "Deaktiviert"
+                - textbox [ref=f1e631]: luczor.system
+                - textbox [ref=f1e632]: "[\"graphify\",\"github\",\"cognee\"]"
+                - textbox [ref=f1e633]: "[]"
+                - textbox [ref=f1e634]: "{\"parallel_safe\":false}"
+                - button "Agent speichern" [ref=f1e635] [cursor=pointer]
+            - generic [ref=f1e636]:
+              - heading "Orchestrator-Agenten" [level=2] [ref=f1e637]
+              - generic [ref=f1e638]:
+                - generic [ref=f1e639]:
+                  - generic [ref=f1e640]:
+                    - generic [ref=f1e641]: Admin Agent
+                    - generic [ref=f1e642]: active
+                  - generic [ref=f1e643]: admin · mcp, server_logs, cognee
+                - generic [ref=f1e644]:
+                  - generic [ref=f1e645]:
+                    - generic [ref=f1e646]: Backend Agent
+                    - generic [ref=f1e647]: active
+                  - generic [ref=f1e648]: backend · graphify, github, mcp
+                - generic [ref=f1e649]:
+                  - generic [ref=f1e650]:
+                    - generic [ref=f1e651]: Code Research Agent
+                    - generic [ref=f1e652]: active
+                  - generic [ref=f1e653]: code_research · graphify, github
+                - generic [ref=f1e654]:
+                  - generic [ref=f1e655]:
+                    - generic [ref=f1e656]: Frontend Agent
+                    - generic [ref=f1e657]: active
+                  - generic [ref=f1e658]: frontend · graphify, github, browser
+                - generic [ref=f1e659]:
+                  - generic [ref=f1e660]:
+                    - generic [ref=f1e661]: Optimizer Agent
+                    - generic [ref=f1e662]: active
+                  - generic [ref=f1e663]: optimizer · llm_runs, evaluations, rankings
+                - generic [ref=f1e664]:
+                  - generic [ref=f1e665]:
+                    - generic [ref=f1e666]: Planner Agent
+                    - generic [ref=f1e667]: active
+                  - generic [ref=f1e668]: planner · cognee, project
+                - generic [ref=f1e669]:
+                  - generic [ref=f1e670]:
+                    - generic [ref=f1e671]: Research Agent
+                    - generic [ref=f1e672]: active
+                  - generic [ref=f1e673]: research · web, docs, cognee
+                - generic [ref=f1e674]:
+                  - generic [ref=f1e675]:
+                    - generic [ref=f1e676]: Review Agent
+                    - generic [ref=f1e677]: active
+                  - generic [ref=f1e678]: review · git_diff, tests, cognee
+          - generic [ref=f1e679]:
+            - generic [ref=f1e680]:
+              - heading "Aktive API Keys" [level=2] [ref=f1e681]
+              - paragraph [ref=f1e683]: Noch keine API Keys.
+            - generic [ref=f1e684]:
+              - heading "Provider Credentials" [level=2] [ref=f1e685]
+              - paragraph [ref=f1e687]: Noch keine Provider Credentials.
+        - generic [ref=f1e688]:
+          - generic [ref=f1e689]: Luczor Admin API
+          - generic [ref=f1e690]: ·
+          - generic [ref=f1e691]: Admin API & Control Plane

@@ -11,7 +11,14 @@ class ContextCache
     /** @param array<string,mixed> $request */
     public function remember(array $request, callable $resolver): array
     {
+        // Repository-graph hints are approved for one request only. Never put
+        // a response containing them into a reusable server cache.
+        if (! empty($request['code'])) {
+            return $resolver();
+        }
+
         $version = $this->version((int) ($request['user_id'] ?? 0), $request['repo_id'] ?? null, $request['branch'] ?? null);
+        $memoryVersion = $this->memoryVersion((int) ($request['user_id'] ?? 0), $request['project_id'] ?? null);
         $fingerprint = hash('sha256', json_encode([
             'user' => $request['user_id'] ?? null,
             'project' => $request['project_id'] ?? null,
@@ -24,6 +31,7 @@ class ContextCache
             'budget' => $request['budget'] ?? null,
             'changed' => $request['changed_files'] ?? null,
             'version' => $version,
+            'memory_version' => $memoryVersion,
         ], JSON_THROW_ON_ERROR));
 
         $cacheKey = 'context:'.$fingerprint;
@@ -41,6 +49,7 @@ class ContextCache
             'last_hit_at' => $hit ? now() : $entry->last_hit_at,
             'expires_at' => now()->addMinutes(10),
         ])->save();
+
         return $result;
     }
 
@@ -48,6 +57,12 @@ class ContextCache
     {
         $key = $this->versionKey($userId, $repoId, $branch);
         Cache::forever($key, $this->version($userId, $repoId, $branch) + 1);
+    }
+
+    public function invalidateMemory(int $userId, ?string $projectId): void
+    {
+        $key = $this->memoryVersionKey($userId, $projectId);
+        Cache::forever($key, $this->memoryVersion($userId, $projectId) + 1);
     }
 
     private function version(int $userId, ?string $repoId, ?string $branch): int
@@ -58,5 +73,15 @@ class ContextCache
     private function versionKey(int $userId, ?string $repoId, ?string $branch): string
     {
         return 'context-version:'.$userId.':'.($repoId ?: 'none').':'.($branch ?: 'none');
+    }
+
+    private function memoryVersion(int $userId, ?string $projectId): int
+    {
+        return (int) Cache::get($this->memoryVersionKey($userId, $projectId), 1);
+    }
+
+    private function memoryVersionKey(int $userId, ?string $projectId): string
+    {
+        return 'context-memory-version:'.$userId.':'.($projectId ?: 'none');
     }
 }

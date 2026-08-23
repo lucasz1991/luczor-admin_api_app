@@ -61,6 +61,6 @@ class OpenAiCompatDriver implements ProviderDriver
 
     public function streamAdapter(): ProviderStreamAdapter
     {
-        return new PassthroughStreamAdapter();
+        return new PassthroughStreamAdapter;
     }
 }

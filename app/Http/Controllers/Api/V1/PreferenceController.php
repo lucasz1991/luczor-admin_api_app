@@ -52,6 +52,7 @@ class PreferenceController extends Controller
             $key = $pref['key'];
             if (! in_array($key, UserPreference::ALLOWLIST, true)) {
                 $skipped[] = $key;
+
                 continue;
             }
 
@@ -61,6 +62,7 @@ class PreferenceController extends Controller
             // Last-write-wins: only apply when the incoming change is not older.
             if ($existing && $existing->updated_at && $existing->updated_at->gt($incoming)) {
                 $skipped[] = $key;
+
                 continue;
             }
 

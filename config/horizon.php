@@ -2,6 +2,11 @@
 
 use Illuminate\Support\Str;
 
+$supervisorQueues = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('HORIZON_QUEUES', 'default'))
+)));
+
 return [
 
     /*
@@ -97,6 +102,7 @@ return [
     */
 
     'waits' => [
+        'redis:notifications' => (int) env('HORIZON_NOTIFICATION_WAIT_SECONDS', 30),
         'redis:default' => 60,
     ],
 
@@ -170,7 +176,7 @@ return [
     |
     */
 
-    'fast_termination' => false,
+    'fast_termination' => env('HORIZON_FAST_TERMINATION', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -199,15 +205,15 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            'queue' => $supervisorQueues,
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 128,
-            'tries' => 1,
-            'timeout' => 60,
+            'tries' => (int) env('HORIZON_TRIES', 4),
+            'timeout' => (int) env('HORIZON_TIMEOUT', 90),
             'nice' => 0,
         ],
     ],

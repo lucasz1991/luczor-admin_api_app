@@ -22,8 +22,7 @@ class McpToolService
         private GitWritePolicy $gitPolicy,
         private DeviceJobService $deviceJobs,
         private WorkflowService $workflows,
-    ) {
-    }
+    ) {}
 
     /** @param array<string,mixed> $descriptor @param array<string,mixed> $input @return array{status:string,output:array<string,mixed>,project_id:?int,device_job_id:?int} */
     public function execute(Request $request, array $descriptor, array $input): array
@@ -51,6 +50,7 @@ class McpToolService
         if ($project) {
             $query->where('project_id', $project->id);
         }
+
         return $this->completed(['repositories' => $query->get(['id', 'project_id', 'provider', 'full_name', 'default_branch', 'last_commit_sha'])->all()], $project);
     }
 
@@ -61,6 +61,7 @@ class McpToolService
         $repository = $this->repository($request, (int) $data['repository_id']);
         $result = $this->github->createBranch($this->connection($request), $repository, $data['name'], $data['from'] ?? $repository->default_branch, $this->gitPolicy);
         $repository->branches()->updateOrCreate(['name' => $data['name']], ['head_sha' => $result['object']['sha'] ?? null, 'last_seen_at' => now()]);
+
         return $this->completed(['branch' => $result], $repository->project);
     }
 
@@ -70,6 +71,7 @@ class McpToolService
         $data = Validator::make($input, ['repository_id' => ['required', 'integer'], 'title' => ['required', 'string', 'max:255'], 'head' => ['required', 'string', 'max:160'], 'base' => ['nullable', 'string', 'max:160'], 'body' => ['nullable', 'string', 'max:16000']])->validate();
         $repository = $this->repository($request, (int) $data['repository_id']);
         $result = $this->github->createPullRequest($this->connection($request), $repository, $data['title'], $data['head'], $data['base'] ?? $repository->default_branch, $data['body'] ?? null);
+
         return $this->completed(['pull_request' => $result], $repository->project);
     }
 
@@ -78,6 +80,7 @@ class McpToolService
     {
         $data = Validator::make($input, ['repository_id' => ['required', 'integer'], 'path' => ['required', 'string', 'max:1000'], 'branch' => ['nullable', 'string', 'max:160']])->validate();
         $repository = $this->repository($request, (int) $data['repository_id']);
+
         return $this->completed(['file' => $this->github->file($this->connection($request), $repository, $data['path'], $data['branch'] ?? null)], $repository->project);
     }
 
@@ -86,6 +89,7 @@ class McpToolService
     {
         $data = Validator::make($input, ['repository_id' => ['required', 'integer'], 'base' => ['required', 'string', 'max:160'], 'head' => ['required', 'string', 'max:160']])->validate();
         $repository = $this->repository($request, (int) $data['repository_id']);
+
         return $this->completed(['diff' => $this->github->compare($this->connection($request), $repository, $data['base'], $data['head'])], $repository->project);
     }
 
@@ -94,6 +98,7 @@ class McpToolService
     {
         $data = Validator::make($input, ['device_id' => ['required', 'string', 'max:120'], 'project_id' => ['nullable', 'string', 'max:120'], 'url' => ['required', 'url', 'max:2048']])->validate();
         $job = $this->deviceJobs->create($request, ['device_id' => $data['device_id'], 'project_id' => $data['project_id'] ?? null, 'tool_profile' => 'desktop.open_url', 'payload' => ['url' => $data['url']]]);
+
         return $this->queued(['device_job' => $job->only(['public_id', 'status', 'risk_level', 'requires_local_approval'])], $job->project_id, $job->id);
     }
 
@@ -102,6 +107,7 @@ class McpToolService
     {
         $data = Validator::make($input, ['device_id' => ['required', 'string', 'max:120'], 'project_id' => ['nullable', 'string', 'max:120'], 'tool_profile' => ['required', 'string', 'max:120'], 'payload' => ['nullable', 'array']])->validate();
         $job = $this->deviceJobs->create($request, $data);
+
         return $this->queued(['device_job' => $job->only(['public_id', 'status', 'risk_level', 'requires_local_approval'])], $job->project_id, $job->id);
     }
 
@@ -112,6 +118,7 @@ class McpToolService
         $userId = $this->actor->userId($request);
         $project = $this->project($request, $input);
         $projectId = $project?->id;
+
         return $this->completed(['project_overview' => [
             'projects' => $project ? 1 : Project::query()->where('user_id', $userId)->count(),
             'repositories' => Repository::query()->where('user_id', $userId)->when($projectId, fn ($q) => $q->where('project_id', $projectId))->count(),
@@ -131,6 +138,7 @@ class McpToolService
         $hasEvaluator = collect($this->workflows->assertDefinition($definition->definition))->contains(fn (array $step) => $step['type'] === 'evaluator');
         abort_unless($hasEvaluator, 422, 'The registered test workflow requires an evaluator step.');
         $run = $this->workflows->advance($this->workflows->createRun($definition, $data['input'] ?? []));
+
         return $this->queued(['workflow_run' => $run->public_id, 'status' => $run->status], $run->project_id);
     }
 
@@ -143,6 +151,7 @@ class McpToolService
     {
         $repository = Repository::findOrFail($id);
         $this->actor->assertOwned($request, $repository);
+
         return $repository;
     }
 
@@ -152,6 +161,7 @@ class McpToolService
         $externalId = $input['project_id'] ?? null;
         $project = $this->actor->project($request, is_string($externalId) ? $externalId : null);
         abort_if($externalId && ! $project, 404, 'Project was not found.');
+
         return $project;
     }
 

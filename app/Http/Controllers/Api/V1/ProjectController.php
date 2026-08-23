@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Project;
-use App\Models\User;
 use App\Services\ApiActor;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
@@ -17,6 +16,7 @@ class ProjectController extends Controller
         if (! $request->user()?->isAdmin()) {
             $query->where('user_id', $actor->userId($request));
         }
+
         return response()->json(['data' => $query->paginate(50)]);
     }
 
@@ -41,12 +41,14 @@ class ProjectController extends Controller
             'event_type' => 'project.saved', 'outcome' => 'completed',
             'payload' => ['external_id' => $project->external_id, 'owner_user_id' => $ownerId],
         ]);
+
         return response()->json(['data' => $project], 201);
     }
 
     public function show(Request $request, Project $project, ApiActor $actor)
     {
         $actor->assertOwned($request, $project);
+
         return response()->json(['data' => $project->load(['repositories'])]);
     }
 
@@ -63,6 +65,7 @@ class ProjectController extends Controller
             'actor_user_id' => $actor->userId($request), 'project_id' => $project->id,
             'event_type' => 'project.updated', 'outcome' => 'completed', 'payload' => array_keys($data),
         ]);
+
         return response()->json(['data' => $project->fresh()]);
     }
 }

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Device extends Model
 {
@@ -16,8 +18,27 @@ class Device extends Model
         'metrics' => 'array', 'meta' => 'array',
     ];
 
-    public function user() { return $this->belongsTo(User::class); }
-    public function apiKey() { return $this->belongsTo(ApiKey::class); }
-    public function jobs() { return $this->hasMany(DeviceJob::class); }
-    public function targetedNotifications() { return $this->hasMany(AppNotification::class, 'target_device_id'); }
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** @return BelongsTo<ApiKey, $this> */
+    public function apiKey(): BelongsTo
+    {
+        return $this->belongsTo(ApiKey::class);
+    }
+
+    /** @return HasMany<DeviceJob, $this> */
+    public function jobs(): HasMany
+    {
+        return $this->hasMany(DeviceJob::class);
+    }
+
+    /** @return HasMany<AppNotification, $this> */
+    public function targetedNotifications(): HasMany
+    {
+        return $this->hasMany(AppNotification::class, 'target_device_id');
+    }
 }

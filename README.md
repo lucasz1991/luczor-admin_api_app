@@ -1,52 +1,67 @@
-# Luczor Admin API
+# Luczor Control Plane
 
-Schlanke Laravel-10-Admin-App fuer Luczor:
+Laravel-/Livewire-Backend für Authentisierung, Admin-Steuerung, Modellrouting, Workflows, Gerätejobs, persistente Notifications, Reverb, Sync-Archive und Auditdaten.
 
-- Fortify/Jetstream Auth mit Luczor Blade UI
-- Custom Device API Keys
-- verschluesselte Provider Credentials
-- Modellprofile und priorisierte Fallback-Ketten pro Use-Case
-- Sync-/Archiv-API fuer Projekte, Messages, Memories, Summaries und Agent Events
+## Lokale Entwicklung
 
-## Setup
-
-```bash
+```powershell
 composer install
-npm install
+npm ci
+Copy-Item .env.example .env
 php artisan key:generate
-php artisan migrate:fresh --seed
-npm run build
+php artisan migrate
 php artisan test
+npm run build
 ```
 
-## Docker Stack
+`migrate:fresh` ist kein normaler Setup- oder Deployment-Schritt, weil es vorhandene Daten löscht. Seed-Daten und lokale Zugänge müssen bewusst für die jeweilige Entwicklungsumgebung erzeugt werden; es gibt keine dokumentierten Produktions-Standardzugänge.
 
-On Windows, generate the untracked Docker secrets once before starting Compose:
+## Asynchroner Vollbetrieb
+
+Für Workflows, Gerätejobs, Notifications und Realtime-Broadcasting benötigt die Produktionsumgebung:
+
+- Redis und einen dauerhaften Horizon-Prozess
+- `php artisan schedule:work` oder einen minütlichen Scheduler-Aufruf
+- einen dauerhaften Reverb-Prozess plus WebSocket-Proxy
+- konkrete CORS- und Reverb-Origins
+- HTTPS und Secure-Session-Cookies
+- überwachte Failed Jobs, Queue-Latenz und Prozess-Healthchecks
+
+`QUEUE_CONNECTION=sync` ist ausschließlich ein lokaler Fallback und kein produktionsfähiger Realtime-/Queue-Betrieb.
+
+## Docker
 
 ```powershell
 .\docker\init-secrets.ps1
 Copy-Item ..\.env.docker.example ..\.env.docker
-docker compose --env-file ..\.env.docker up -d --build
+docker compose --env-file ..\.env.docker config --quiet
 docker compose --env-file ..\.env.docker --profile bootstrap run --rm migrate
+docker compose --env-file ..\.env.docker up -d --build
 ```
 
-MySQL is not changed by this stack. Use `luczor:postgres-migrate` only after PostgreSQL migrations have completed and the generated manifest has been checked.
-
-Default-Seed:
-
-- Login: `admin@luczor.local`
-- Passwort: `password`
+Der Bootstrap-Migrationslauf verändert die konfigurierte PostgreSQL-Datenbank. Vorher Ziel, Backup und Rollback prüfen. Die MySQL-zu-PostgreSQL-Übernahme erfolgt separat über den vorhandenen Migration Assistant und erst nach Prüfung seines Manifests.
 
 ## API
 
 Basis: `/api/v1`
 
-- `GET /health`
-- `GET /bootstrap`
-- `GET /model-profiles`
-- `GET /runtime-settings`
-- `POST /sync/push`
-- `GET /sync/pull`
-- `POST /agent-events`
+- `GET /health` – öffentlicher, minimaler Liveness-Check
+- `GET /version` – öffentliche Produkt-/API-Version ohne Framework-Fingerprinting
+- `GET /bootstrap` – authentisierte Laufzeitkonfiguration
+- `POST /sync/push` / `GET /sync/pull` – begrenzter, paginierter Archiv-Sync
+- Device-, Workflow-, Notification-, Memory-, Context- und Modellendpunkte gemäß `routes/api.php`
 
-Geschuetzte Endpunkte nutzen `Authorization: Bearer <token>` oder `X-Api-Key`.
+Geschützte Endpunkte akzeptieren einen Device-Key als Bearer-Token oder `X-Api-Key`. Abilities, Benutzer-/Projekt-/Geräteeigentum und Freigaben werden serverseitig geprüft.
+
+## Qualitätsprüfungen
+
+```powershell
+php artisan test
+vendor\bin\pint --test
+vendor\bin\phpstan analyse
+composer audit
+npm run build
+npm audit --omit=dev
+```
+
+Deployment- und Notification-Hinweise stehen unter `docs/`. Der Workspace-übergreifende Einstieg liegt in `../README.md`.

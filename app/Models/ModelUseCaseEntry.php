@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ModelUseCaseEntry extends Model
 {
@@ -22,12 +23,14 @@ class ModelUseCaseEntry extends Model
         'active' => 'boolean',
     ];
 
-    public function useCase()
+    /** @return BelongsTo<ModelUseCase, $this> */
+    public function useCase(): BelongsTo
     {
         return $this->belongsTo(ModelUseCase::class, 'model_use_case_id');
     }
 
-    public function modelProfile()
+    /** @return BelongsTo<ModelProfile, $this> */
+    public function modelProfile(): BelongsTo
     {
         return $this->belongsTo(ModelProfile::class);
     }

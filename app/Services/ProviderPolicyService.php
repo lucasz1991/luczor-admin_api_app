@@ -2,11 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\LlmExperiment;
 use App\Models\ModelProfile;
 use App\Models\ModelRanking;
 use App\Models\ModelUseCase;
 use App\Models\ProviderPriceSnapshot;
-use App\Models\LlmExperiment;
 
 /** Enforces the server-owned allow-list, output budget and fallback ladder. */
 class ProviderPolicyService
@@ -14,7 +14,7 @@ class ProviderPolicyService
     private string $selectionSource = 'admin_policy';
 
     /**
-     * @param array<int,string> $requiredCapabilities
+     * @param  array<int,string>  $requiredCapabilities
      * @return array<int,ModelProfile>
      */
     public function candidates(?string $requestedModel, string $taskType, array $requiredCapabilities = []): array
@@ -60,6 +60,7 @@ class ProviderPolicyService
                 if ($caps === []) {
                     return true;
                 }
+
                 return count(array_intersect($requiredCapabilities, $caps)) === count($requiredCapabilities);
             })->values();
             if ($filtered->isNotEmpty()) {
@@ -79,14 +80,15 @@ class ProviderPolicyService
             $this->selectionSource = 'admin_policy_ranked';
             $count = max(1, $profiles->count());
             $profiles = $profiles->values()->sortByDesc(function (ModelProfile $profile, int $index) use ($ranking, $count) {
-                $measured = (float) ($ranking->get($profile->model_id)?->score ?? 0);
+                $measuredRanking = $ranking->get($profile->model_id);
+                $measured = $measuredRanking ? (float) $measuredRanking->score : 0.0;
                 $adminPriority = 1 - ($index / $count);
+
                 return 0.65 * $measured + 0.35 * $adminPriority;
             })->values();
         }
 
-
-        $experimentTask = explode('.', $taskType)[0] ?? $taskType;
+        $experimentTask = explode('.', $taskType)[0];
         $experiment = LlmExperiment::query()->where('status', 'active')->whereIn('task_type', [$taskType, $experimentTask])
             ->where(fn ($q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
             ->where(fn ($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>', now()))->first();
@@ -94,6 +96,7 @@ class ProviderPolicyService
             $variants = collect($experiment->variants)->filter(fn ($item) => is_array($item));
             $weighted = $variants->flatMap(function (array $item) {
                 $identity = $item['model_profile_slug'] ?? $item['model_id'] ?? null;
+
                 return $identity ? array_fill(0, max(1, min(100, (int) ($item['weight'] ?? 1))), $identity) : [];
             })->values();
             $chosen = $weighted->isNotEmpty() ? $weighted->get(random_int(0, $weighted->count() - 1)) : null;
@@ -107,7 +110,10 @@ class ProviderPolicyService
         return $profiles->all();
     }
 
-    public function selectionSource(): string { return $this->selectionSource; }
+    public function selectionSource(): string
+    {
+        return $this->selectionSource;
+    }
 
     public function outputBudget(ModelProfile $profile, mixed $requested): int
     {
@@ -122,6 +128,7 @@ class ProviderPolicyService
     {
         $characters = collect($payload['messages'] ?? [])->sum(fn ($message) => mb_strlen((string) ($message['content'] ?? '')));
         $characters += mb_strlen(json_encode($payload['tools'] ?? [], JSON_UNESCAPED_UNICODE));
+
         return max(1, (int) ceil($characters / 4));
     }
 
@@ -129,14 +136,17 @@ class ProviderPolicyService
     public function estimatedCost(ModelProfile $profile, array $payload, int $outputTokens): ?float
     {
         $price = ProviderPriceSnapshot::current($profile->provider, $profile->model_id);
-        if (! $price) return null;
+        if (! $price) {
+            return null;
+        }
+
         return round(($this->estimatedInputTokens($payload) / 1_000_000) * $price->input_per_million
             + ($outputTokens / 1_000_000) * $price->output_per_million, 8);
     }
 
     public function useCaseFor(string $taskType): ?ModelUseCase
     {
-        $prefix = explode('.', $taskType)[0] ?? 'chat';
+        $prefix = explode('.', $taskType)[0];
         $slug = match ($prefix) {
             'coding' => 'coding',
             'planning' => 'planner',

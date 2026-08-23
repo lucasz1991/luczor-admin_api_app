@@ -2,8 +2,10 @@
 
 namespace App\Console;
 
+use App\Services\DeploymentHealthService;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Support\Facades\Cache;
 
 class Kernel extends ConsoleKernel
 {
@@ -12,7 +14,17 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        $schedule->call(function () {
+            Cache::put(
+                DeploymentHealthService::SCHEDULER_HEARTBEAT_KEY,
+                now()->toISOString(),
+                now()->addMinutes(10)
+            );
+        })->name('luczor:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
+
         $schedule->command('luczor:advance-workflows --limit=250')->everyMinute()->withoutOverlapping();
+        $schedule->command('luczor:dispatch-memory-projections --limit=250')->everyMinute()->withoutOverlapping();
+        $schedule->command('horizon:snapshot')->everyFiveMinutes();
     }
 
     /**

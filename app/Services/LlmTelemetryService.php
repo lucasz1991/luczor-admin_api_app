@@ -2,19 +2,17 @@
 
 namespace App\Services;
 
+use App\Models\ContextArtifact;
 use App\Models\LlmAttempt;
 use App\Models\LlmRun;
 use App\Models\ModelProfile;
 use App\Models\ProviderCredential;
 use App\Models\ProviderPriceSnapshot;
-use App\Models\ContextArtifact;
 use Illuminate\Support\Str;
 
 class LlmTelemetryService
 {
-    public function __construct(private EvaluationService $evaluator)
-    {
-    }
+    public function __construct(private EvaluationService $evaluator) {}
 
     /** @param array<string,mixed> $meta @param array<string,mixed> $requestPayload */
     public function startRun(array $meta, string $taskType, array $requestPayload, string $selectedBy = 'admin_policy'): LlmRun
@@ -120,7 +118,7 @@ class LlmTelemetryService
             $artifact = ContextArtifact::query()->where('context_id', $run->context_id)
                 ->when($run->user_id, fn ($query) => $query->where('user_id', $run->user_id))
                 ->latest()->first();
-            $budget = $artifact?->budget ?? [];
+            $budget = $artifact ? $artifact->budget : [];
             $contextTokens = $budget['estimated_tokens'] ?? $budget['total_tokens'] ?? null;
         }
         $run->fill([
@@ -199,7 +197,9 @@ class LlmTelemetryService
     private function calculateCost(LlmAttempt $attempt, array $tokens): ?float
     {
         $price = $attempt->price_snapshot_id ? ProviderPriceSnapshot::find($attempt->price_snapshot_id) : null;
-        if (! $price) return null;
+        if (! $price) {
+            return null;
+        }
 
         $cost = (($tokens['input_tokens'] ?? 0) / 1_000_000) * $price->input_per_million
             + (($tokens['output_tokens'] ?? 0) / 1_000_000) * $price->output_per_million
@@ -222,7 +222,18 @@ class LlmTelemetryService
         ];
     }
 
-    private function stableHash(mixed $value): string { return hash('sha256', json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)); }
-    private function nullableInt(mixed $v): ?int { return $v === null || $v === '' ? null : (int) $v; }
-    private function nullableFloat(mixed $v): ?float { return $v === null || $v === '' ? null : (float) $v; }
+    private function stableHash(mixed $value): string
+    {
+        return hash('sha256', json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    private function nullableInt(mixed $v): ?int
+    {
+        return $v === null || $v === '' ? null : (int) $v;
+    }
+
+    private function nullableFloat(mixed $v): ?float
+    {
+        return $v === null || $v === '' ? null : (float) $v;
+    }
 }

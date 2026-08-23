@@ -2,16 +2,16 @@
 
 namespace Database\Seeders;
 
+use App\Models\AgentProfile;
+use App\Models\ContextStrategy;
 use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
-use App\Models\Setting;
-use App\Models\ContextStrategy;
 use App\Models\NetworkPolicy;
 use App\Models\PromptTemplate;
-use App\Models\AgentProfile;
-use App\Models\User;
+use App\Models\Setting;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -31,7 +31,9 @@ class DatabaseSeeder extends Seeder
                 'email_verified_at' => now(),
             ]
         );
-        if (! $admin->tenant_id) $admin->update(['tenant_id' => $tenant->id]);
+        if (! $admin->tenant_id) {
+            $admin->update(['tenant_id' => $tenant->id]);
+        }
 
         // Current free OpenRouter models. The policy service ranks these candidates
         // from observed cost, latency, quality and success data after enough samples.

@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\ModelProfile;
-use App\Models\ModelRanking;
-use App\Models\LlmRun;
+use App\Models\AgentRun;
 use App\Models\LlmExperiment;
+use App\Models\LlmRun;
+use App\Models\ModelRanking;
 use App\Models\PromptTemplate;
-use App\Services\EvaluationService;
 use App\Services\ApiActor;
+use App\Services\EvaluationService;
 use App\Services\ModelRanker;
 use App\Services\ProviderPolicyService;
 use Illuminate\Http\Request;
@@ -31,8 +31,8 @@ class LlmController extends Controller
 
         return response()->json([
             'task_type' => $taskType,
-            'model_id' => $profile?->model_id ?? '@preset/luczor',
-            'provider' => $profile?->provider ?? 'openrouter',
+            'model_id' => $profile ? $profile->model_id : '@preset/luczor',
+            'provider' => $profile ? $profile->provider : 'openrouter',
             'source' => 'admin_policy_and_metrics',
         ]);
     }
@@ -72,7 +72,7 @@ class LlmController extends Controller
         ]);
 
         if (! empty($data['agent_run_id'])) {
-            $agentRun = \App\Models\AgentRun::findOrFail($data['agent_run_id']);
+            $agentRun = AgentRun::findOrFail($data['agent_run_id']);
             $actor->assertOwned($request, $agentRun);
         }
 
@@ -84,12 +84,14 @@ class LlmController extends Controller
     public function evaluateByRequest(Request $request, string $requestId, EvaluationService $evaluator, ApiActor $actor)
     {
         $run = LlmRun::query()->where('request_id', $requestId)->firstOrFail();
+
         return $this->evaluate($request, $run, $evaluator, $actor);
     }
 
     public function runs(Request $request)
     {
         abort_unless($request->user()?->isAdmin(), 403);
+
         return response()->json(['data' => LlmRun::query()->with(['attempts', 'metrics', 'evaluations'])->latest()->paginate(min(100, max(10, (int) $request->query('per_page', 25))))]);
     }
 
@@ -100,6 +102,7 @@ class LlmController extends Controller
         $query = LlmRun::query()->where('created_at', '>=', now()->subDays($days));
         $total = (clone $query)->count();
         $success = (clone $query)->where('success', true)->count();
+
         return response()->json(['data' => [
             'window_days' => $days, 'runs' => $total, 'success_rate' => $total ? $success / $total : 0,
             'total_cost' => (float) (clone $query)->sum('cost_total'),
@@ -114,12 +117,14 @@ class LlmController extends Controller
     public function experiments(Request $request)
     {
         abort_unless($request->user()?->isAdmin(), 403);
+
         return response()->json(['data' => LlmExperiment::query()->latest()->get()]);
     }
 
     public function prompts(Request $request)
     {
         abort_unless($request->user()?->isAdmin(), 403);
+
         return response()->json(['data' => PromptTemplate::query()->orderBy('key')->orderByDesc('version')->get()]);
     }
 }

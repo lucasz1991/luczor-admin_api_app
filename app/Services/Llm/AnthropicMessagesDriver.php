@@ -39,7 +39,10 @@ class AnthropicMessagesDriver implements ProviderDriver
             $role = $message['role'] ?? 'user';
             $content = (string) ($message['content'] ?? '');
             if ($role === 'system') {
-                if ($content !== '') $system[] = $content;
+                if ($content !== '') {
+                    $system[] = $content;
+                }
+
                 continue;
             }
             if ($role === 'tool') {
@@ -48,20 +51,25 @@ class AnthropicMessagesDriver implements ProviderDriver
                     'tool_use_id' => (string) ($message['tool_call_id'] ?? $message['name'] ?? ''),
                     'content' => $content,
                 ]]];
+
                 continue;
             }
             $blocks = [];
-            if ($content !== '') $blocks[] = ['type' => 'text', 'text' => $content];
+            if ($content !== '') {
+                $blocks[] = ['type' => 'text', 'text' => $content];
+            }
             foreach ($message['tool_calls'] ?? [] as $toolCall) {
                 $input = json_decode((string) ($toolCall['function']['arguments'] ?? ''), true);
                 $blocks[] = [
                     'type' => 'tool_use',
                     'id' => (string) ($toolCall['id'] ?? ''),
                     'name' => (string) ($toolCall['function']['name'] ?? ''),
-                    'input' => is_array($input) ? $input : new \stdClass(),
+                    'input' => is_array($input) ? $input : new \stdClass,
                 ];
             }
-            if ($blocks === []) $blocks[] = ['type' => 'text', 'text' => ''];
+            if ($blocks === []) {
+                $blocks[] = ['type' => 'text', 'text' => ''];
+            }
             $messages[] = ['role' => $role === 'assistant' ? 'assistant' : 'user', 'content' => $blocks];
         }
 
@@ -71,6 +79,7 @@ class AnthropicMessagesDriver implements ProviderDriver
             $last = $merged !== [] ? array_key_last($merged) : null;
             if ($last !== null && $merged[$last]['role'] === $message['role']) {
                 $merged[$last]['content'] = array_merge($merged[$last]['content'], $message['content']);
+
                 continue;
             }
             $merged[] = $message;
@@ -83,8 +92,10 @@ class AnthropicMessagesDriver implements ProviderDriver
             'messages' => $merged,
             'stream' => (bool) ($payload['stream'] ?? false),
         ];
-        if ($system !== []) $body['system'] = implode("\n\n", $system);
-        if (isset($payload['temperature']) && $payload['temperature'] !== null) {
+        if ($system !== []) {
+            $body['system'] = implode("\n\n", $system);
+        }
+        if (isset($payload['temperature'])) {
             // Anthropic caps temperature at 1.
             $body['temperature'] = min(1.0, max(0.0, (float) $payload['temperature']));
         }
@@ -95,8 +106,9 @@ class AnthropicMessagesDriver implements ProviderDriver
                 'input_schema' => $tool['function']['parameters'] ?? ['type' => 'object'],
             ], $payload['tools']));
             $choice = $payload['tool_choice'] ?? null;
-            if ($choice === 'required') $body['tool_choice'] = ['type' => 'any'];
-            elseif (is_array($choice) && isset($choice['function']['name'])) {
+            if ($choice === 'required') {
+                $body['tool_choice'] = ['type' => 'any'];
+            } elseif (is_array($choice) && isset($choice['function']['name'])) {
                 $body['tool_choice'] = ['type' => 'tool', 'name' => (string) $choice['function']['name']];
             }
         }
@@ -109,20 +121,24 @@ class AnthropicMessagesDriver implements ProviderDriver
         $text = '';
         $toolCalls = [];
         foreach ($json['content'] ?? [] as $block) {
-            if (($block['type'] ?? null) === 'text') $text .= (string) ($block['text'] ?? '');
+            if (($block['type'] ?? null) === 'text') {
+                $text .= (string) ($block['text'] ?? '');
+            }
             if (($block['type'] ?? null) === 'tool_use') {
                 $toolCalls[] = [
                     'id' => (string) ($block['id'] ?? ''),
                     'type' => 'function',
                     'function' => [
                         'name' => (string) ($block['name'] ?? ''),
-                        'arguments' => json_encode($block['input'] ?? new \stdClass(), JSON_UNESCAPED_UNICODE),
+                        'arguments' => json_encode($block['input'] ?? new \stdClass, JSON_UNESCAPED_UNICODE),
                     ],
                 ];
             }
         }
         $message = ['role' => 'assistant', 'content' => $text];
-        if ($toolCalls !== []) $message['tool_calls'] = $toolCalls;
+        if ($toolCalls !== []) {
+            $message['tool_calls'] = $toolCalls;
+        }
 
         $usage = $json['usage'] ?? [];
         $prompt = (int) ($usage['input_tokens'] ?? 0);
@@ -148,7 +164,7 @@ class AnthropicMessagesDriver implements ProviderDriver
 
     public function streamAdapter(): ProviderStreamAdapter
     {
-        return new AnthropicStreamAdapter();
+        return new AnthropicStreamAdapter;
     }
 
     public static function finishReason(?string $stopReason): string

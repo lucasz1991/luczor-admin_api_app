@@ -1,5 +1,16 @@
 <?php
 
+$localOrigins = [
+    'localhost',
+    '127.0.0.1',
+    'tauri.localhost',
+];
+$defaultOrigins = env('APP_ENV', 'production') === 'production' ? [] : $localOrigins;
+$allowedOrigins = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('REVERB_ALLOWED_ORIGINS', implode(',', $defaultOrigins)))
+)));
+
 return [
 
     /*
@@ -82,7 +93,7 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
-                'allowed_origins' => ['*'],
+                'allowed_origins' => $allowedOrigins,
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
                 'max_connections' => env('REVERB_APP_MAX_CONNECTIONS'),

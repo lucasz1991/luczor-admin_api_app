@@ -16,6 +16,7 @@ class PolicyController extends Controller
         if (! $request->user()?->isAdmin()) {
             $query->where('user_id', $actor->userId($request));
         }
+
         return response()->json(['data' => $query->paginate(100)]);
     }
 
@@ -36,6 +37,7 @@ class PolicyController extends Controller
             ['user_id' => $global ? null : $actor->userId($request), 'project_id' => $project?->id, 'type' => $data['type'], 'name' => $data['name']],
             ['active' => true, 'risk_level' => $data['risk_level'] ?? 'normal', 'rules' => $data['rules']]
         );
+
         return response()->json(['data' => $policy], 201);
     }
 
@@ -45,6 +47,7 @@ class PolicyController extends Controller
         if (! $request->user()?->isAdmin()) {
             $query->where('actor_user_id', $actor->userId($request));
         }
+
         return response()->json(['data' => $query->paginate(100)]);
     }
 }

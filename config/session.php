@@ -2,6 +2,9 @@
 
 use Illuminate\Support\Str;
 
+$appUrlScheme = parse_url((string) env('APP_URL', ''), PHP_URL_SCHEME);
+$secureByDefault = is_string($appUrlScheme) && strtolower($appUrlScheme) === 'https';
+
 return [
 
     /*
@@ -168,7 +171,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => filter_var(
+        env('SESSION_SECURE_COOKIE', $secureByDefault),
+        FILTER_VALIDATE_BOOLEAN
+    ),
 
     /*
     |--------------------------------------------------------------------------

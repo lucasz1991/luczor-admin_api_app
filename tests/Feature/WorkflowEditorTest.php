@@ -30,7 +30,7 @@ class WorkflowEditorTest extends TestCase
         ], $overrides);
     }
 
-    private function workflow(User $owner, array $definition = null, array $attributes = []): WorkflowDefinition
+    private function workflow(User $owner, ?array $definition = null, array $attributes = []): WorkflowDefinition
     {
         return WorkflowDefinition::create(array_merge([
             'user_id' => $owner->id, 'name' => 'Demo', 'version' => 1, 'status' => 'active',

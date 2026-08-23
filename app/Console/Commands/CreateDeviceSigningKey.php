@@ -23,19 +23,23 @@ class CreateDeviceSigningKey extends Command
         if (File::exists($path) && ! $this->option('force')) {
             if (! $this->option('print-public-key')) {
                 $this->error('Key already exists: '.$path.' (use --print-public-key or --force)');
+
                 return self::FAILURE;
             }
             $key = openssl_pkey_get_private(File::get($path));
             if (! $key || ! ($details = openssl_pkey_get_details($key))) {
                 $this->error('Existing key is invalid.');
+
                 return self::FAILURE;
             }
             $this->line('LUCZOR_VOICE_MANIFEST_PUBLIC_KEY_B64='.base64_encode($details['key']));
+
             return self::SUCCESS;
         }
         $key = openssl_pkey_new(['private_key_bits' => 3072, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
         if (! $key || ! openssl_pkey_export($key, $private)) {
             $this->error('OpenSSL could not generate a signing key.');
+
             return self::FAILURE;
         }
         File::ensureDirectoryExists(dirname($path));
@@ -44,6 +48,7 @@ class CreateDeviceSigningKey extends Command
         $details = openssl_pkey_get_details($key);
         $this->info('Private key written to '.$path);
         $this->line('LUCZOR_VOICE_MANIFEST_PUBLIC_KEY_B64='.base64_encode($details['key']));
+
         return self::SUCCESS;
     }
 }

@@ -1,0 +1,28 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: L
+        - generic [ref=e7]: LUCZOR
+      - paragraph [ref=e8]: Admin API, Modellsteuerung und Brain-Sync fuer Luczor.
+    - generic [ref=e9]:
+      - heading "Einloggen" [level=1] [ref=e10]
+      - paragraph [ref=e11]: Melde dich an, um Luczor-API, Modelle und Sync-Archive zu verwalten.
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - text: E-Mail
+          - textbox "E-Mail" [active] [ref=e14]
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - generic [ref=e17]: Passwort
+            - link "Vergessen?" [ref=e18] [cursor=pointer]:
+              - /url: http://127.0.0.1:8011/forgot-password
+          - textbox "Passwort" [ref=e19]
+        - generic [ref=e20]:
+          - checkbox "Angemeldet bleiben" [ref=e21]
+          - text: Angemeldet bleiben
+        - button "Einloggen" [ref=e22] [cursor=pointer]
+        - paragraph [ref=e23]:
+          - text: Noch kein Konto?
+          - link "Registrieren" [ref=e24] [cursor=pointer]:
+            - /url: http://127.0.0.1:8011/register

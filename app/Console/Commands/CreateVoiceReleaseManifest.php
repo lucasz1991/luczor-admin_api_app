@@ -30,6 +30,7 @@ class CreateVoiceReleaseManifest extends Command
         $baseUrl = rtrim(trim((string) $this->option('base-url')), '/');
         if ($version === '' || ! str_starts_with($baseUrl, 'https://')) {
             $this->error('--release-version and an HTTPS --base-url are required.');
+
             return self::INVALID;
         }
 
@@ -49,6 +50,7 @@ class CreateVoiceReleaseManifest extends Command
             $runtimePath = isset($asset['runtime_option']) ? trim((string) $this->option($asset['runtime_option'])) : '';
             if ($archive && $runtimePath === '') {
                 $this->error('ZIP runtime assets require --'.$asset['runtime_option'].'.');
+
                 return self::INVALID;
             }
             $entry = [
@@ -69,7 +71,9 @@ class CreateVoiceReleaseManifest extends Command
         $config = trim((string) $this->option('tts-config'));
         if ($config !== '') {
             $source = $this->file($config);
-            if (! $source) return self::INVALID;
+            if (! $source) {
+                return self::INVALID;
+            }
             $fileName = basename($source);
             $assets[] = [
                 'id' => 'piper-config', 'kind' => 'tts_config', 'platform' => (string) $this->option('platform'),
@@ -82,6 +86,7 @@ class CreateVoiceReleaseManifest extends Command
         $publicKey = $signer->publicKey();
         if (! $publicKey) {
             $this->error('The device-job signing key is not configured.');
+
             return self::FAILURE;
         }
         $envelope = [
@@ -103,6 +108,7 @@ class CreateVoiceReleaseManifest extends Command
         $this->newLine();
         $this->line('Build the Tauri release with LUCZOR_VOICE_MANIFEST_PUBLIC_KEY_B64='.$envelope['public_key_b64']);
         $this->line('Publish payload_json as LUCZOR_VOICE_MANIFEST_JSON on the Laravel deployment.');
+
         return self::SUCCESS;
     }
 
@@ -110,13 +116,16 @@ class CreateVoiceReleaseManifest extends Command
     {
         if ($source === '') {
             $this->error('All four asset options are required.');
+
             return null;
         }
         $path = $this->absolutePath($source);
         if (! is_file($path)) {
             $this->error('Asset not found: '.$source);
+
             return null;
         }
+
         return $path;
     }
 
@@ -126,6 +135,7 @@ class CreateVoiceReleaseManifest extends Command
             && ctype_alpha($path[0])
             && $path[1] === ':'
             && ($path[2] === '\\' || $path[2] === '/');
+
         return is_file($path) || str_starts_with($path, DIRECTORY_SEPARATOR) || $windowsAbsolute ? $path : base_path($path);
     }
 }

@@ -36,7 +36,10 @@ class OpenAiResponsesDriver implements ProviderDriver
             $role = $message['role'] ?? 'user';
             $content = (string) ($message['content'] ?? '');
             if ($role === 'system') {
-                if ($content !== '') $instructions[] = $content;
+                if ($content !== '') {
+                    $instructions[] = $content;
+                }
+
                 continue;
             }
             if ($role === 'tool') {
@@ -45,10 +48,13 @@ class OpenAiResponsesDriver implements ProviderDriver
                     'call_id' => (string) ($message['tool_call_id'] ?? $message['name'] ?? ''),
                     'output' => $content,
                 ];
+
                 continue;
             }
             if ($role === 'assistant' && ! empty($message['tool_calls'])) {
-                if ($content !== '') $input[] = ['role' => 'assistant', 'content' => $content];
+                if ($content !== '') {
+                    $input[] = ['role' => 'assistant', 'content' => $content];
+                }
                 foreach ($message['tool_calls'] as $toolCall) {
                     $input[] = [
                         'type' => 'function_call',
@@ -57,6 +63,7 @@ class OpenAiResponsesDriver implements ProviderDriver
                         'arguments' => (string) ($toolCall['function']['arguments'] ?? '{}'),
                     ];
                 }
+
                 continue;
             }
             $input[] = ['role' => $role, 'content' => $content];
@@ -67,11 +74,15 @@ class OpenAiResponsesDriver implements ProviderDriver
             'input' => $input,
             'stream' => (bool) ($payload['stream'] ?? false),
         ];
-        if ($instructions !== []) $body['instructions'] = implode("\n\n", $instructions);
-        if (isset($payload['temperature']) && $payload['temperature'] !== null) {
+        if ($instructions !== []) {
+            $body['instructions'] = implode("\n\n", $instructions);
+        }
+        if (isset($payload['temperature'])) {
             $body['temperature'] = (float) $payload['temperature'];
         }
-        if (isset($payload['max_tokens'])) $body['max_output_tokens'] = (int) $payload['max_tokens'];
+        if (isset($payload['max_tokens'])) {
+            $body['max_output_tokens'] = (int) $payload['max_tokens'];
+        }
         if (! empty($payload['tools'])) {
             $body['tools'] = array_values(array_map(static fn (array $tool) => [
                 'type' => 'function',
@@ -80,8 +91,9 @@ class OpenAiResponsesDriver implements ProviderDriver
                 'parameters' => $tool['function']['parameters'] ?? ['type' => 'object'],
             ], $payload['tools']));
             $choice = $payload['tool_choice'] ?? null;
-            if (in_array($choice, ['auto', 'none', 'required'], true)) $body['tool_choice'] = $choice;
-            elseif (is_array($choice) && isset($choice['function']['name'])) {
+            if (in_array($choice, ['auto', 'none', 'required'], true)) {
+                $body['tool_choice'] = $choice;
+            } elseif (is_array($choice) && isset($choice['function']['name'])) {
                 $body['tool_choice'] = ['type' => 'function', 'name' => (string) $choice['function']['name']];
             }
         }
@@ -96,7 +108,9 @@ class OpenAiResponsesDriver implements ProviderDriver
         foreach ($json['output'] ?? [] as $item) {
             if (($item['type'] ?? null) === 'message') {
                 foreach ($item['content'] ?? [] as $part) {
-                    if (($part['type'] ?? null) === 'output_text') $text .= (string) ($part['text'] ?? '');
+                    if (($part['type'] ?? null) === 'output_text') {
+                        $text .= (string) ($part['text'] ?? '');
+                    }
                 }
             }
             if (($item['type'] ?? null) === 'function_call') {
@@ -111,12 +125,17 @@ class OpenAiResponsesDriver implements ProviderDriver
             }
         }
         $message = ['role' => 'assistant', 'content' => $text];
-        if ($toolCalls !== []) $message['tool_calls'] = $toolCalls;
+        if ($toolCalls !== []) {
+            $message['tool_calls'] = $toolCalls;
+        }
 
         $finishReason = 'stop';
-        if ($toolCalls !== []) $finishReason = 'tool_calls';
-        elseif (($json['status'] ?? null) === 'incomplete'
-            && ($json['incomplete_details']['reason'] ?? null) === 'max_output_tokens') $finishReason = 'length';
+        if ($toolCalls !== []) {
+            $finishReason = 'tool_calls';
+        } elseif (($json['status'] ?? null) === 'incomplete'
+            && ($json['incomplete_details']['reason'] ?? null) === 'max_output_tokens') {
+            $finishReason = 'length';
+        }
 
         $usage = $json['usage'] ?? [];
         $prompt = (int) ($usage['input_tokens'] ?? 0);
@@ -142,6 +161,6 @@ class OpenAiResponsesDriver implements ProviderDriver
 
     public function streamAdapter(): ProviderStreamAdapter
     {
-        return new OpenAiResponsesStreamAdapter();
+        return new OpenAiResponsesStreamAdapter;
     }
 }

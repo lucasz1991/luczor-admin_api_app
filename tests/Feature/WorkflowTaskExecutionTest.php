@@ -78,6 +78,29 @@ class WorkflowTaskExecutionTest extends TestCase
         $this->assertArrayHasKey('r', $run->fresh()->context ?? []);
     }
 
+    public function test_server_workflow_memory_steps_reject_every_device_local_scope(): void
+    {
+        $user = User::factory()->create();
+
+        foreach (['device', 'private'] as $scope) {
+            foreach (['memory.remember', 'memory.recall'] as $type) {
+                $payload = $type === 'memory.remember'
+                    ? ['scope' => $scope, 'content' => 'Diese Notiz muss lokal bleiben.']
+                    : ['scope' => $scope, 'query' => 'lokale Notiz'];
+                $run = $this->startRun($user, [
+                    ['key' => 'memory', 'type' => $type, 'payload' => $payload, 'max_attempts' => 1],
+                ]);
+
+                $step = $run->steps()->first();
+                $this->assertSame('failed', $step->status, "{$type} accepted {$scope} memory.");
+                $this->assertStringContainsString('Device-local memory', (string) $step->error);
+                $this->assertSame('failed', $run->fresh()->status);
+            }
+        }
+
+        $this->assertDatabaseCount('memory_links', 0);
+    }
+
     public function test_task_create_step_creates_an_open_user_task(): void
     {
         $user = User::factory()->create();

@@ -19,7 +19,7 @@ interface ProviderDriver
      * Canonical payload (messages/tools/model/temperature/max_tokens/stream)
      * to the provider's request body.
      *
-     * @param array<string,mixed> $payload
+     * @param  array<string,mixed>  $payload
      * @return array<string,mixed>
      */
     public function buildBody(array $payload): array;
@@ -27,7 +27,7 @@ interface ProviderDriver
     /**
      * Provider response JSON to the canonical chat.completion shape.
      *
-     * @param array<string,mixed> $json
+     * @param  array<string,mixed>  $json
      * @return array<string,mixed>
      */
     public function normalizeResponse(array $json): array;

@@ -70,6 +70,7 @@ class McpToolApiTest extends TestCase
     {
         $user = User::factory()->create();
         $minted = ApiKey::mint(['user_id' => $user->id, 'name' => 'MCP client', 'abilities' => $abilities, 'active' => true]);
+
         return [$user, $minted['plain']];
     }
 }

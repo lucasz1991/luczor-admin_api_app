@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EvaluationResult extends Model
 {
@@ -35,12 +36,14 @@ class EvaluationResult extends Model
         'payload' => 'array',
     ];
 
-    public function llmRun()
+    /** @return BelongsTo<LlmRun, $this> */
+    public function llmRun(): BelongsTo
     {
         return $this->belongsTo(LlmRun::class);
     }
 
-    public function agentRun()
+    /** @return BelongsTo<AgentRun, $this> */
+    public function agentRun(): BelongsTo
     {
         return $this->belongsTo(AgentRun::class);
     }

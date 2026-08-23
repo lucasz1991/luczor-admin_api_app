@@ -93,7 +93,7 @@ class WorkflowTaskCatalog
     }
 
     /**
-     * @param array<string,mixed> $overrides
+     * @param  array<string,mixed>  $overrides
      * @return array<string,mixed>
      */
     private static function entry(string $label, string $runner, string $kind, bool $allowedInDefinition, array $overrides = []): array
@@ -139,6 +139,7 @@ class WorkflowTaskCatalog
 
     /**
      * Library view for UI / AI planning (every vetted task, with its contract).
+     *
      * @return array<int,array<string,mixed>>
      */
     public static function options(): array

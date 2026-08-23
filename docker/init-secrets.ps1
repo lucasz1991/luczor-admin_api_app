@@ -32,6 +32,15 @@ Write-SecretIfMissing "openrouter_key" ""
 Write-SecretIfMissing "github_client_secret" ""
 Write-SecretIfMissing "github_webhook_secret" (New-RandomSecret)
 Write-SecretIfMissing "reverb_app_secret" (New-RandomSecret)
+Write-SecretIfMissing "internal_service_key" (New-RandomSecret)
+Write-SecretIfMissing "cognee_api_key" ""
+Write-SecretIfMissing "cognee_postgres_password" (New-RandomSecret)
+Write-SecretIfMissing "cognee_llm_api_key" ""
+Write-SecretIfMissing "cognee_embedding_api_key" ""
+Write-SecretIfMissing "cognee_jwt_secret" (New-RandomSecret 48)
+Write-SecretIfMissing "cognee_default_password" (New-RandomSecret)
+Write-SecretIfMissing "cognee_verification_secret" (New-RandomSecret 48)
+Write-SecretIfMissing "cognee_reset_secret" (New-RandomSecret 48)
 
 $jobKey = Join-Path $SecretDirectory "job_private_key"
 if (-not (Test-Path -LiteralPath $jobKey)) {
@@ -44,4 +53,4 @@ if (-not (Test-Path -LiteralPath $jobKey)) {
     Write-Host "Created job_private_key"
 }
 
-Write-Host "Secrets are ready in $SecretDirectory. Fill openrouter_key and github_client_secret before enabling those integrations."
+Write-Host "Secrets are ready in $SecretDirectory. Fill openrouter_key, github_client_secret, cognee_llm_api_key, and cognee_embedding_api_key before enabling those integrations."

@@ -11,13 +11,27 @@ use App\Models\WorkflowRun;
 use App\Models\WorkflowRunArtifact;
 use App\Models\WorkflowStep;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Throwable;
 
 /** Persistent dependency scheduler. It never executes arbitrary shell code. */
 class WorkflowService
 {
+    private WorkflowDefinitionValidator $definitionValidator;
+
+    private WorkflowArtifactService $artifactService;
+
+    private WorkflowRunNotifier $runNotifier;
+
+    public function __construct(
+        ?WorkflowDefinitionValidator $definitionValidator = null,
+        ?WorkflowArtifactService $artifactService = null,
+        ?WorkflowRunNotifier $runNotifier = null,
+    ) {
+        $this->definitionValidator = $definitionValidator ?? new WorkflowDefinitionValidator;
+        $this->artifactService = $artifactService ?? new WorkflowArtifactService;
+        $this->runNotifier = $runNotifier ?? new WorkflowRunNotifier;
+    }
+
     /** @param array<string,mixed> $definition */
     public function createRun(WorkflowDefinition $definition, array $input = [], ?int $agentRunId = null, bool $sandbox = false): WorkflowRun
     {
@@ -310,20 +324,7 @@ class WorkflowService
      */
     public function recordArtifact(WorkflowStep $step, array $data): WorkflowRunArtifact
     {
-        return WorkflowRunArtifact::create([
-            'workflow_run_id' => $step->workflow_run_id,
-            'workflow_step_id' => $step->id,
-            'step_key' => $step->step_key,
-            'phase' => $data['phase'] ?? 'after',
-            'artifact_type' => $data['artifact_type'] ?? 'json',
-            'label' => $data['label'] ?? null,
-            'current_url' => $data['current_url'] ?? null,
-            'storage_disk' => $data['storage_disk'] ?? 'local',
-            'storage_path' => $data['storage_path'] ?? null,
-            'status' => $data['status'] ?? 'success',
-            'error_message' => $data['error_message'] ?? null,
-            'metadata' => $this->maskSecrets(is_array($data['metadata'] ?? null) ? $data['metadata'] : []),
-        ]);
+        return $this->artifactService->record($step, $data);
     }
 
     /**
@@ -334,19 +335,7 @@ class WorkflowService
      */
     public function maskSecrets(array $data): array
     {
-        $secret = '/(pass(word)?|secret|token|api[_-]?key|session|authorization|cookie|ws_?endpoint)/i';
-        $out = [];
-        foreach ($data as $key => $value) {
-            if (is_string($key) && preg_match($secret, $key)) {
-                $out[$key] = '***';
-            } elseif (is_array($value)) {
-                $out[$key] = $this->maskSecrets($value);
-            } else {
-                $out[$key] = $value;
-            }
-        }
-
-        return $out;
+        return $this->artifactService->maskSecrets($data);
     }
 
     /**
@@ -432,133 +421,12 @@ class WorkflowService
 
     private function notifyTerminalRun(WorkflowRun $run): void
     {
-        if (! in_array($run->status, ['completed', 'failed', 'cancelled'], true)
-            || $run->parent_workflow_run_id) {
-            return;
-        }
-
-        $title = match ($run->status) {
-            'completed' => 'Workflow abgeschlossen',
-            'failed' => 'Workflow fehlgeschlagen',
-            default => 'Workflow abgebrochen',
-        };
-        $body = $run->definition?->name
-            ? '„'.$run->definition->name.'“ ist '.$this->workflowStatusLabel($run->status).'.'
-            : 'Der Workflow ist '.$this->workflowStatusLabel($run->status).'.';
-
-        try {
-            app(AppNotificationService::class)->send(
-                user: (int) $run->user_id,
-                notificationId: 'workflow-run:'.$run->public_id,
-                title: $title,
-                body: $body,
-                category: 'workflow',
-                data: [
-                    'workflow_run_id' => $run->public_id,
-                    'workflow_definition_id' => $run->workflow_definition_id,
-                    'status' => $run->status,
-                ],
-                priority: $run->status === 'failed' ? 'high' : 'normal',
-            );
-        } catch (Throwable $exception) {
-            Log::notice('Luczor workflow notification could not be persisted or queued.', [
-                'notification_id' => 'workflow-run:'.$run->public_id,
-                'user_id' => $run->user_id,
-                'error_class' => $exception::class,
-            ]);
-        }
-    }
-
-    private function workflowStatusLabel(string $status): string
-    {
-        return match ($status) {
-            'completed' => 'abgeschlossen',
-            'failed' => 'fehlgeschlagen',
-            default => 'abgebrochen',
-        };
+        $this->runNotifier->notifyTerminal($run);
     }
 
     /** @return array<int,array{key:string,type:string,depends_on:array<int,string>,requires_approval:bool,max_attempts:int,payload:array<string,mixed>}> */
     public function assertDefinition(array $definition): array
     {
-        $steps = $definition['steps'] ?? [];
-        abort_unless(is_array($steps) && count($steps) > 0 && count($steps) <= 100, 422, 'A workflow requires between 1 and 100 steps.');
-        $keys = [];
-        $out = [];
-        foreach ($steps as $step) {
-            abort_unless(is_array($step), 422, 'Invalid workflow step.');
-            $key = trim((string) ($step['key'] ?? ''));
-            $type = trim((string) ($step['type'] ?? ''));
-            abort_unless($key !== '' && preg_match('/^[A-Za-z0-9_.-]{1,120}$/', $key), 422, 'Invalid workflow step key.');
-            // SOLL §14 P12 — validate against the vetted task catalog (single
-            // source of truth). Only catalogued tasks whose executor exists may
-            // appear in a definition, so the AI cannot invent runnable tasks.
-            abort_unless(WorkflowTaskCatalog::isAllowedInDefinition($type), 422, 'Invalid workflow step type.');
-            abort_unless(! isset($keys[$key]), 422, 'Workflow step keys must be unique.');
-            $keys[$key] = true;
-            $payload = is_array($step['payload'] ?? null) ? $step['payload'] : [];
-            $routes = $this->normalizeRoutes($step['routes'] ?? []);
-            if ($routes !== []) {
-                $payload['routes'] = $routes;
-            }
-            $out[] = [
-                'key' => $key,
-                'type' => $type,
-                'depends_on' => array_values(array_filter((array) ($step['depends_on'] ?? []), 'is_string')),
-                // P15b — the catalog's approval default is a floor, not a hint:
-                // mutating device tasks always pass an approval gate.
-                'requires_approval' => (bool) ($step['requires_approval'] ?? false)
-                    || (bool) (WorkflowTaskCatalog::task($type)['requires_approval'] ?? false),
-                'max_attempts' => max(1, min(10, (int) ($step['max_attempts'] ?? 2))),
-                'payload' => $payload,
-            ];
-        }
-        foreach ($out as $step) {
-            foreach ($step['depends_on'] as $dependency) {
-                abort_unless(isset($keys[$dependency]) && $dependency !== $step['key'], 422, 'Workflow dependency does not exist.');
-            }
-            foreach ($step['payload']['routes'] ?? [] as $route) {
-                if (($route['type'] ?? '') === 'step') {
-                    abort_unless(isset($keys[$route['step_key']]), 422, 'Workflow route target does not exist.');
-                }
-            }
-            // P14 — a nested-workflow step must name a child definition.
-            if ($step['type'] === 'workflow') {
-                abort_unless((int) ($step['payload']['workflow_definition_id'] ?? 0) > 0, 422, 'A workflow step requires payload.workflow_definition_id.');
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * Validate + normalize a step's outcome routes (P13). Keys are outcome
-     * buckets; values are {type: end|fail|step, step_key?, max_iterations?}.
-     *
-     * @return array<string,array<string,mixed>>
-     */
-    private function normalizeRoutes(mixed $raw): array
-    {
-        if (! is_array($raw) || $raw === []) {
-            return [];
-        }
-        $allowedOutcomes = ['success', 'failed', 'partial', 'timeout', 'default'];
-        $routes = [];
-        foreach ($raw as $outcome => $route) {
-            abort_unless(in_array($outcome, $allowedOutcomes, true), 422, 'Invalid workflow route outcome.');
-            abort_unless(is_array($route), 422, 'Invalid workflow route.');
-            $type = (string) ($route['type'] ?? '');
-            abort_unless(in_array($type, ['end', 'fail', 'step'], true), 422, 'Invalid workflow route type.');
-            $entry = ['type' => $type];
-            if ($type === 'step') {
-                $target = trim((string) ($route['step_key'] ?? ''));
-                abort_unless($target !== '', 422, 'Workflow route step target is required.');
-                $entry['step_key'] = $target;
-                $entry['max_iterations'] = max(1, min(50, (int) ($route['max_iterations'] ?? 2)));
-            }
-            $routes[$outcome] = $entry;
-        }
-
-        return $routes;
+        return $this->definitionValidator->validate($definition);
     }
 }

@@ -30,7 +30,8 @@ class ProxyProviderDriversTest extends TestCase
         $this->policy(['max_attempts' => 1]);
 
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->once()->withArgs(function (string $url, array $options) {
+        $http->shouldReceive('request')->once()->withArgs(function (string $method, string $url, array $options) {
+            $this->assertSame('POST', $method);
             $this->assertSame('https://api.anthropic.com/v1/messages', $url);
             $this->assertSame('anthropic-secret', $options['headers']['x-api-key']);
             $this->assertSame('2023-06-01', $options['headers']['anthropic-version']);
@@ -38,6 +39,7 @@ class ProxyProviderDriversTest extends TestCase
             $this->assertSame('claude-sonnet-5', $options['json']['model']);
             $this->assertSame(50, $options['json']['max_tokens']);
             $this->assertSame([['role' => 'user', 'content' => [['type' => 'text', 'text' => 'Hallo Claude']]]], $options['json']['messages']);
+
             return true;
         })->andReturn(new Response(200, [], json_encode([
             'id' => 'msg_1', 'model' => 'claude-sonnet-5', 'stop_reason' => 'end_turn',
@@ -72,12 +74,14 @@ class ProxyProviderDriversTest extends TestCase
         $this->policy(['max_attempts' => 1]);
 
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->once()->withArgs(function (string $url, array $options) {
+        $http->shouldReceive('request')->once()->withArgs(function (string $method, string $url, array $options) {
+            $this->assertSame('POST', $method);
             $this->assertSame('https://api.openai.com/v1/responses', $url);
             $this->assertSame('Bearer openai-secret', $options['headers']['Authorization']);
             $this->assertSame(50, $options['json']['max_output_tokens']);
             $this->assertArrayNotHasKey('messages', $options['json']);
             $this->assertSame([['role' => 'user', 'content' => 'Hallo GPT']], $options['json']['input']);
+
             return true;
         })->andReturn(new Response(200, [], json_encode([
             'id' => 'resp_1', 'model' => 'gpt-5', 'status' => 'completed',
@@ -108,9 +112,13 @@ class ProxyProviderDriversTest extends TestCase
 
         $urls = [];
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->twice()->andReturnUsing(function (string $url) use (&$urls) {
+        $http->shouldReceive('request')->twice()->andReturnUsing(function (string $method, string $url) use (&$urls) {
+            $this->assertSame('POST', $method);
             $urls[] = $url;
-            if (count($urls) === 1) return new Response(529, [], 'overloaded');
+            if (count($urls) === 1) {
+                return new Response(529, [], 'overloaded');
+            }
+
             return new Response(200, [], json_encode([
                 'id' => 'or_1',
                 'choices' => [['finish_reason' => 'stop', 'message' => ['role' => 'assistant', 'content' => 'Fallback OK']]],
@@ -149,7 +157,7 @@ class ProxyProviderDriversTest extends TestCase
             ."event: message_stop\n"
             ."data: {\"type\":\"message_stop\"}\n\n";
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->once()->andReturn(new Response(200, [], $sse));
+        $http->shouldReceive('request')->once()->andReturn(new Response(200, [], $sse));
         $this->fakeHttp($http);
 
         $response = $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [

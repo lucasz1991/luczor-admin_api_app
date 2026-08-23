@@ -41,6 +41,7 @@ class AgentRunController extends Controller
     public function show(Request $request, AgentRun $agentRun, ApiActor $actor)
     {
         $actor->assertOwned($request, $agentRun);
+
         return response()->json(['data' => $agentRun->load(['tasks', 'evaluations'])]);
     }
 

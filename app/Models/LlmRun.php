@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LlmRun extends Model
 {
@@ -28,22 +29,26 @@ class LlmRun extends Model
         'test_passed' => 'boolean',
     ];
 
-    public function metrics()
+    /** @return HasMany<LlmRunMetric, $this> */
+    public function metrics(): HasMany
     {
         return $this->hasMany(LlmRunMetric::class);
     }
 
-    public function evaluations()
+    /** @return HasMany<EvaluationResult, $this> */
+    public function evaluations(): HasMany
     {
         return $this->hasMany(EvaluationResult::class);
     }
 
-    public function attempts()
+    /** @return HasMany<LlmAttempt, $this> */
+    public function attempts(): HasMany
     {
         return $this->hasMany(LlmAttempt::class);
     }
 
-    public function toolCalls()
+    /** @return HasMany<ToolCall, $this> */
+    public function toolCalls(): HasMany
     {
         return $this->hasMany(ToolCall::class);
     }

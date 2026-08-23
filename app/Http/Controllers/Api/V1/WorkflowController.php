@@ -55,12 +55,14 @@ class WorkflowController extends Controller
     public function show(Request $request, WorkflowRun $workflowRun, ApiActor $actor)
     {
         $actor->assertOwned($request, $workflowRun);
+
         return response()->json(['data' => $workflowRun->load(['steps', 'definition'])]);
     }
 
     public function advance(Request $request, WorkflowRun $workflowRun, ApiActor $actor, WorkflowService $workflows)
     {
         $actor->assertOwned($request, $workflowRun);
+
         return response()->json(['data' => $workflows->advance($workflowRun)]);
     }
 
@@ -68,6 +70,7 @@ class WorkflowController extends Controller
     {
         $actor->assertOwned($request, $workflowStep->run);
         $data = $request->validate(['output' => ['nullable', 'array']]);
+
         return response()->json(['data' => $workflows->complete($workflowStep, $data['output'] ?? [])]);
     }
 
@@ -75,12 +78,14 @@ class WorkflowController extends Controller
     {
         $actor->assertOwned($request, $workflowStep->run);
         $data = $request->validate(['error' => ['required', 'string', 'max:8000']]);
+
         return response()->json(['data' => $workflows->fail($workflowStep, $data['error'])]);
     }
 
     public function cancel(Request $request, WorkflowRun $workflowRun, ApiActor $actor, WorkflowService $workflows)
     {
         $actor->assertOwned($request, $workflowRun);
+
         return response()->json(['data' => $workflows->cancel($workflowRun)]);
     }
 }

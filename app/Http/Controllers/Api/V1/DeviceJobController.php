@@ -19,6 +19,7 @@ class DeviceJobController extends Controller
             'tool_profile' => ['required', 'string', 'max:120'],
             'payload' => ['nullable', 'array'],
         ]);
+
         return response()->json(['data' => $jobs->create($request, $data)], 201);
     }
 

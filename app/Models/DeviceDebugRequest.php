@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class DeviceDebugRequest extends Model
@@ -25,7 +26,21 @@ class DeviceDebugRequest extends Model
         });
     }
 
-    public function device() { return $this->belongsTo(Device::class); }
-    public function user() { return $this->belongsTo(User::class); }
-    public function requester() { return $this->belongsTo(User::class, 'requested_by'); }
+    /** @return BelongsTo<Device, $this> */
+    public function device(): BelongsTo
+    {
+        return $this->belongsTo(Device::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function requester(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'requested_by');
+    }
 }

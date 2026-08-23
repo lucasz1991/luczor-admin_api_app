@@ -10,11 +10,28 @@ use App\Services\AppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AppNotificationsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_notification_and_queue_support_schema_is_present_after_migration(): void
+    {
+        $this->assertTrue(Schema::hasTable('app_notifications'));
+        $this->assertTrue(Schema::hasTable('notification_preferences'));
+        $this->assertTrue(Schema::hasColumns('app_notifications', [
+            'user_id',
+            'target_device_id',
+            'notification_id',
+            'read_at',
+            'expires_at',
+        ]));
+        $this->assertTrue(Schema::hasTable('jobs'));
+        $this->assertTrue(Schema::hasTable('job_batches'));
+        $this->assertTrue(Schema::hasTable('failed_jobs'));
+    }
 
     public function test_preferences_are_opt_in_and_validate_known_categories(): void
     {

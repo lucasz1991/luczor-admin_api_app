@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\ContextArtifact;
-use App\Models\Project;
 use App\Models\ContextStrategy;
+use App\Models\Project;
 use Illuminate\Support\Str;
 
 /**
@@ -14,12 +14,11 @@ use Illuminate\Support\Str;
 class ContextController
 {
     public function __construct(
-        private LuczorMemoryService $memory,
+        private MemoryOrchestrator $memory,
         private GitFreshnessService $gitFreshness,
         private GraphContextService $graphContext,
         private ContextCache $cache,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<string,mixed>  $req
@@ -38,7 +37,7 @@ class ContextController
         $featureKey = $req['feature_key'] ?? null;
         $query = trim((string) ($req['query'] ?? ''));
         $strategy = ContextStrategy::query()->where('key', $req['context_strategy_id'] ?? 'context.memory_code_budgeted')->where('status', 'active')->first();
-        $strategyConfig = $strategy?->config ?? [];
+        $strategyConfig = $strategy ? $strategy->config : [];
         $memoryBudget = (int) ($strategyConfig['memory_tokens'] ?? 800);
         $maxInputTokens = min((int) ($req['budget']['max_input_tokens'] ?? $memoryBudget), $memoryBudget);
         $maxItems = min(12, (int) ($req['budget']['max_items'] ?? 6));
@@ -72,7 +71,9 @@ class ContextController
                 : ($query !== '' && str_contains(mb_strtolower($content), mb_strtolower($query)) ? 0.6 : 0.3);
             $graphProximity = $this->graphProximity($m, $code, $git);
             $memoryQuality = (float) ($m['importance'] ?? 0.5);
-            $sourceAuthority = (($m['source'] ?? 'links') === 'cognee') ? 1.0 : 0.6;
+            // Cognee only proposes candidates. Canonical confidence and
+            // provenance from SQL determine authority after revalidation.
+            $sourceAuthority = max(0.4, min(1.0, (float) ($m['confidence'] ?? 0.6)));
             $tokenCost = min(1.0, mb_strlen($content) / 2000);
 
             $score = $weights['freshness'] * $freshness
@@ -114,6 +115,8 @@ class ContextController
             'content' => $s['content'],
             'type' => $s['m']['type'] ?? 'note',
             'staleness' => $s['m']['staleness'] ?? 'fresh',
+            'confidence' => $s['m']['confidence'] ?? 0.5,
+            'provenance' => $s['m']['provenance'] ?? null,
             'score' => $s['score'],
         ], $selected);
         $explain = array_map(fn ($s) => [
@@ -131,7 +134,7 @@ class ContextController
             'commit_sha' => $git['commit_sha'] ?? null,
             'task_type' => $taskType,
             'feature_key' => $featureKey,
-            'context_strategy_id' => $strategy?->key ?? 'context.memory_code_budgeted',
+            'context_strategy_id' => $strategy ? $strategy->key : 'context.memory_code_budgeted',
             'budget' => $budget,
             'git' => $git,
             'code' => $code,
@@ -150,6 +153,19 @@ class ContextController
             ->where('external_id', $projectId)
             ->first() : null;
 
+        $persistentMemory = array_map(fn ($item) => [
+            'id' => $item['id'],
+            'type' => $item['type'],
+            'staleness' => $item['staleness'],
+            'confidence' => $item['confidence'],
+            'score' => $item['score'],
+        ], $memory);
+        $persistentExplain = array_map(fn ($item) => [
+            'score' => $item['score'],
+            'tokens' => $item['tokens'],
+            'duplicate' => $item['duplicate'],
+        ], $explain);
+
         ContextArtifact::create([
             'user_id' => $req['user_id'] ?? null,
             'context_id' => $contextId,
@@ -161,10 +177,12 @@ class ContextController
             'branch' => $git['branch'] ?? null,
             'commit_sha' => $git['commit_sha'] ?? null,
             'changed_files' => $git['changed_files'] ?? [],
-            'code' => $code,
-            'memory' => $memory,
+            // Local graph hints are request-only and must never become a
+            // server-side repository graph or persisted context artifact.
+            'code' => $graph['persistent_code'],
+            'memory' => $persistentMemory,
             'budget' => $budget,
-            'score_explain' => $explain,
+            'score_explain' => $persistentExplain,
             'source_status' => $graph['source_status'],
         ]);
 
@@ -172,9 +190,9 @@ class ContextController
     }
 
     /**
-     * @param array<string,mixed> $memory
-     * @param array<int,array<string,mixed>> $code
-     * @param array<string,mixed> $git
+     * @param  array<string,mixed>  $memory
+     * @param  array<int,array<string,mixed>>  $code
+     * @param  array<string,mixed>  $git
      */
     private function graphProximity(array $memory, array $code, array $git): float
     {

@@ -1,10 +1,11 @@
 import hashlib
+import hmac
 import json
 import os
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 import redis.asyncio as redis
 import httpx
@@ -12,6 +13,34 @@ import httpx
 app = FastAPI(title="Luczor Graph Indexer", version="1.0")
 cache = redis.from_url(os.environ["REDIS_URL"], password=os.getenv("REDIS_PASSWORD"), decode_responses=True)
 QDRANT_COLLECTION = "luczor_graph_snapshots"
+
+
+def load_internal_api_key() -> str:
+    configured = os.getenv("GRAPHIFY_API_KEY", "").strip()
+    if configured:
+        return configured
+    secret_file = os.getenv("GRAPHIFY_API_KEY_FILE", "").strip()
+    if not secret_file:
+        return ""
+    try:
+        with open(secret_file, encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
+INTERNAL_API_KEY = load_internal_api_key()
+
+
+def require_internal_api_key(
+    x_luczor_internal_key: str | None = Header(default=None),
+) -> None:
+    """Fail closed when the sidecar secret is absent or does not match."""
+    if not INTERNAL_API_KEY:
+        raise HTTPException(status_code=503, detail="Internal authentication is not configured")
+    supplied = (x_luczor_internal_key or "").strip()
+    if not supplied or not hmac.compare_digest(supplied, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid internal service credential")
 
 
 class IndexRequest(BaseModel):
@@ -133,7 +162,7 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/v1/index")
+@app.post("/api/v1/index", dependencies=[Depends(require_internal_api_key)])
 async def index(request: IndexRequest) -> dict[str, Any]:
     snapshot = {
         "user_id": request.user_id,
@@ -153,7 +182,7 @@ async def index(request: IndexRequest) -> dict[str, Any]:
     return {"data": snapshot, "source_status": {"cache": "indexed", "qdrant": qdrant_status}}
 
 
-@app.post("/api/v1/impact")
+@app.post("/api/v1/impact", dependencies=[Depends(require_internal_api_key)])
 async def impact(request: ImpactRequest) -> dict[str, Any]:
     raw = await cache.get(cache_key(request.user_id, request.repo_id, request.branch))
     snapshot = json.loads(raw) if raw else {}

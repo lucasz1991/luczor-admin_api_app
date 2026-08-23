@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Services\DeploymentHealthService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
@@ -25,10 +26,23 @@ class HealthController extends Controller
         ], $ok ? 200 : 503);
     }
 
+    public function readiness(DeploymentHealthService $health)
+    {
+        $checks = $health->checks();
+        $ok = ! in_array(false, $checks, true);
+
+        return response()->json([
+            'ok' => $ok,
+            'time' => now()->toISOString(),
+            'checks' => $checks,
+        ], $ok ? 200 : 503);
+    }
+
     private function database(): bool
     {
         try {
             DB::select('select 1');
+
             return true;
         } catch (\Throwable) {
             return false;
@@ -39,6 +53,7 @@ class HealthController extends Controller
     {
         try {
             $reply = Redis::connection()->command('ping');
+
             return $reply === true || strtoupper((string) $reply) === 'PONG';
         } catch (\Throwable) {
             return false;

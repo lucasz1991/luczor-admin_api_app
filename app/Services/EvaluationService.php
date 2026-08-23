@@ -9,9 +9,7 @@ use App\Models\PerformanceProfile;
 
 class EvaluationService
 {
-    public function __construct(private ModelRanker $ranker)
-    {
-    }
+    public function __construct(private ModelRanker $ranker) {}
 
     /** @param array<string,mixed> $metrics */
     public function recordMetric(LlmRun $run, array $metrics): LlmRunMetric

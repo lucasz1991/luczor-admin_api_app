@@ -26,6 +26,12 @@ class AuthViewsTest extends TestCase
             ->get('/dashboard')
             ->assertOk()
             ->assertSee('luczor terminal')
+            ->assertSee('data-luczor-topbar', false)
+            ->assertSee('id="app-sidebar"', false)
+            ->assertSee('aria-label="Navigation öffnen oder schließen"', false)
+            ->assertSee('aria-current="page"', false)
+            ->assertSee('Meine Geräte')
+            ->assertDontSee('Provider & Preise')
             ->assertDontSee('Modell-Fallbacks pro Use-Case');
     }
 
@@ -40,6 +46,11 @@ class AuthViewsTest extends TestCase
             ->get('/dashboard')
             ->assertOk()
             ->assertSee('Luczor Admin Control')
+            ->assertSee('data-luczor-sidebar', false)
+            ->assertSee('aria-label="Navigation öffnen oder schließen"', false)
+            ->assertSee('aria-current="page"', false)
+            ->assertSee('Provider & Preise')
+            ->assertSee('Server Settings')
             ->assertSee('Modell-Fallbacks pro Use-Case');
     }
 

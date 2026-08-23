@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * SOLL §15 P27 — a reusable prompt/task bundle (see the skills migration).
@@ -23,7 +24,8 @@ class Skill extends Model
 
     public const KINDS = ['prompt', 'workflow'];
 
-    public function workflowDefinition()
+    /** @return BelongsTo<WorkflowDefinition, $this> */
+    public function workflowDefinition(): BelongsTo
     {
         return $this->belongsTo(WorkflowDefinition::class);
     }

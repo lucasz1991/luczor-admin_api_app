@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Skill;
-use App\Models\WorkflowRun;
 use Illuminate\Support\Str;
 
 /**
@@ -14,11 +13,12 @@ use Illuminate\Support\Str;
  */
 class SkillService
 {
-    public function __construct(private WorkflowService $workflows, private LuczorMemoryService $memory) {}
+    public function __construct(private WorkflowService $workflows, private MemoryOrchestrator $memory) {}
 
     /**
      * Create/update a skill from admin input (validated upstream).
-     * @param array<string,mixed> $data
+     *
+     * @param  array<string,mixed>  $data
      */
     public function upsert(array $data): Skill
     {
@@ -47,8 +47,12 @@ class SkillService
                 'external_id' => 'skill:'.$skill->slug,
                 'scope' => 'skill',
                 'type' => 'skill',
-                'visibility' => 'private',
+                'visibility' => 'syncable',
                 'importance' => 0.7,
+                'confidence' => 1.0,
+                'write_intent' => 'system',
+                'source_type' => 'skill_registry',
+                'memory_key' => 'skill:'.$skill->slug,
                 'content' => trim($skill->name."\n".($skill->description ?? '')."\n".($skill->prompt ?? '')),
                 'meta' => ['skill_id' => $skill->id, 'kind' => $skill->kind],
             ]);

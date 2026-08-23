@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @livewireStyles
 </head>
 <body class="min-h-screen bg-luczor-bg text-luczor-text antialiased">
     <main class="flex min-h-screen items-center justify-center px-4 py-10">
@@ -20,5 +21,6 @@
             </div>
         </div>
     </main>
+    @livewireScriptConfig
 </body>
 </html>

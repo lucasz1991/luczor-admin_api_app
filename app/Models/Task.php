@@ -18,6 +18,7 @@ class Task extends Model
     ];
 
     public const STATUSES = ['open', 'in_progress', 'done', 'cancelled'];
+
     public const PRIORITIES = ['low', 'normal', 'high'];
 
     public function user()

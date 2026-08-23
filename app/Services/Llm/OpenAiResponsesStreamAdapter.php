@@ -10,31 +10,43 @@ namespace App\Services\Llm;
 class OpenAiResponsesStreamAdapter implements ProviderStreamAdapter
 {
     private string $id = '';
+
     private string $model = '';
+
     private bool $sawToolCall = false;
+
     private bool $done = false;
+
     /** @var array<int|string,int> upstream output index/item id -> canonical tool index */
     private array $toolIndex = [];
 
     public function feed(string $line): array
     {
         $line = trim($line);
-        if (! str_starts_with($line, 'data:')) return [];
+        if (! str_starts_with($line, 'data:')) {
+            return [];
+        }
         $event = json_decode(trim(substr($line, 5)), true);
-        if (! is_array($event)) return [];
+        if (! is_array($event)) {
+            return [];
+        }
 
         switch ($event['type'] ?? '') {
             case 'response.created':
                 $response = $event['response'] ?? [];
                 $this->id = (string) ($response['id'] ?? '');
                 $this->model = (string) ($response['model'] ?? '');
+
                 return [$this->frame(['role' => 'assistant', 'content' => ''])];
             case 'response.output_item.added':
                 $item = $event['item'] ?? [];
-                if (($item['type'] ?? null) !== 'function_call') return [];
+                if (($item['type'] ?? null) !== 'function_call') {
+                    return [];
+                }
                 $this->sawToolCall = true;
                 $index = count($this->toolIndex);
                 $this->toolIndex[(string) ($event['output_index'] ?? $item['id'] ?? $index)] = $index;
+
                 return [$this->frame(['tool_calls' => [[
                     'index' => $index,
                     'id' => (string) ($item['call_id'] ?? $item['id'] ?? ''),
@@ -43,12 +55,14 @@ class OpenAiResponsesStreamAdapter implements ProviderStreamAdapter
                 ]]])];
             case 'response.function_call_arguments.delta':
                 $index = $this->toolIndex[(string) ($event['output_index'] ?? '')] ?? 0;
+
                 return [$this->frame(['tool_calls' => [[
                     'index' => $index,
                     'function' => ['arguments' => (string) ($event['delta'] ?? '')],
                 ]]])];
             case 'response.output_text.delta':
                 $text = (string) ($event['delta'] ?? '');
+
                 return $text === '' ? [] : [$this->frame(['content' => $text])];
             case 'response.completed':
             case 'response.incomplete':
@@ -58,7 +72,10 @@ class OpenAiResponsesStreamAdapter implements ProviderStreamAdapter
                 $prompt = (int) ($usage['input_tokens'] ?? 0);
                 $completion = (int) ($usage['output_tokens'] ?? 0);
                 $finishReason = $this->sawToolCall ? 'tool_calls' : 'stop';
-                if (($response['incomplete_details']['reason'] ?? null) === 'max_output_tokens') $finishReason = 'length';
+                if (($response['incomplete_details']['reason'] ?? null) === 'max_output_tokens') {
+                    $finishReason = 'length';
+                }
+
                 return [$this->frame([], $finishReason, [
                     'prompt_tokens' => $prompt,
                     'completion_tokens' => $completion,
@@ -71,8 +88,11 @@ class OpenAiResponsesStreamAdapter implements ProviderStreamAdapter
 
     public function finish(): array
     {
-        if ($this->done) return [];
+        if ($this->done) {
+            return [];
+        }
         $this->done = true;
+
         return [$this->frame([], $this->sawToolCall ? 'tool_calls' : 'stop'), 'data: [DONE]'];
     }
 
@@ -85,7 +105,10 @@ class OpenAiResponsesStreamAdapter implements ProviderStreamAdapter
             'model' => $this->model,
             'choices' => [['index' => 0, 'delta' => $delta, 'finish_reason' => $finishReason]],
         ];
-        if ($usage !== null) $chunk['usage'] = $usage;
+        if ($usage !== null) {
+            $chunk['usage'] = $usage;
+        }
+
         return 'data: '.json_encode($chunk, JSON_UNESCAPED_UNICODE);
     }
 }

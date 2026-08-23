@@ -6,14 +6,16 @@ use App\Models\AgentRun;
 use App\Models\ApiKey;
 use App\Models\ContextArtifact;
 use App\Models\EvaluationResult;
-use App\Models\LlmRun;
 use App\Models\LlmAttempt;
+use App\Models\LlmRun;
 use App\Models\MemoryLink;
 use App\Models\ModelRanking;
 use App\Models\PerformanceProfile;
 use App\Models\User;
+use App\Services\GraphContextService;
 use App\Services\LuczorMemoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class PlanningMvpApiTest extends TestCase
@@ -61,6 +63,84 @@ class PlanningMvpApiTest extends TestCase
 
         $this->assertSame(1, ContextArtifact::count());
         $this->assertSame('p1', ContextArtifact::first()->project_id);
+    }
+
+    public function test_server_graph_sidecar_is_never_called_even_when_legacy_config_is_present(): void
+    {
+        config([
+            'luczor.graphify.base_url' => 'http://graph-indexer:8010',
+            'luczor.graphify.api_key' => 'internal-test-key',
+        ]);
+        Http::fake();
+
+        $result = app(GraphContextService::class)->resolve([
+            'user_id' => 1,
+            'query' => 'Graph prüfen',
+            'code_limit' => 3,
+            'code' => [[
+                'path' => 'app/Services/MemoryOrchestrator.php',
+                'reason' => 'symbol_exact',
+                'score' => 0.95,
+                'meta' => ['content_hash' => str_repeat('a', 64)],
+            ]],
+        ], []);
+
+        $this->assertSame('disabled_local_only', $result['source_status']['server_graph']);
+        $this->assertSame('app/Services/MemoryOrchestrator.php', $result['code'][0]['path']);
+        $this->assertTrue($result['code'][0]['transient']);
+        $this->assertSame([], $result['persistent_code']);
+        Http::assertNothingSent();
+    }
+
+    public function test_local_graph_hints_reject_absolute_paths_and_code_payloads(): void
+    {
+        config([
+            'luczor.graphify.base_url' => 'http://graph-indexer:8010',
+            'luczor.graphify.api_key' => '',
+        ]);
+        Http::fake();
+
+        $result = app(GraphContextService::class)->resolve([
+            'query' => 'Graph prüfen',
+            'code_limit' => 3,
+            'code' => [[
+                'path' => 'E:/private/repository/.env',
+                'content' => 'SECRET=value',
+                'meta' => ['snippet' => 'SECRET=value'],
+            ]],
+        ], []);
+
+        $this->assertSame('not_provided', $result['source_status']['local_graph']);
+        $this->assertSame([], $result['code']);
+        Http::assertNothingSent();
+    }
+
+    public function test_local_graph_hints_are_returned_but_never_persisted_in_context_artifacts(): void
+    {
+        [, $token] = $this->token(['brain.read']);
+
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/context/ask', [
+            'project_id' => 'p1',
+            'task_type' => 'coding.review',
+            'query' => 'Welche Klasse ist relevant?',
+            'code' => [[
+                'path' => 'app/Services/MemoryOrchestrator.php',
+                'reason' => 'symbol_exact',
+                'score' => 0.98,
+                'meta' => ['evidence_id' => 'ev1', 'content_hash' => str_repeat('b', 64)],
+            ]],
+        ])->assertOk()->assertJsonPath('code.0.path', 'app/Services/MemoryOrchestrator.php');
+
+        $artifact = ContextArtifact::firstOrFail();
+        $this->assertSame([], $artifact->code);
+        $this->assertStringNotContainsString('MemoryOrchestrator.php', json_encode($artifact->toArray(), JSON_THROW_ON_ERROR));
+
+        // The one-turn consent must not poison the reusable context cache.
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/context/ask', [
+            'project_id' => 'p1',
+            'task_type' => 'coding.review',
+            'query' => 'Welche Klasse ist relevant?',
+        ])->assertOk()->assertJsonCount(0, 'code');
     }
 
     public function test_agent_run_can_create_tasks_and_update_status(): void

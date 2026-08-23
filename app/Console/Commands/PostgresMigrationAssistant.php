@@ -26,6 +26,7 @@ class PostgresMigrationAssistant extends Command
         $rollback = $this->option('rollback');
         if ((int) (bool) $export + (int) (bool) $import + (int) (bool) $rollback !== 1) {
             $this->error('Choose exactly one of --export, --import or --rollback.');
+
             return self::INVALID;
         }
 
@@ -35,6 +36,7 @@ class PostgresMigrationAssistant extends Command
         if ($export) {
             return $this->export((string) $export);
         }
+
         return $this->import((string) $import);
     }
 
@@ -54,6 +56,7 @@ class PostgresMigrationAssistant extends Command
             $unmapped = array_values(array_diff($sourceColumns, $targetColumns));
             if ($unmapped !== []) {
                 $this->error("{$table}: target is missing source columns: ".implode(', ', $unmapped));
+
                 return self::FAILURE;
             }
             $this->line("Exporting {$table}");
@@ -79,6 +82,7 @@ class PostgresMigrationAssistant extends Command
         }
         File::put($directory.DIRECTORY_SEPARATOR.'manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         $this->info('Export complete: '.$directory);
+
         return self::SUCCESS;
     }
 
@@ -93,11 +97,15 @@ class PostgresMigrationAssistant extends Command
         $source = DB::connection('mysql_legacy');
         $compatibility = $this->checkCompatibility($manifest, $source, $target);
         if ($compatibility !== []) {
-            foreach ($compatibility as $error) $this->error($error);
+            foreach ($compatibility as $error) {
+                $this->error($error);
+            }
+
             return self::FAILURE;
         }
         if ($this->option('dry-run')) {
             $this->info('Dry run passed. No PostgreSQL data was changed.');
+
             return self::SUCCESS;
         }
 
@@ -126,10 +134,12 @@ class PostgresMigrationAssistant extends Command
             }
             $target->table('data_migration_runs')->where('id', $run)->update(['status' => 'completed', 'finished_at' => now(), 'updated_at' => now()]);
             $this->info("Import {$runId} completed and verified.");
+
             return self::SUCCESS;
         } catch (\Throwable $error) {
             $target->table('data_migration_runs')->where('id', $run)->update(['status' => 'failed', 'summary' => json_encode(['error' => $error->getMessage()]), 'finished_at' => now(), 'updated_at' => now()]);
             $this->error($error->getMessage());
+
             return self::FAILURE;
         }
     }
@@ -138,21 +148,26 @@ class PostgresMigrationAssistant extends Command
     {
         if ($this->option('confirm') !== 'ROLLBACK') {
             $this->error('Rollback requires --confirm=ROLLBACK.');
+
             return self::INVALID;
         }
         $target = DB::connection('pgsql');
         $run = $target->table('data_migration_runs')->where('run_id', $runId)->first();
         if (! $run || $run->status !== 'completed') {
             $this->error('Only a completed import run can be rolled back.');
+
             return self::FAILURE;
         }
         $tables = $target->table('data_migration_table_checks')->where('data_migration_run_id', $run->id)->pluck('table_name')->all();
         $target->transaction(function () use ($target, $tables) {
             $quoted = implode(', ', array_map(fn ($table) => '"'.str_replace('"', '""', $table).'"', $tables));
-            if ($quoted !== '') $target->statement('TRUNCATE TABLE '.$quoted.' RESTART IDENTITY CASCADE');
+            if ($quoted !== '') {
+                $target->statement('TRUNCATE TABLE '.$quoted.' RESTART IDENTITY CASCADE');
+            }
         });
         $target->table('data_migration_runs')->where('id', $run->id)->update(['status' => 'rolled_back', 'finished_at' => now(), 'updated_at' => now()]);
         $this->warn("PostgreSQL rows imported by {$runId} were truncated. MySQL was untouched.");
+
         return self::SUCCESS;
     }
 
@@ -168,50 +183,86 @@ class PostgresMigrationAssistant extends Command
     {
         $errors = [];
         foreach ($manifest['tables'] as $table => $meta) {
-            if (! $source->getSchemaBuilder()->hasTable($table)) $errors[] = "Source table {$table} no longer exists.";
-            if (! $target->getSchemaBuilder()->hasTable($table)) { $errors[] = "Target table {$table} does not exist. Run PostgreSQL migrations first."; continue; }
+            if (! $source->getSchemaBuilder()->hasTable($table)) {
+                $errors[] = "Source table {$table} no longer exists.";
+            }
+            if (! $target->getSchemaBuilder()->hasTable($table)) {
+                $errors[] = "Target table {$table} does not exist. Run PostgreSQL migrations first.";
+
+                continue;
+            }
             $missing = array_diff($meta['columns'], $target->getSchemaBuilder()->getColumnListing($table));
-            if ($missing !== []) $errors[] = "Target {$table} is missing columns: ".implode(', ', $missing);
-            if ($target->table($table)->count() > 0) $errors[] = "Target table {$table} is not empty; importing into an existing PostgreSQL dataset is refused.";
+            if ($missing !== []) {
+                $errors[] = "Target {$table} is missing columns: ".implode(', ', $missing);
+            }
+            if ($target->table($table)->count() > 0) {
+                $errors[] = "Target table {$table} is not empty; importing into an existing PostgreSQL dataset is refused.";
+            }
         }
+
         return $errors;
     }
 
     private function importTable(ConnectionInterface $target, string $file, string $table, array $columns): void
     {
         $handle = fopen($file, 'rb');
-        if (! $handle) throw new \RuntimeException("Cannot open {$file}");
+        if (! $handle) {
+            throw new \RuntimeException("Cannot open {$file}");
+        }
         $chunk = [];
         while (($line = fgets($handle)) !== false) {
             $chunk[] = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
-            if (count($chunk) === 250) { $target->table($table)->insert($chunk); $chunk = []; }
+            if (count($chunk) === 250) {
+                $target->table($table)->insert($chunk);
+                $chunk = [];
+            }
         }
-        if ($chunk !== []) $target->table($table)->insert($chunk);
+        if ($chunk !== []) {
+            $target->table($table)->insert($chunk);
+        }
         fclose($handle);
     }
 
     /** @return array{count:int,hash:string} */
     private function targetCheck(ConnectionInterface $target, string $table, array $columns): array
     {
-        $hash = hash_init('sha256'); $count = 0;
+        $hash = hash_init('sha256');
+        $count = 0;
         $query = $target->table($table)->select($columns);
-        if (in_array('id', $columns, true)) $query->orderBy('id');
-        foreach ($query->cursor() as $row) { hash_update($hash, $this->canonical($this->normalize((array) $row, $columns))); $count++; }
+        if (in_array('id', $columns, true)) {
+            $query->orderBy('id');
+        }
+        foreach ($query->cursor() as $row) {
+            hash_update($hash, $this->canonical($this->normalize((array) $row, $columns)));
+            $count++;
+        }
+
         return ['count' => $count, 'hash' => hash_final($hash)];
     }
 
     private function resetSequence(ConnectionInterface $target, string $table, array $columns): void
     {
-        if (! in_array('id', $columns, true)) return;
+        if (! in_array('id', $columns, true)) {
+            return;
+        }
         $target->statement("SELECT setval(pg_get_serial_sequence('{$table}', 'id'), COALESCE((SELECT MAX(id) FROM \"{$table}\"), 1), true)");
     }
 
     private function manifest(string $directory): ?array
     {
         $path = $directory.DIRECTORY_SEPARATOR.'manifest.json';
-        if (! is_file($path)) { $this->error('manifest.json not found.'); return null; }
-        try { return json_decode(File::get($path), true, 512, JSON_THROW_ON_ERROR); }
-        catch (\Throwable $error) { $this->error('Invalid manifest: '.$error->getMessage()); return null; }
+        if (! is_file($path)) {
+            $this->error('manifest.json not found.');
+
+            return null;
+        }
+        try {
+            return json_decode(File::get($path), true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable $error) {
+            $this->error('Invalid manifest: '.$error->getMessage());
+
+            return null;
+        }
     }
 
     private function normalize(array $row, array $columns): array
@@ -222,6 +273,7 @@ class PostgresMigrationAssistant extends Command
             $out[$column] = is_object($value) && method_exists($value, '__toString') ? (string) $value : $value;
         }
         ksort($out);
+
         return $out;
     }
 

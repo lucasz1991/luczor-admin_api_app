@@ -13,6 +13,7 @@ RUN apk add --no-cache git icu-libs libzip libpq oniguruma \
 WORKDIR /var/www/html
 COPY --from=vendor /app/vendor ./vendor
 COPY . .
+COPY docker/php-limits.ini /usr/local/etc/php/conf.d/zz-luczor-limits.ini
 COPY docker/entrypoint.sh /usr/local/bin/luczor-entrypoint
 RUN php artisan package:discover --ansi --no-interaction \
     && chmod +x /usr/local/bin/luczor-entrypoint \

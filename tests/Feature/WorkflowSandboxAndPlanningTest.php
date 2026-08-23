@@ -10,6 +10,7 @@ use App\Models\WorkflowDefinition;
 use App\Services\WorkflowPlanner;
 use App\Services\WorkflowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 /** SOLL §15 P27 — sandbox runs, planning engine and advisory-review config. */
@@ -106,7 +107,7 @@ class WorkflowSandboxAndPlanningTest extends TestCase
 
     public function test_planner_rejects_an_empty_goal(): void
     {
-        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $this->expectException(HttpException::class);
         app(WorkflowPlanner::class)->planDefinition('   ');
     }
 

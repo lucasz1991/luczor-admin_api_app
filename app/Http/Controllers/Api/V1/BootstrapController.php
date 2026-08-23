@@ -17,7 +17,7 @@ class BootstrapController extends Controller
             'device' => [
                 'id' => $apiKey?->device_id,
                 'name' => $apiKey?->device_name,
-                'abilities' => $apiKey?->abilities ?? [],
+                'abilities' => $apiKey ? $apiKey->abilities : [],
             ],
             'user' => [
                 'id' => $request->user()?->id,

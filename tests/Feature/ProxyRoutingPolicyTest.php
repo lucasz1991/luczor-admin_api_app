@@ -13,12 +13,16 @@ use App\Models\Persona;
 use App\Models\ProviderCredential;
 use App\Models\Setting;
 use App\Models\User;
-use App\Services\ProviderPolicyService;
 use App\Services\ProviderHttpClientFactory;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\ProviderPolicyService;
 use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Psr7\FnStream;
 use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\Utils;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\RateLimiter;
 use Mockery;
+use Psr\Http\Message\StreamInterface;
 use Tests\TestCase;
 
 class ProxyRoutingPolicyTest extends TestCase
@@ -73,7 +77,8 @@ class ProxyRoutingPolicyTest extends TestCase
         ]);
 
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->once()->withArgs(function (string $url, array $options) use ($primary) {
+        $http->shouldReceive('request')->once()->withArgs(function (string $method, string $url, array $options) use ($primary) {
+            $this->assertSame('POST', $method);
             $this->assertSame('https://openrouter.ai/api/v1/chat/completions', $url);
             $this->assertSame($primary->model_id, $options['json']['model']);
             $this->assertSame($primary->temperature, $options['json']['temperature']);
@@ -81,6 +86,7 @@ class ProxyRoutingPolicyTest extends TestCase
             $this->assertSame(['exclude' => true], $options['json']['reasoning']);
             $this->assertArrayNotHasKey('network_policy_id', $options['json']);
             $this->assertSame('Bearer test-secret', $options['headers']['Authorization']);
+
             return true;
         })->andReturn(new Response(200, ['X-Generation-Id' => 'generation-1'], json_encode([
             'id' => 'response-1',
@@ -130,7 +136,7 @@ class ProxyRoutingPolicyTest extends TestCase
         ]);
 
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->twice()->andReturn(
+        $http->shouldReceive('request')->twice()->andReturn(
             new Response(503, [], 'temporarily unavailable'),
             new Response(200, [], json_encode([
                 'id' => 'fallback-response',
@@ -167,7 +173,7 @@ class ProxyRoutingPolicyTest extends TestCase
         ]);
 
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->once()->andReturn(new Response(401, [], 'User not found: upstream-secret-detail'));
+        $http->shouldReceive('request')->once()->andReturn(new Response(401, [], 'User not found: upstream-secret-detail'));
         $factory = Mockery::mock(ProviderHttpClientFactory::class);
         $factory->shouldReceive('make')->once()->andReturn($http);
         $this->app->instance(ProviderHttpClientFactory::class, $factory);
@@ -196,10 +202,10 @@ class ProxyRoutingPolicyTest extends TestCase
             'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 100,
         ]);
         $sse = "data: {\"id\":\"stream-1\",\"choices\":[{\"delta\":{\"content\":\"Hallo\"},\"finish_reason\":null}]}\n\n"
-            . "data: {\"id\":\"stream-1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":3,\"cost\":0.000123}}\n\n"
-            . "data: [DONE]\n\n";
+            ."data: {\"id\":\"stream-1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":3,\"cost\":0.000123}}\n\n"
+            ."data: [DONE]\n\n";
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->once()->andReturn(new Response(200, ['X-Generation-Id' => 'stream-1'], $sse));
+        $http->shouldReceive('request')->once()->andReturn(new Response(200, ['X-Generation-Id' => 'stream-1'], $sse));
         $factory = Mockery::mock(ProviderHttpClientFactory::class);
         $factory->shouldReceive('make')->once()->andReturn($http);
         $this->app->instance(ProviderHttpClientFactory::class, $factory);
@@ -216,6 +222,289 @@ class ProxyRoutingPolicyTest extends TestCase
         $this->assertSame(3, $attempt->output_tokens);
         $this->assertSame(0.000123, $attempt->provider_cost);
         $this->assertSame('stream-1', $attempt->upstream_generation_id);
+    }
+
+    public function test_proxy_rejects_an_oversized_request_before_provider_dispatch(): void
+    {
+        [, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        config()->set('luczor.proxy.max_request_bytes', 128);
+
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldNotReceive('make');
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [['role' => 'user', 'content' => str_repeat('x', 256)]],
+        ])->assertStatus(413)
+            ->assertJsonPath('code', 'proxy_request_too_large')
+            ->assertJsonPath('limit_bytes', 128);
+
+        $this->assertSame(0, LlmRun::count());
+        $this->assertSame(0, LlmAttempt::count());
+    }
+
+    public function test_provider_admission_still_precedes_payload_validation(): void
+    {
+        [, $token] = $this->deviceToken(['proxy.use']);
+
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [],
+        ])->assertStatus(503)
+            ->assertJsonPath('message', 'Kein aktiver Provider im Server konfiguriert.');
+
+        $this->assertSame(0, LlmRun::count());
+        $this->assertSame(0, LlmAttempt::count());
+    }
+
+    public function test_proxy_rate_limit_still_precedes_payload_validation(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $apiKey = ApiKey::query()->where('user_id', $user->id)->firstOrFail();
+        $rateKey = 'proxy:'.$user->id.':'.$apiKey->id;
+        config()->set('luczor.proxy.requests_per_minute', 1);
+        RateLimiter::clear($rateKey);
+        RateLimiter::hit($rateKey, 60);
+
+        try {
+            $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+                'messages' => [],
+            ])->assertStatus(429)
+                ->assertJsonPath('message', 'Provider rate limit exceeded.')
+                ->assertHeader('Retry-After');
+        } finally {
+            RateLimiter::clear($rateKey);
+        }
+
+        $this->assertSame(0, LlmRun::count());
+        $this->assertSame(0, LlmAttempt::count());
+    }
+
+    public function test_non_streaming_response_is_rejected_while_reading_at_limit_plus_one_byte(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles();
+        $this->defaultNetworkPolicy();
+        config()->set('luczor.proxy.max_response_bytes', 256);
+
+        $readBytes = 0;
+        $body = $this->trackedUnknownSizeStream(str_repeat('x', 4096), $readBytes);
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->withArgs(function (string $method, string $url, array $options): bool {
+            $this->assertSame('POST', $method);
+            $this->assertTrue($options['stream']);
+
+            return true;
+        })->andReturn(new Response(200, [], $body));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [['role' => 'user', 'content' => 'Antworte umfangreich.']],
+            'task_type' => 'chat.general',
+        ])->assertStatus(502)
+            ->assertJsonPath('code', 'upstream_response_too_large')
+            ->assertJsonPath('provider_status', 200)
+            ->assertJsonPath('limit_bytes', 256)
+            ->assertHeader('X-Luczor-Request-Id');
+
+        $this->assertSame(257, $readBytes);
+        $this->assertDatabaseHas('llm_runs', ['user_id' => $user->id, 'status' => 'error']);
+        $this->assertDatabaseHas('llm_attempts', [
+            'http_status' => 200,
+            'status' => 'failed',
+            'error_type' => 'upstream_response_too_large',
+        ]);
+    }
+
+    public function test_oversized_retry_body_keeps_the_admin_fallback_available(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        [, $fallback] = $this->chatProfiles();
+        $this->defaultNetworkPolicy(2);
+        config()->set('luczor.proxy.max_response_bytes', 512);
+
+        $readBytes = 0;
+        $oversizedBody = $this->trackedUnknownSizeStream(str_repeat('x', 4096), $readBytes);
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->twice()->withArgs(function (string $method, string $url, array $options): bool {
+            $this->assertSame('POST', $method);
+            $this->assertTrue($options['stream']);
+
+            return true;
+        })->andReturn(
+            new Response(503, [], $oversizedBody),
+            new Response(200, [], json_encode([
+                'id' => 'bounded-fallback',
+                'choices' => [['finish_reason' => 'stop', 'message' => ['role' => 'assistant', 'content' => 'Fallback OK']]],
+                'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 2],
+            ], JSON_THROW_ON_ERROR)),
+        );
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [['role' => 'user', 'content' => 'Nutze den sicheren Fallback.']],
+            'task_type' => 'chat.general',
+        ])->assertOk()->assertJsonPath('choices.0.message.content', 'Fallback OK');
+
+        $attempts = LlmAttempt::query()
+            ->whereHas('run', fn ($query) => $query->where('user_id', $user->id))
+            ->orderBy('attempt_no')
+            ->get();
+        $this->assertSame(513, $readBytes);
+        $this->assertSame('upstream_response_too_large', $attempts[0]->error_type);
+        $this->assertSame(503, $attempts[0]->http_status);
+        $this->assertSame('failed', $attempts[0]->status);
+        $this->assertSame($fallback->model_id, $attempts[1]->model_id);
+        $this->assertSame('completed', $attempts[1]->status);
+    }
+
+    public function test_provider_auth_failure_takes_precedence_without_reading_the_error_body(): void
+    {
+        [, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles();
+        $this->defaultNetworkPolicy();
+        config()->set('luczor.proxy.max_response_bytes', 1);
+
+        $readBytes = 0;
+        $body = $this->trackedUnknownSizeStream('upstream-secret-detail', $readBytes);
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->andReturn(new Response(401, [], $body));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $response = $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'messages' => [['role' => 'user', 'content' => 'Prüfe den Provider-Key.']],
+            'task_type' => 'chat.general',
+        ]);
+
+        $response->assertStatus(502)
+            ->assertJsonPath('code', 'provider_auth_failed')
+            ->assertJsonPath('provider_status', 401);
+        $this->assertSame(0, $readBytes);
+        $this->assertStringNotContainsString('upstream-secret-detail', $response->getContent());
+    }
+
+    public function test_stream_total_limit_emits_a_canonical_error_frame_and_fails_telemetry(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles();
+        $this->defaultNetworkPolicy();
+        config()->set('luczor.proxy.max_stream_bytes', 180);
+        config()->set('luczor.proxy.max_stream_frame_bytes', 1024);
+
+        $firstFrame = "data: {\"id\":\"bounded-stream\",\"choices\":[{\"delta\":{\"content\":\"Hallo\"},\"finish_reason\":null}]}\n\n";
+        $bodyContents = $firstFrame."data: [DONE]\n\n".'data: '.str_repeat('x', 4096)."\n\n";
+        $readBytes = 0;
+        $body = $this->trackedUnknownSizeStream($bodyContents, $readBytes);
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->andReturn(new Response(200, [], $body));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $response = $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'stream' => true,
+            'messages' => [['role' => 'user', 'content' => 'Streame begrenzt.']],
+            'task_type' => 'chat.general',
+        ]);
+        $response->assertOk();
+        $content = $response->streamedContent();
+
+        $this->assertSame(181, $readBytes);
+        $this->assertStringContainsString('Hallo', $content);
+        $this->assertStringContainsString('"code":"upstream_stream_too_large"', $content);
+        $this->assertSame(1, substr_count($content, 'data: [DONE]'));
+        $this->assertLessThan(
+            strpos($content, 'data: [DONE]'),
+            strpos($content, '"code":"upstream_stream_too_large"'),
+        );
+        $this->assertDatabaseHas('llm_runs', ['user_id' => $user->id, 'status' => 'error']);
+        $this->assertDatabaseHas('llm_attempts', [
+            'http_status' => 200,
+            'status' => 'failed',
+            'error_type' => 'upstream_stream_too_large',
+        ]);
+    }
+
+    public function test_declared_oversized_stream_is_rejected_with_http_502_before_body_reading(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles();
+        $this->defaultNetworkPolicy();
+        config()->set('luczor.proxy.max_stream_bytes', 256);
+
+        $readBytes = 0;
+        $body = $this->trackedUnknownSizeStream(str_repeat('x', 4096), $readBytes);
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->andReturn(new Response(200, ['Content-Length' => '4096'], $body));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'stream' => true,
+            'messages' => [['role' => 'user', 'content' => 'Streame mit bekannter Länge.']],
+            'task_type' => 'chat.general',
+        ])->assertStatus(502)
+            ->assertJsonPath('code', 'upstream_stream_too_large')
+            ->assertJsonPath('provider_status', 200)
+            ->assertJsonPath('limit_bytes', 256);
+
+        $this->assertSame(0, $readBytes);
+        $this->assertDatabaseHas('llm_runs', ['user_id' => $user->id, 'status' => 'error']);
+        $this->assertDatabaseHas('llm_attempts', [
+            'http_status' => 200,
+            'status' => 'failed',
+            'error_type' => 'upstream_stream_too_large',
+        ]);
+    }
+
+    public function test_stream_frame_limit_never_emits_the_oversized_frame(): void
+    {
+        [$user, $token] = $this->deviceToken(['proxy.use']);
+        $this->openRouterCredential();
+        $this->chatProfiles();
+        $this->defaultNetworkPolicy();
+        config()->set('luczor.proxy.max_stream_bytes', 4096);
+        config()->set('luczor.proxy.max_stream_frame_bytes', 128);
+
+        $oversizedContent = str_repeat('frame-secret-', 32);
+        $body = 'data: '.json_encode([
+            'id' => 'oversized-frame',
+            'choices' => [['delta' => ['content' => $oversizedContent], 'finish_reason' => null]],
+        ], JSON_THROW_ON_ERROR)."\n\n";
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->andReturn(new Response(200, [], $body));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $response = $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
+            'stream' => true,
+            'messages' => [['role' => 'user', 'content' => 'Streame mit Frame-Grenze.']],
+            'task_type' => 'chat.general',
+        ]);
+        $response->assertOk();
+        $content = $response->streamedContent();
+
+        $this->assertStringContainsString('"code":"upstream_stream_frame_too_large"', $content);
+        $this->assertStringNotContainsString($oversizedContent, $content);
+        $this->assertDatabaseHas('llm_runs', ['user_id' => $user->id, 'status' => 'error']);
+        $this->assertDatabaseHas('llm_attempts', [
+            'http_status' => 200,
+            'status' => 'failed',
+            'error_type' => 'upstream_stream_frame_too_large',
+        ]);
     }
 
     public function test_customer_cannot_read_model_catalog_or_llm_routing(): void
@@ -270,7 +559,8 @@ class ProxyRoutingPolicyTest extends TestCase
         Setting::putValue('active_persona', 'knapp', ['group' => 'client', 'type' => 'string']);
 
         $http = Mockery::mock(ClientInterface::class);
-        $http->shouldReceive('post')->once()->withArgs(function (string $url, array $options) {
+        $http->shouldReceive('request')->once()->withArgs(function (string $method, string $url, array $options) {
+            $this->assertSame('POST', $method);
             $systemContents = array_map(
                 fn ($m) => $m['content'] ?? '',
                 array_filter($options['json']['messages'], fn ($m) => ($m['role'] ?? '') === 'system')
@@ -328,6 +618,48 @@ class ProxyRoutingPolicyTest extends TestCase
     private function openRouterCredential(): void
     {
         ProviderCredential::create(['provider' => 'openrouter', 'label' => 'Test', 'api_key' => 'test-secret', 'active' => true]);
+    }
+
+    private function defaultNetworkPolicy(int $maxAttempts = 1): NetworkPolicy
+    {
+        return NetworkPolicy::create([
+            'key' => 'proxy.openrouter.default',
+            'name' => 'Bounded proxy',
+            'status' => 'active',
+            'connect_timeout_ms' => 1000,
+            'request_timeout_ms' => 1000,
+            'max_attempts' => $maxAttempts,
+            'backoff_ms' => 0,
+            'max_input_tokens' => 1000,
+            'max_output_tokens' => 100,
+        ]);
+    }
+
+    private function trackedUnknownSizeStream(string $contents, int &$readBytes): StreamInterface
+    {
+        $inner = Utils::streamFor($contents);
+
+        return FnStream::decorate($inner, [
+            'getSize' => fn (): null => null,
+            'read' => function (int $length) use ($inner, &$readBytes): string {
+                $chunk = $inner->read($length);
+                $readBytes += strlen($chunk);
+
+                return $chunk;
+            },
+            'getContents' => function () use ($inner, &$readBytes): string {
+                $chunk = $inner->getContents();
+                $readBytes += strlen($chunk);
+
+                return $chunk;
+            },
+            '__toString' => function () use ($inner, &$readBytes): string {
+                $chunk = (string) $inner;
+                $readBytes += strlen($chunk);
+
+                return $chunk;
+            },
+        ]);
     }
 
     /** @return array{0: User, 1: string} */

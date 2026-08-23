@@ -1,0 +1,121 @@
+parameters:
+	ignoreErrors:
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\ConnectionInterface\\:\\:getSchemaBuilder\\(\\)\\.$#"
+			count: 3
+			path: app/Console/Commands/PostgresMigrationAssistant.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\DeviceJob\\:\\:\\$device\\.$#"
+			count: 1
+			path: app/Events/DeviceJobCreated.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Support\\\\HigherOrderCollectionProxy\\<string, Illuminate\\\\Database\\\\Eloquent\\\\Model, Illuminate\\\\Database\\\\Eloquent\\\\Collection\\<int, Illuminate\\\\Database\\\\Eloquent\\\\Model\\>\\>\\:\\:toPushPayload\\(\\)\\.$#"
+			count: 1
+			path: app/Http/Controllers/Api/V1/AppNotificationController.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\WorkflowStep\\:\\:\\$run\\.$#"
+			count: 1
+			path: app/Http/Controllers/Api/V1/DeviceController.php
+
+		-
+			message: "#^Parameter \\#1 \\$boolean of function abort_unless expects bool, string\\|null given\\.$#"
+			count: 1
+			path: app/Http/Controllers/Api/V1/DeviceController.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Carbon\\\\Carbon\\. Use \\-\\> instead\\.$#"
+			count: 1
+			path: app/Http/Controllers/Api/V1/DeviceDebugController.php
+
+		-
+			message: "#^Relation 'device' is not found in App\\\\Models\\\\DeviceJob model\\.$#"
+			count: 1
+			path: app/Http/Controllers/Api/V1/DeviceJobController.php
+
+		-
+			message: "#^Parameter \\#1 \\$boolean of function abort_unless expects bool, App\\\\Models\\\\DeviceSession\\|null given\\.$#"
+			count: 1
+			path: app/Http/Controllers/Api/V1/ReverbAuthController.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\WorkflowStep\\:\\:\\$run\\.$#"
+			count: 2
+			path: app/Http/Controllers/Api/V1/WorkflowController.php
+
+		-
+			message: "#^Access to an undefined property Laravel\\\\Socialite\\\\Contracts\\\\User\\:\\:\\$token\\.$#"
+			count: 1
+			path: app/Http/Controllers/GithubOAuthController.php
+
+		-
+			message: "#^Call to an undefined method Laravel\\\\Socialite\\\\Contracts\\\\Provider\\:\\:scopes\\(\\)\\.$#"
+			count: 1
+			path: app/Http/Controllers/GithubOAuthController.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\Project\\:\\:\\$tenant_id\\.$#"
+			count: 1
+			path: app/Models/Project.php
+
+		-
+			message: "#^Method App\\\\Models\\\\PromptTemplate\\:\\:activeRolePrompts\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Collection\\<int, App\\\\Models\\\\PromptTemplate\\> but returns Illuminate\\\\Database\\\\Eloquent\\\\Collection\\<int, static\\(App\\\\Models\\\\PromptTemplate\\)\\>\\.$#"
+			count: 1
+			path: app/Models/PromptTemplate.php
+
+		-
+			message: "#^Parameter \\#1 \\$boolean of function abort_unless expects bool, App\\\\Models\\\\User\\|null given\\.$#"
+			count: 1
+			path: app/Services/ApiActor.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\WorkflowStep\\:\\:\\$run\\.$#"
+			count: 1
+			path: app/Services/DeviceJobService.php
+
+		-
+			message: "#^Parameter \\#1 \\$boolean of function abort_if expects bool, Carbon\\\\Carbon\\|null given\\.$#"
+			count: 2
+			path: app/Services/DeviceJobService.php
+
+		-
+			message: "#^Method App\\\\Services\\\\DeviceJobSigner\\:\\:privateKey\\(\\) never returns false so it can be removed from the return type\\.$#"
+			count: 1
+			path: app/Services/DeviceJobSigner.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\OAuthConnection\\:\\:\\$access_token\\.$#"
+			count: 1
+			path: app/Services/GithubService.php
+
+		-
+			message: "#^Parameter \\#1 \\$boolean of function abort_unless expects bool, array\\<string, mixed\\>\\|null given\\.$#"
+			count: 1
+			path: app/Services/McpToolRegistry.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\Repository\\:\\:\\$project\\.$#"
+			count: 4
+			path: app/Services/McpToolService.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\WorkflowStep\\:\\:\\$run\\.$#"
+			count: 4
+			path: app/Services/WorkflowService.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$definition with type array\\<string, mixed\\> is incompatible with native type App\\\\Models\\\\WorkflowDefinition\\.$#"
+			count: 1
+			path: app/Services/WorkflowService.php
+
+		-
+			message: "#^Access to an undefined property App\\\\Models\\\\WorkflowStep\\:\\:\\$run\\.$#"
+			count: 18
+			path: app/Services/WorkflowStepExecutor.php
+
+		-
+			message: "#^Relation 'run' is not found in App\\\\Models\\\\WorkflowStep model\\.$#"
+			count: 1
+			path: app/Services/WorkflowStepExecutor.php

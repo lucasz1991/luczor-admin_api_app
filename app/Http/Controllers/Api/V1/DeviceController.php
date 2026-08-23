@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Models\DeviceJob;
 use App\Models\DeviceSession;
+use App\Models\WorkflowStep;
 use App\Services\ApiActor;
 use App\Services\AuditLogger;
 use App\Services\DeviceJobSigner;
+use App\Services\WorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -217,18 +219,19 @@ class DeviceController extends Controller
         if ($job->tool_profile !== 'workflow.task') {
             return;
         }
-        $step = \App\Models\WorkflowStep::query()
+        $step = WorkflowStep::query()
             ->where('external_run_type', 'device_job')
             ->where('external_run_id', $job->public_id)
             ->first();
         if ($step && $step->run) {
-            app(\App\Services\WorkflowService::class)->scheduleMonitor($step->run, 1);
+            app(WorkflowService::class)->scheduleMonitor($step->run, 1);
         }
     }
 
     private function currentDevice(Request $request, ApiActor $actor, string $clientId): Device
     {
         $deviceId = $actor->deviceId($request, $clientId, true);
+
         return Device::query()
             ->where('device_id', $deviceId)
             ->where('user_id', $actor->userId($request))

@@ -15,7 +15,7 @@ class ProviderDriverTest extends TestCase
 {
     public function test_registry_resolves_the_driver_by_provider_with_wire_override(): void
     {
-        $registry = new ProviderDriverRegistry();
+        $registry = new ProviderDriverRegistry;
 
         $this->assertInstanceOf(AnthropicMessagesDriver::class, $registry->for('anthropic'));
         $this->assertInstanceOf(OpenAiResponsesDriver::class, $registry->for('openai'));
@@ -45,7 +45,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_anthropic_clamps_temperature_and_defaults_max_tokens(): void
     {
-        $driver = new AnthropicMessagesDriver();
+        $driver = new AnthropicMessagesDriver;
 
         $hot = $driver->buildBody(['model' => 'claude', 'messages' => [['role' => 'user', 'content' => 'x']], 'temperature' => 1.9]);
         $this->assertSame(1.0, $hot['temperature']);          // Anthropic caps at 1
@@ -58,7 +58,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_anthropic_merges_consecutive_same_role_turns(): void
     {
-        $driver = new AnthropicMessagesDriver();
+        $driver = new AnthropicMessagesDriver;
 
         $body = $driver->buildBody(['model' => 'claude', 'messages' => [
             ['role' => 'user', 'content' => 'erste Frage'],
@@ -83,7 +83,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_openai_responses_maps_incomplete_max_output_tokens_to_length(): void
     {
-        $driver = new OpenAiResponsesDriver();
+        $driver = new OpenAiResponsesDriver;
 
         $canonical = $driver->normalizeResponse([
             'id' => 'resp_1', 'model' => 'gpt', 'status' => 'incomplete',
@@ -99,7 +99,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_anthropic_stream_adapter_finish_is_idempotent_after_message_stop(): void
     {
-        $adapter = new AnthropicStreamAdapter();
+        $adapter = new AnthropicStreamAdapter;
         $adapter->feed('data: '.json_encode(['type' => 'message_start', 'message' => ['id' => 'm', 'model' => 'claude', 'usage' => ['input_tokens' => 1]]]));
         $stop = $adapter->feed('data: '.json_encode(['type' => 'message_stop']));
         $this->assertContains('data: [DONE]', $stop);
@@ -109,7 +109,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_anthropic_body_moves_system_up_and_maps_tool_traffic(): void
     {
-        $driver = new AnthropicMessagesDriver();
+        $driver = new AnthropicMessagesDriver;
 
         $body = $driver->buildBody([
             'model' => 'claude-x', 'temperature' => 1.7, 'max_tokens' => 50, 'stream' => false,
@@ -147,7 +147,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_anthropic_response_normalizes_to_canonical_chat_completion(): void
     {
-        $driver = new AnthropicMessagesDriver();
+        $driver = new AnthropicMessagesDriver;
 
         $canonical = $driver->normalizeResponse([
             'id' => 'msg_1', 'model' => 'claude-x', 'stop_reason' => 'tool_use',
@@ -168,7 +168,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_anthropic_stream_adapter_emits_canonical_frames_and_done(): void
     {
-        $adapter = new AnthropicStreamAdapter();
+        $adapter = new AnthropicStreamAdapter;
         $frames = [];
         $lines = [
             'data: {"type":"message_start","message":{"id":"msg_s","model":"claude-x","usage":{"input_tokens":9}}}',
@@ -177,7 +177,9 @@ class ProviderDriverTest extends TestCase
             'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}',
             'data: {"type":"message_stop"}',
         ];
-        foreach ($lines as $line) $frames = array_merge($frames, $adapter->feed($line));
+        foreach ($lines as $line) {
+            $frames = array_merge($frames, $adapter->feed($line));
+        }
         $frames = array_merge($frames, $adapter->finish());
 
         $joined = implode("\n", $frames);
@@ -190,7 +192,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_openai_responses_body_uses_input_items_and_flattened_tools(): void
     {
-        $driver = new OpenAiResponsesDriver();
+        $driver = new OpenAiResponsesDriver;
 
         $body = $driver->buildBody([
             'model' => 'gpt-x', 'temperature' => 0.2, 'max_tokens' => 40, 'stream' => true,
@@ -225,7 +227,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_openai_responses_response_normalizes_output_to_canonical_shape(): void
     {
-        $driver = new OpenAiResponsesDriver();
+        $driver = new OpenAiResponsesDriver;
 
         $canonical = $driver->normalizeResponse([
             'id' => 'resp_1', 'model' => 'gpt-x', 'status' => 'completed',
@@ -244,7 +246,7 @@ class ProviderDriverTest extends TestCase
 
     public function test_openai_responses_stream_adapter_translates_deltas_and_completion(): void
     {
-        $adapter = new OpenAiResponsesStreamAdapter();
+        $adapter = new OpenAiResponsesStreamAdapter;
         $frames = [];
         $lines = [
             'data: {"type":"response.created","response":{"id":"resp_s","model":"gpt-x"}}',
@@ -252,7 +254,9 @@ class ProviderDriverTest extends TestCase
             'data: {"type":"response.output_text.delta","delta":"lo"}',
             'data: {"type":"response.completed","response":{"id":"resp_s","usage":{"input_tokens":6,"output_tokens":2,"total_tokens":8}}}',
         ];
-        foreach ($lines as $line) $frames = array_merge($frames, $adapter->feed($line));
+        foreach ($lines as $line) {
+            $frames = array_merge($frames, $adapter->feed($line));
+        }
         $frames = array_merge($frames, $adapter->finish());
 
         $joined = implode("\n", $frames);

@@ -2,14 +2,14 @@
 
 namespace App\Actions\Fortify;
 
-use App\Models\User;
 use App\Models\Tenant;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Laravel\Jetstream\Jetstream;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
 
 class CreateNewUser implements CreatesNewUsers
 {
@@ -36,6 +36,7 @@ class CreateNewUser implements CreatesNewUsers
                 'plan' => 'standard',
                 'status' => 'active',
             ]);
+
             return User::create([
                 'tenant_id' => $tenant->id,
                 'name' => $input['name'],

@@ -17,11 +17,12 @@ class AgentController extends Controller
     {
         abort_unless($request->user()?->isAdmin(), 403);
         $data = $request->validate([
-            'key' => ['required','string','max:120'], 'name' => ['required','string','max:190'],
-            'type' => ['required','string','max:80'], 'prompt_template_key' => ['nullable','string','max:120'],
-            'capabilities' => ['nullable','array'], 'required_sources' => ['nullable','array'], 'config' => ['nullable','array'],
+            'key' => ['required', 'string', 'max:120'], 'name' => ['required', 'string', 'max:190'],
+            'type' => ['required', 'string', 'max:80'], 'prompt_template_key' => ['nullable', 'string', 'max:120'],
+            'capabilities' => ['nullable', 'array'], 'required_sources' => ['nullable', 'array'], 'config' => ['nullable', 'array'],
         ]);
         $profile = AgentProfile::updateOrCreate(['key' => $data['key']], $data + ['status' => 'active']);
+
         return response()->json(['data' => $profile], 201);
     }
 }

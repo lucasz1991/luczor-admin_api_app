@@ -19,7 +19,18 @@ class DeviceJob extends Model
         'payload' => 'array', 'result' => 'array',
     ];
 
-    public function device() { return $this->belongsTo(Device::class); }
-    public function project() { return $this->belongsTo(Project::class); }
-    public function approvals() { return $this->hasMany(DeviceJobApproval::class); }
+    public function device()
+    {
+        return $this->belongsTo(Device::class);
+    }
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
+    }
+
+    public function approvals()
+    {
+        return $this->hasMany(DeviceJobApproval::class);
+    }
 }

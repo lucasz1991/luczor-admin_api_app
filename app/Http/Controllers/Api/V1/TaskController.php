@@ -20,8 +20,12 @@ class TaskController extends Controller
         ]);
 
         $query = Task::where('user_id', $request->user()->id);
-        if (! empty($data['status'])) $query->where('status', $data['status']);
-        if (! empty($data['conversation_id'])) $query->where('conversation_id', $data['conversation_id']);
+        if (! empty($data['status'])) {
+            $query->where('status', $data['status']);
+        }
+        if (! empty($data['conversation_id'])) {
+            $query->where('conversation_id', $data['conversation_id']);
+        }
         if (! empty($data['project_id'])) {
             $project = app(ApiActor::class)->project($request, $data['project_id']);
             $query->where('project_ref_id', $project?->id);
@@ -78,7 +82,9 @@ class TaskController extends Controller
             $task->project_ref_id = $actor->project($request, $data['project_id'])?->id;
         }
         foreach (['title', 'description', 'status', 'priority', 'conversation_id'] as $field) {
-            if (array_key_exists($field, $data) && $data[$field] !== null) $task->{$field} = $data[$field];
+            if (array_key_exists($field, $data) && $data[$field] !== null) {
+                $task->{$field} = $data[$field];
+            }
         }
         if (($data['status'] ?? null) === 'done' && ! $task->completed_at) {
             $task->completed_at = now();

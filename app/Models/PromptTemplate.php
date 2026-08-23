@@ -9,13 +9,14 @@ use Illuminate\Support\Facades\DB;
 class PromptTemplate extends Model
 {
     protected $fillable = ['key', 'version', 'task_type', 'role', 'priority', 'body', 'status', 'meta'];
+
     protected $casts = ['version' => 'integer', 'priority' => 'integer', 'meta' => 'array'];
 
     /**
      * SOLL §19 — publish a new active version transactionally: archive the
      * currently-active version(s) of this key, then insert the next version.
      *
-     * @param array<string,mixed> $attributes
+     * @param  array<string,mixed>  $attributes
      */
     public static function publish(string $key, string $body, array $attributes = []): self
     {

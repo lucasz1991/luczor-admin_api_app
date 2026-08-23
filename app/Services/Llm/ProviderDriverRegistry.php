@@ -19,8 +19,8 @@ class ProviderDriverRegistry
         }
 
         return match ($provider) {
-            'anthropic' => new AnthropicMessagesDriver(),
-            'openai' => new OpenAiResponsesDriver(),
+            'anthropic' => new AnthropicMessagesDriver,
+            'openai' => new OpenAiResponsesDriver,
             default => new OpenAiCompatDriver($provider),
         };
     }

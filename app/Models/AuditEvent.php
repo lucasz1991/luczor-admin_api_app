@@ -11,5 +11,6 @@ class AuditEvent extends Model
         'event_type', 'tool', 'policy', 'approval', 'risk_level', 'outcome',
         'payload_hash', 'result_hash', 'payload',
     ];
+
     protected $casts = ['payload' => 'array'];
 }

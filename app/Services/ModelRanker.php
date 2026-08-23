@@ -32,16 +32,21 @@ class ModelRanker
                 : ['llm_runs.task_type', 'llm_attempts.model_id', 'llm_attempts.provider_id']));
 
         foreach ($query->get() as $row) {
-            $success = (float) $row->success_rate;
-            $quality = (float) ($row->quality_score ?? 0);
-            $tests = $row->test_pass_rate === null ? $success : (float) $row->test_pass_rate;
-            $latency = (int) round((float) ($row->avg_latency ?? 0));
-            $ttft = (int) round((float) ($row->avg_ttft ?? 0));
-            $tps = (float) ($row->avg_tps ?? 0);
-            $costKnown = $row->avg_cost !== null;
-            $cost = $costKnown ? (float) $row->avg_cost : 0.0;
-            $inputTokens = (int) round((float) ($row->avg_input_tokens ?? 0));
-            $fallback = (float) ($row->fallback_rate ?? 0);
+            // Aggregate aliases are not model properties. Read them through
+            // Eloquent's attribute boundary so their database origin remains
+            // explicit and static analysis cannot mistake them for relations.
+            $success = (float) $row->getAttribute('success_rate');
+            $quality = (float) ($row->getAttribute('quality_score') ?? 0);
+            $testPassRate = $row->getAttribute('test_pass_rate');
+            $tests = $testPassRate === null ? $success : (float) $testPassRate;
+            $latency = (int) round((float) ($row->getAttribute('avg_latency') ?? 0));
+            $ttft = (int) round((float) ($row->getAttribute('avg_ttft') ?? 0));
+            $tps = (float) ($row->getAttribute('avg_tps') ?? 0);
+            $averageCost = $row->getAttribute('avg_cost');
+            $costKnown = $averageCost !== null;
+            $cost = $costKnown ? (float) $averageCost : 0.0;
+            $inputTokens = (int) round((float) ($row->getAttribute('avg_input_tokens') ?? 0));
+            $fallback = (float) ($row->getAttribute('fallback_rate') ?? 0);
             $speed = 0.6 * (1 / (1 + $latency / 3000)) + 0.4 * (1 / (1 + $ttft / 1500));
             $throughput = min(1, $tps / 80);
             $costScore = $costKnown ? 1 / (1 + $cost / 0.02) : 0.5;
@@ -50,12 +55,18 @@ class ModelRanker
                 + 0.08 * $throughput + 0.10 * $costScore + 0.10 * $contextEfficiency - 0.08 * $fallback;
 
             ModelRanking::updateOrCreate(
-                ['user_id' => $row->user_id, 'task_type' => $row->task_type, 'model_id' => $row->model_id],
-                ['provider_id' => $row->provider_id, 'sample_count' => (int) $row->sample_count,
+                [
+                    'user_id' => $row->getAttribute('user_id'),
+                    'task_type' => $row->getAttribute('task_type'),
+                    'model_id' => $row->getAttribute('model_id'),
+                ],
+                ['provider_id' => $row->getAttribute('provider_id'), 'sample_count' => (int) $row->getAttribute('sample_count'),
                     'success_rate' => round($success, 4), 'test_pass_rate' => round($tests, 4),
                     'quality_score' => round($quality, 4), 'avg_latency_ms' => $latency, 'avg_ttft_ms' => $ttft,
                     'avg_tokens_per_second' => round($tps, 4), 'avg_cost_total' => $costKnown ? round($cost, 8) : null,
-                    'cost_per_success' => $row->cost_per_success === null ? null : round((float) $row->cost_per_success, 8),
+                    'cost_per_success' => $row->getAttribute('cost_per_success') === null
+                        ? null
+                        : round((float) $row->getAttribute('cost_per_success'), 8),
                     'avg_input_tokens' => $inputTokens, 'context_efficiency_score' => round($contextEfficiency, 4),
                     'fallback_rate' => round($fallback, 4), 'score' => round(max(0, min(1, $score)), 4)]
             );

@@ -1,37 +1,44 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AgentController;
 use App\Http\Controllers\Api\V1\AgentEventController;
 use App\Http\Controllers\Api\V1\AgentRunController;
-use App\Http\Controllers\Api\V1\AgentController;
 use App\Http\Controllers\Api\V1\AppNotificationController;
 use App\Http\Controllers\Api\V1\BootstrapController;
 use App\Http\Controllers\Api\V1\ContextController;
+use App\Http\Controllers\Api\V1\ConversationController;
 use App\Http\Controllers\Api\V1\DeviceController;
-use App\Http\Controllers\Api\V1\DeviceJobController;
 use App\Http\Controllers\Api\V1\DeviceDebugController;
-use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\DeviceJobController;
 use App\Http\Controllers\Api\V1\GithubController;
+use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\LlmController;
-use App\Http\Controllers\Api\V1\MemoryController;
 use App\Http\Controllers\Api\V1\McpController;
+use App\Http\Controllers\Api\V1\MemoryController;
 use App\Http\Controllers\Api\V1\NotificationPreferenceController;
-use App\Http\Controllers\Api\V1\ProxyController;
-use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\PolicyController;
+use App\Http\Controllers\Api\V1\PreferenceController;
+use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\ProxyController;
 use App\Http\Controllers\Api\V1\ReverbAuthController;
 use App\Http\Controllers\Api\V1\SyncController;
-use App\Http\Controllers\Api\V1\PreferenceController;
-use App\Http\Controllers\Api\V1\WorkflowController;
-use App\Http\Controllers\Api\V1\VoiceManifestController;
+use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Controllers\Api\V1\VoiceAssetController;
+use App\Http\Controllers\Api\V1\VoiceManifestController;
+use App\Http\Controllers\Api\V1\WorkflowController;
+use App\Models\Skill;
+use App\Services\ApiActor;
+use App\Services\WorkflowTaskCatalog;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthController::class)->name('api.v1.health');
-    // SOLL §15 P26 — visible versioning for support/debugging.
+    Route::get('/ready', [HealthController::class, 'readiness'])->name('api.v1.ready');
+    // Product/API versioning is public; framework details remain an internal
+    // deployment diagnostic so this endpoint does not aid fingerprinting.
     Route::get('/version', fn () => response()->json([
         'api' => 'v1',
-        'laravel' => app()->version(),
         'app' => config('app.version', 'dev'),
         'server_time' => now()->toIso8601String(),
     ]))->name('api.v1.version');
@@ -111,15 +118,15 @@ Route::prefix('v1')->group(function () {
     Route::patch('/projects/{project}', [ProjectController::class, 'update'])
         ->middleware('luczor.api:brain.write')->name('api.v1.projects.update');
     // Agent/user task + conversation management (SOLL §8).
-    Route::get('/tasks', [\App\Http\Controllers\Api\V1\TaskController::class, 'index'])
+    Route::get('/tasks', [TaskController::class, 'index'])
         ->middleware('luczor.api:brain.read')->name('api.v1.tasks.index');
-    Route::post('/tasks', [\App\Http\Controllers\Api\V1\TaskController::class, 'store'])
+    Route::post('/tasks', [TaskController::class, 'store'])
         ->middleware('luczor.api:brain.write')->name('api.v1.tasks.store');
-    Route::patch('/tasks/{externalId}', [\App\Http\Controllers\Api\V1\TaskController::class, 'update'])
+    Route::patch('/tasks/{externalId}', [TaskController::class, 'update'])
         ->middleware('luczor.api:brain.write')->name('api.v1.tasks.update');
-    Route::get('/conversations', [\App\Http\Controllers\Api\V1\ConversationController::class, 'index'])
+    Route::get('/conversations', [ConversationController::class, 'index'])
         ->middleware('luczor.api:brain.read')->name('api.v1.conversations.index');
-    Route::post('/conversations', [\App\Http\Controllers\Api\V1\ConversationController::class, 'store'])
+    Route::post('/conversations', [ConversationController::class, 'store'])
         ->middleware('luczor.api:brain.write')->name('api.v1.conversations.store');
 
     Route::get('/mcp/tools', [McpController::class, 'tools'])
@@ -151,13 +158,13 @@ Route::prefix('v1')->group(function () {
         ->middleware('luczor.api:brain.read')->name('api.v1.workflow-runs.show');
 
     // Vetted workflow task library (SOLL §14 P12) — the only tasks a definition may use.
-    Route::get('/workflows/task-catalog', fn () => response()->json(['data' => \App\Services\WorkflowTaskCatalog::options()]))
+    Route::get('/workflows/task-catalog', fn () => response()->json(['data' => WorkflowTaskCatalog::options()]))
         ->middleware('luczor.api:brain.read')->name('api.v1.workflows.task-catalog');
 
     // SOLL §15 P27 — reusable skill bundles the client/AI may discover and apply.
-    Route::get('/skills', function (\Illuminate\Http\Request $request) {
-        $userId = app(\App\Services\ApiActor::class)->userId($request);
-        $skills = \App\Models\Skill::active()
+    Route::get('/skills', function (Request $request) {
+        $userId = app(ApiActor::class)->userId($request);
+        $skills = Skill::active()
             ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $userId))
             ->orderByDesc('use_count')->orderBy('name')
             ->get(['id', 'slug', 'name', 'description', 'kind', 'tags', 'workflow_definition_id']);
@@ -184,6 +191,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware('luczor.api:brain.write')->group(function () {
         Route::post('/memory/remember', [MemoryController::class, 'remember'])->name('api.v1.memory.remember');
         Route::post('/memory/forget', [MemoryController::class, 'forget'])->name('api.v1.memory.forget');
+        Route::post('/memory/promote', [MemoryController::class, 'promote'])->name('api.v1.memory.promote');
         Route::post('/memory/improve', [MemoryController::class, 'improve'])->name('api.v1.memory.improve');
     });
 
