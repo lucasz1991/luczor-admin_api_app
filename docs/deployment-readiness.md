@@ -72,6 +72,11 @@ nur, wenn sie fehlt. `000002` akzeptiert eine nach einem MySQL-DDL-Abbruch berei
 vorhandene `memory_write_events`-Tabelle ausschließlich dann, wenn Spalten,
 Typen, Nullability, Default, Indizes und Fremdschlüssel vollständig dem erwarteten
 Vertrag entsprechen; anschließend ist der Backfill wiederholbar.
+Der `dataset`-Vertrag verwendet dabei ausdrücklich `VARCHAR(191)`, passend zu
+Luczors seit Veröffentlichung gesetztem `Schema::defaultStringLength(191)`.
+Eine von der ersten fehlgeschlagenen MySQL-Ausführung bereits so angelegte
+Tabelle ist deshalb gültig und darf nicht gelöscht oder auf 255 Zeichen
+umgebaut werden.
 
 Vor einem erneuten Produktionslauf:
 

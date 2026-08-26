@@ -40,3 +40,9 @@ Record durable decisions with date, context, decision, and consequences.
 - Die Repair-Migration löscht in `down()` keine möglicherweise bereits vorhandene Fingerprint-Spalte, weil deren Eigentümerschaft nach dem historischen Drift nicht sicher beweisbar ist.
 - Eine nach MySQL-DDL-Abbruch vorhandene `memory_write_events`-Tabelle wird weder gelöscht noch blind übernommen. `000002` setzt nur fort, wenn Spalten, portable Typen/Längen, Nullability, Default, Primary-/Unique-/Sekundärindizes und beide Foreign Keys vollständig passen.
 - Produktionsmigrationen bleiben an Wartungsmodus, Backup, read-only Schema-Evidenz und stabile Namespace-/Ledger-Schlüssel gebunden.
+
+## 2026-08-26 | Memory-Event-Datasets behalten die veröffentlichte MySQL-Länge
+
+- Luczor setzt global `Schema::defaultStringLength(191)`; die beim ersten MySQL-Lauf von `000002` angelegte `memory_write_events.dataset`-Spalte ist deshalb vertragsgemäß `VARCHAR(191)`.
+- `000002` verwendet für Erstellung und Existing-Table-Prüfung dieselbe explizite Konstante. Eine partielle Tabelle wird weiterverwendet und weder gelöscht noch unnötig verändert.
+- Ein echter MySQL-/MariaDB-Migrationslauf bleibt Teil der Produktionsabnahme, da SQLite deklarierte Zeichenlängen nicht zuverlässig validiert.

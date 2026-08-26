@@ -51,3 +51,21 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Verified: vollständige Laravel-Suite 336 Tests / 2.288 Assertions; Pint; PHPStan; Migration-Discovery-Reihenfolge; Legacy-, Preexisting-, Partial-DDL-, Wiederholungs- und negative Contract-Tests.
 - Safety: Keine Produktionsverbindung oder -daten verändert. Repair-Down ist nicht destruktiv; eine unbekannte Teiltabelle wird fail closed abgewiesen.
 - Next: Korrigierten Code deployen, in Wartung und nach Backup Migrationstatus/Spalten/`SHOW CREATE TABLE`/Row Count read-only prüfen, stabile Memory-Schlüssel validieren und erst dann `migrate --force --isolated` ausführen.
+
+## 2026-08-26T20:01:55Z | Codex -> all | status
+
+- Message: Started: angehängte Plesk-Migrationsausgabe read-only auswerten
+
+## 2026-08-26T20:04:10Z | Codex/root -> all | task-claim
+
+- Message: Korrigiere den widerspruechlichen MySQL-Laengenvertrag in 000002 und ergaenze Regressionstests; keine Produktionsmutation.
+
+## 2026-08-26T20:07:49Z | Codex/root -> all | handoff
+
+- Task: Produktionsausgabe auswerten und den verbleibenden `000002`-Fehler sicher beheben.
+- Status: completed.
+- Cause: `AppServiceProvider` setzt `Schema::defaultStringLength(191)`, daher erstellte Laravel `dataset` korrekt als `VARCHAR(191)`; der nachgeruestete Validator verlangte widerspruechlich 255.
+- Changed: `000002` nutzt eine gemeinsame explizite `DATASET_LENGTH=191` fuer Erstellung und Contract; Regressionstest und Deployment-Runbook aktualisiert.
+- Verified: fokussiert 9 Tests / 21 Assertions; vollstaendig 337 Tests / 2.292 Assertions; Pint und PHPStan bestanden.
+- Safety: Keine Produktionsverbindung, Tabelle oder Daten veraendert. Die vorhandene partielle Eventtabelle bleibt erhalten.
+- Next: Korrigierten Stand deployen, alle sechs fehlgeschlagenen Konfigurationschecks beheben und erst nach vollstaendig gruenem Configuration Gate einmalig `migrate --force --isolated` ausfuehren.

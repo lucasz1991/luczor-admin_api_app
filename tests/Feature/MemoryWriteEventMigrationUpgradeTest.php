@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\Schema\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use ReflectionClass;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -63,6 +65,21 @@ class MemoryWriteEventMigrationUpgradeTest extends TestCase
             $expectedOrder,
             array_values(array_intersect($migrationNames, $expectedOrder)),
         );
+    }
+
+    public function test_write_event_dataset_contract_matches_the_published_mysql_string_length(): void
+    {
+        $migration = require database_path(
+            'migrations/2026_08_23_000002_create_memory_write_events_table.php'
+        );
+        $reflection = new ReflectionClass($migration);
+        $datasetLength = $reflection->getReflectionConstant('DATASET_LENGTH')?->getValue();
+        $columnContract = $reflection->getReflectionConstant('COLUMN_CONTRACT')?->getValue();
+
+        $this->assertSame(191, Builder::$defaultStringLength);
+        $this->assertSame(Builder::$defaultStringLength, $datasetLength);
+        $this->assertIsArray($columnContract);
+        $this->assertSame($datasetLength, $columnContract['dataset']['length']);
     }
 
     public function test_write_event_migration_resumes_after_mysql_style_partial_ddl_and_is_repeatable(): void

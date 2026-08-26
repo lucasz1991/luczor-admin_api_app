@@ -7,6 +7,12 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Keep the event ledger compatible with Luczor's published MySQL schema.
+     * AppServiceProvider sets Laravel's global string length to 191.
+     */
+    private const DATASET_LENGTH = 191;
+
     /** @var array<string, array{types: list<string>, nullable: bool, length?: int, auto_increment?: bool}> */
     private const COLUMN_CONTRACT = [
         'id' => ['types' => ['bigint', 'int8', 'integer'], 'nullable' => false, 'auto_increment' => true],
@@ -14,7 +20,7 @@ return new class extends Migration
         'write_fingerprint' => ['types' => ['char', 'bpchar', 'varchar'], 'nullable' => false, 'length' => 64],
         'memory_link_id' => ['types' => ['bigint', 'int8', 'integer'], 'nullable' => true],
         'user_id' => ['types' => ['bigint', 'int8', 'integer'], 'nullable' => true],
-        'dataset' => ['types' => ['varchar'], 'nullable' => false, 'length' => 255],
+        'dataset' => ['types' => ['varchar'], 'nullable' => false, 'length' => self::DATASET_LENGTH],
         'state' => ['types' => ['varchar'], 'nullable' => false, 'length' => 24],
         'forgotten_at' => ['types' => ['timestamp', 'datetime'], 'nullable' => true],
         'created_at' => ['types' => ['timestamp', 'datetime'], 'nullable' => true],
@@ -31,7 +37,7 @@ return new class extends Migration
                 $table->unsignedBigInteger('memory_link_id')->nullable()->index();
                 $table->foreign('memory_link_id')->references('id')->on('memory_links')->nullOnDelete();
                 $table->foreignId('user_id')->nullable()->constrained()->cascadeOnDelete();
-                $table->string('dataset')->index();
+                $table->string('dataset', self::DATASET_LENGTH)->index();
                 $table->string('state', 24)->default('committed')->index();
                 $table->timestamp('forgotten_at')->nullable();
                 $table->timestamps();
