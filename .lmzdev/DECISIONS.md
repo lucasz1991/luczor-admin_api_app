@@ -33,3 +33,10 @@ Record durable decisions with date, context, decision, and consequences.
 - A PostgreSQL advisory lease fences the complete Cognee/FastAPI lifespan, including upstream startup and shutdown.
 - Add recovery lookups gain priority as soon as they wait; later Adds cannot starve recovery.
 - Improve remains opt-in. A live same-boot generation is replayed/polled idempotently; a changed boot after account erasure proves the old process-local task dead and yields to Forget without relaunch.
+
+## 2026-08-26 | Veröffentlichte Migrationen bleiben unverändert und Wiederaufnahme ist fail closed
+
+- `2026_08_23_000001_add_memory_orchestration_fields` entspricht wieder exakt dem zuerst veröffentlichten Schema. Neue Felder erhalten eine eigene, in der Reihenfolge separat erkennbare Migration.
+- Die Repair-Migration löscht in `down()` keine möglicherweise bereits vorhandene Fingerprint-Spalte, weil deren Eigentümerschaft nach dem historischen Drift nicht sicher beweisbar ist.
+- Eine nach MySQL-DDL-Abbruch vorhandene `memory_write_events`-Tabelle wird weder gelöscht noch blind übernommen. `000002` setzt nur fort, wenn Spalten, portable Typen/Längen, Nullability, Default, Primary-/Unique-/Sekundärindizes und beide Foreign Keys vollständig passen.
+- Produktionsmigrationen bleiben an Wartungsmodus, Backup, read-only Schema-Evidenz und stabile Namespace-/Ledger-Schlüssel gebunden.

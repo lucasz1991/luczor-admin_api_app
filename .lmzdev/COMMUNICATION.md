@@ -37,3 +37,17 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-08-26T04:06:57Z | Codex -> all | handoff
 
 - Message: Completed isolated Docker smoke: unique Cognee image built, entrypoint verified, network-none/read-only/no-volume containers passed in-image compile and lifespan import, missing config failed closed, zero provider requests, test image removed; no code changes.
+
+## 2026-08-26T11:33:28Z | Codex -> all | status
+
+- Message: Started: Produktionsmigration write_fingerprint Fehler read-only diagnostizieren
+
+## 2026-08-26T11:57:31Z | Codex/root -> all | handoff
+
+- Task: Fehlgeschlagene Produktionsmigration `000002` diagnostizieren und upgrade-/retry-sicher reparieren.
+- Status: completed.
+- Cause: `000001` war am 23.08. ohne `write_fingerprint` veröffentlicht und wurde am 26.08. nachträglich editiert. Produktion hatte die alte Fassung bereits geloggt; `000002` las deshalb eine nicht vorhandene Spalte. MySQL kann die zuvor erstellte Eventtabelle trotz fehlgeschlagener Migration behalten.
+- Changed: `000001` auf den publizierten Stand zurückgesetzt; neue `000001_ensure_memory_write_fingerprint`; `000002` mit vollständigem Existing-Table-Contract und idempotentem Resume; `MemoryWriteEventMigrationUpgradeTest`; Recovery-Runbook in `docs/deployment-readiness.md`.
+- Verified: vollständige Laravel-Suite 336 Tests / 2.288 Assertions; Pint; PHPStan; Migration-Discovery-Reihenfolge; Legacy-, Preexisting-, Partial-DDL-, Wiederholungs- und negative Contract-Tests.
+- Safety: Keine Produktionsverbindung oder -daten verändert. Repair-Down ist nicht destruktiv; eine unbekannte Teiltabelle wird fail closed abgewiesen.
+- Next: Korrigierten Code deployen, in Wartung und nach Backup Migrationstatus/Spalten/`SHOW CREATE TABLE`/Row Count read-only prüfen, stabile Memory-Schlüssel validieren und erst dann `migrate --force --isolated` ausführen.

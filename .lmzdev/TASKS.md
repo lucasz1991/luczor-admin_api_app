@@ -10,3 +10,4 @@
 | Local-only repository graph and encrypted desktop memory | Codex/root | completed | 2026-08-23T10:56:55Z |
 | Final concurrency/security recheck | Codex/final_concurrency_review | completed | 2026-08-23T10:56:55Z |
 | Production rollout and live Cognee smoke tests | operator | blocked | 2026-08-23T10:56:55Z |
+| Produktionsmigration write_fingerprint upgrade- und retry-sicher reparieren | Codex/root | completed | 2026-08-26T11:57:31Z |
