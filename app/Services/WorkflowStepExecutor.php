@@ -183,6 +183,9 @@ class WorkflowStepExecutor
             $scope = 'project';
         }
         $project = $step->run->project_id ? Project::find($step->run->project_id) : null;
+        // A workflow step is a durable write intent. Reusing its row ID keeps a
+        // retry after "memory committed, step completion crashed" idempotent.
+        $memoryWriteId = "workflow-step:{$step->id}:memory";
         $result = $this->memory->remember([
             'user_id' => $step->user_id,
             'content' => mb_substr($content, 0, 8000),
@@ -194,7 +197,14 @@ class WorkflowStepExecutor
             'write_intent' => (string) ($payload['write_intent'] ?? 'inferred'),
             'retention' => (string) ($payload['retention'] ?? 'durable'),
             'source_type' => 'workflow',
-            'meta' => ['workflow_run' => $step->run->public_id, 'step_key' => $step->step_key],
+            'write_id' => $memoryWriteId,
+            'external_id' => $memoryWriteId,
+            'memory_key' => $memoryWriteId,
+            'meta' => [
+                'workflow_run' => $step->run->public_id,
+                'workflow_step_id' => $step->id,
+                'step_key' => $step->step_key,
+            ],
         ]);
 
         return array_merge($result->toArray(), ['dataset' => $result->link?->dataset]);

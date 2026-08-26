@@ -192,7 +192,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/memory/remember', [MemoryController::class, 'remember'])->name('api.v1.memory.remember');
         Route::post('/memory/forget', [MemoryController::class, 'forget'])->name('api.v1.memory.forget');
         Route::post('/memory/promote', [MemoryController::class, 'promote'])->name('api.v1.memory.promote');
-        Route::post('/memory/improve', [MemoryController::class, 'improve'])->name('api.v1.memory.improve');
+        Route::post('/memory/improve', [MemoryController::class, 'improve'])
+            ->middleware('throttle:memory-improve')
+            ->name('api.v1.memory.improve');
     });
 
     // Context Controller (ranked, budgeted context package)

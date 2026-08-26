@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "environment": {
+    "name": "",
+    "backendUrl": "",
+    "backendRevision": "",
+    "desktopRevision": "",
+    "verifiedAt": "",
+    "verifiedBy": ""
+  },
+  "migration": {
+    "databaseTargetReference": "",
+    "backupReference": "",
+    "rollbackReference": "",
+    "targetConfirmed": false,
+    "backupRestoreTested": false,
+    "migrationStatusCurrent": false,
+    "deploymentCheckPassed": false
+  },
+  "runtime": {
+    "redisReference": "",
+    "horizonSupervisorReference": "",
+    "schedulerReference": "",
+    "reverbPublicUrl": "",
+    "allowedOrigins": [],
+    "redisPingPassed": false,
+    "horizonRunning": false,
+    "schedulerHeartbeatFresh": false,
+    "reverbSocketPassed": false,
+    "privateChannelPassed": false,
+    "offlineCatchupPassed": false
+  },
+  "desktop": {
+    "artifactReference": "",
+    "artifactPath": "",
+    "artifactSha256": "",
+    "hostOs": "",
+    "webviewVersion": "",
+    "guiPassed": false,
+    "keychainRoundTripPassed": false,
+    "microphoneInputPassed": false,
+    "audioOutputPassed": false,
+    "notificationPermissionPassed": false,
+    "notificationClickPassed": false,
+    "filesystemApprovalPassed": false,
+    "computerApprovalPassed": false
+  },
+  "signing": {
+    "targets": [
+      "windows"
+    ],
+    "releaseVersion": "",
+    "updaterHttpsUrl": "",
+    "updaterPublicKeyFingerprint": "",
+    "updaterSignatureVerified": false,
+    "updateInstallPassed": false,
+    "rollbackPassed": false,
+    "windows": {
+      "signingIdentity": "",
+      "signatureVerified": false
+    },
+    "macos": {
+      "signingIdentity": "",
+      "teamId": "",
+      "notarizationVerified": false
+    }
+  }
+}

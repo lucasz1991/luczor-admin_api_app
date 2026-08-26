@@ -39,6 +39,21 @@ final class MemoryDlp
         'screen_secret',
     ];
 
+    private const DIRECT_IDENTIFIER_PATTERN = '~(?:
+        \b[A-Z0-9.!#$%&\'*+/=?^_`{|}\~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+\b
+        |(?<!\w)(?:\+|00)\d{1,3}(?:[\s()./-]*\d){6,14}\b
+        |(?<!\w)0\d{2,5}(?:[\s()./-]*\d){5,10}\b
+    )~ixu';
+
+    /**
+     * The candidate may include trailing space-separated text. Validation
+     * below checks every legal IBAN-length prefix with MOD-97, so an IBAN is
+     * still found without treating arbitrary account-like text as one.
+     */
+    private const IBAN_CANDIDATE_PATTERN = '~(?<![A-Z0-9])[A-Z]{2}[ -]?\d{2}(?:[ -]?[A-Z0-9]){11,40}~iu';
+
+    private const PAYMENT_CARD_CANDIDATE_PATTERN = '~(?<![A-Z0-9])(?:\d[ -]?){12,18}\d(?![A-Z0-9])~iu';
+
     /** @param array<string,mixed> $payload */
     public static function containsSecretInMemoryPayload(array $payload): bool
     {
@@ -64,6 +79,57 @@ final class MemoryDlp
         $stringBytes = 0;
 
         return self::inspect($value, 0, $nodes, $stringBytes);
+    }
+
+    /**
+     * Only plain-language, non-sensitive recall queries may cross the Cognee
+     * boundary. Everything else still receives canonical SQL lexical recall.
+     */
+    public static function allowsExternalSemanticQuery(string $query): bool
+    {
+        $query = trim($query);
+        if ($query === ''
+            || strlen($query) > 2000
+            || ! mb_check_encoding($query, 'UTF-8')
+            || self::containsSecret($query)
+            || self::containsDirectIdentifier($query)) {
+            return false;
+        }
+
+        // Repository excerpts commonly contain multiline/code delimiters,
+        // local paths or source filenames. False positives only disable the
+        // optional semantic ranker; SQL recall remains available fail-closed.
+        return preg_match('/[\r\n{}\[\]<>=$`\\\\|]/u', $query) !== 1
+            && preg_match('~(?:^|[\s(])(?:[A-Za-z]:\\\\|/(?:home|Users|var|srv|opt)/|\.\.?[/\\\\])~u', $query) !== 1
+            && preg_match('/\b[\w.-]+\.(?:php|blade\.php|js|jsx|ts|tsx|vue|rs|py|go|java|cs|cpp|c|h)(?::\d+)?\b/iu', $query) !== 1
+            && preg_match('/(?:=>|::|->|\b(?:function|interface|namespace|import|export|const|let|var|def|fn)\s+[A-Za-z_$][\w$]*)/u', $query) !== 1;
+    }
+
+    /**
+     * Decide whether a canonical memory may be copied to an external semantic
+     * projection. Direct identifiers are intentionally stricter here than for
+     * SQL storage: the user can retain an email address locally without also
+     * sending it to Cognee's configured embedding or LLM provider.
+     *
+     * @param  array<string,mixed>  $payload
+     */
+    public static function allowsExternalSemanticContent(array $payload): bool
+    {
+        if (($payload['sensitivity'] ?? 'normal') !== 'normal'
+            || self::containsSecretInMemoryPayload($payload)
+            || self::containsLocalOnlySourceInMemoryPayload($payload)) {
+            return false;
+        }
+
+        $nodes = 0;
+        $stringBytes = 0;
+
+        return ! self::inspectDirectIdentifier([
+            'content' => $payload['content'] ?? null,
+            'source_ref' => $payload['source_ref'] ?? null,
+            'provenance' => $payload['provenance'] ?? null,
+            'meta' => $payload['meta'] ?? null,
+        ], 0, $nodes, $stringBytes);
     }
 
     /**
@@ -227,5 +293,134 @@ final class MemoryDlp
         }
 
         return false;
+    }
+
+    private static function inspectDirectIdentifier(
+        mixed $value,
+        int $depth,
+        int &$nodes,
+        int &$stringBytes,
+    ): bool {
+        $nodes++;
+        if ($nodes > self::MAX_NODES || $depth > self::MAX_DEPTH) {
+            return true;
+        }
+
+        if ($value === null || is_bool($value) || is_int($value) || is_float($value)) {
+            return false;
+        }
+
+        if (is_string($value)) {
+            $stringBytes += strlen($value);
+
+            return $stringBytes > self::MAX_STRING_BYTES
+                || ! mb_check_encoding($value, 'UTF-8')
+                || self::containsDirectIdentifier($value);
+        }
+
+        if ($value instanceof DateTimeInterface || $value instanceof Stringable) {
+            return self::inspectDirectIdentifier((string) $value, $depth + 1, $nodes, $stringBytes);
+        }
+
+        if (! is_array($value) || ($depth >= self::MAX_DEPTH && $value !== [])) {
+            return true;
+        }
+
+        foreach ($value as $key => $child) {
+            if (self::inspectDirectIdentifier((string) $key, $depth + 1, $nodes, $stringBytes)
+                || self::inspectDirectIdentifier($child, $depth + 1, $nodes, $stringBytes)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function containsDirectIdentifier(string $value): bool
+    {
+        // A regex engine error is an inspection failure and therefore denied.
+        if (preg_match(self::DIRECT_IDENTIFIER_PATTERN, $value) !== 0) {
+            return true;
+        }
+
+        return self::containsFinancialIdentifier($value);
+    }
+
+    private static function containsFinancialIdentifier(string $value): bool
+    {
+        $ibanMatchCount = preg_match_all(self::IBAN_CANDIDATE_PATTERN, $value, $ibanMatches);
+        if ($ibanMatchCount === false) {
+            return true;
+        }
+
+        foreach ($ibanMatches[0] as $rawCandidate) {
+            $normalized = strtoupper(preg_replace('/[ -]+/', '', (string) $rawCandidate) ?? '');
+            $maximumLength = min(34, strlen($normalized));
+            for ($length = 15; $length <= $maximumLength; $length++) {
+                if (self::isValidIban(substr($normalized, 0, $length))) {
+                    return true;
+                }
+            }
+        }
+
+        $cardMatchCount = preg_match_all(self::PAYMENT_CARD_CANDIDATE_PATTERN, $value, $cardMatches);
+        if ($cardMatchCount === false) {
+            return true;
+        }
+
+        foreach ($cardMatches[0] as $rawCandidate) {
+            $digits = preg_replace('/\D/', '', (string) $rawCandidate) ?? '';
+            if (strlen($digits) >= 13
+                && strlen($digits) <= 19
+                && count(array_unique(str_split($digits))) > 1
+                && self::passesLuhn($digits)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function isValidIban(string $candidate): bool
+    {
+        if (strlen($candidate) < 15
+            || strlen($candidate) > 34
+            || preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]+$/D', $candidate) !== 1) {
+            return false;
+        }
+
+        $rearranged = substr($candidate, 4).substr($candidate, 0, 4);
+        $remainder = 0;
+        foreach (str_split($rearranged) as $character) {
+            if (ctype_digit($character)) {
+                $remainder = (($remainder * 10) + (int) $character) % 97;
+
+                continue;
+            }
+
+            $remainder = (($remainder * 100) + (ord($character) - ord('A') + 10)) % 97;
+        }
+
+        return $remainder === 1;
+    }
+
+    private static function passesLuhn(string $digits): bool
+    {
+        $sum = 0;
+        $double = false;
+        for ($index = strlen($digits) - 1; $index >= 0; $index--) {
+            $digit = (int) $digits[$index];
+            if ($double) {
+                $digit *= 2;
+                if ($digit > 9) {
+                    $digit -= 9;
+                }
+            }
+
+            $sum += $digit;
+            $double = ! $double;
+        }
+
+        return $sum % 10 === 0;
     }
 }

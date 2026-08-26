@@ -37,7 +37,7 @@ final class MemoryProjectionPolicy
     {
         if (! in_array($link->retention, ['durable', 'permanent'], true)
             || ! in_array($link->visibility, ['syncable', 'public'], true)
-            || $link->sensitivity === 'secret'
+            || $link->sensitivity !== 'normal'
             || ! preg_match('/^[a-f0-9]{64}$/', (string) $link->content_hash)) {
             return false;
         }
@@ -50,12 +50,12 @@ final class MemoryProjectionPolicy
             'source_ref' => $link->source_ref,
             'project_id' => $link->project_id,
             'session_id' => $link->session_id,
+            'sensitivity' => $link->sensitivity,
             'provenance' => $link->provenance,
             'meta' => $link->meta,
         ];
 
-        return ! MemoryDlp::containsSecretInMemoryPayload($payload)
-            && ! MemoryDlp::containsLocalOnlySourceInMemoryPayload($payload);
+        return MemoryDlp::allowsExternalSemanticContent($payload);
     }
 
     public static function hasExplicitlyIneligibleStatus(MemoryLink $link): bool

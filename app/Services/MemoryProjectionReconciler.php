@@ -16,9 +16,7 @@ class MemoryProjectionReconciler
     /** @return array{upserts:int,deletes:int} */
     public function reconcile(int $limit = 250): array
     {
-        if (! $this->cognee->enabled()) {
-            return ['upserts' => 0, 'deletes' => 0];
-        }
+        $cogneeEnabled = $this->cognee->enabled();
 
         $limit = max(1, min(1000, $limit));
         $now = now();
@@ -41,7 +39,7 @@ class MemoryProjectionReconciler
         }
 
         $remaining = $limit - $deletes;
-        if ($remaining < 1) {
+        if ($remaining < 1 || ! $cogneeEnabled) {
             return compact('upserts', 'deletes');
         }
 

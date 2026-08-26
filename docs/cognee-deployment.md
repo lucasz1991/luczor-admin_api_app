@@ -21,12 +21,33 @@ Nicht geheime Werte stehen in `.env.docker`:
 - `COGNEE_EMBEDDING_PROVIDER`, `COGNEE_EMBEDDING_MODEL`,
   `COGNEE_EMBEDDING_DIMENSIONS` und optional `COGNEE_EMBEDDING_ENDPOINT` konfigurieren
   die Vektorisierung. Die Dimension muss exakt zum Modell passen.
+- `COGNEE_IMPROVE_ENABLED=false` bleibt beim gepinnten Cognee 1.4 der sichere Standard.
+  `COGNEE_IMPROVE_MIN_INTERVAL_SECONDS` ist zusätzlich mindestens 300 Sekunden und
+  standardmäßig eine Stunde.
+- `COGNEE_SEMANTIC_QUERY_TIMEOUT=3` begrenzt die gesamte optionale Batch-Suche über alle
+  belegten Namespace-Aliase. Der Wert erbt bewusst nicht das längere Add-/Worker-Budget.
+- `LUCZOR_MEMORY_NAMESPACE_KEY` ist ein eigener, stabiler Secret-Wert mit mindestens
+  32 Byte. Er darf weder aus `APP_KEY` abgeleitet noch zusammen mit diesem rotiert werden.
+  Die Datasetnamen enthalten dadurch keine lesbaren Benutzer-, Tenant- oder Projekt-IDs.
+  Bei einer bewussten Rotation wird der bisherige Wert zuerst in
+  `LUCZOR_MEMORY_PREVIOUS_NAMESPACE_KEYS` übernommen; erst dann wird ein neuer Primärwert
+  aktiviert. Recall, Update, CAS, Promotion und Forget serialisieren und durchsuchen die
+  vollständige Aliasfamilie. Alte Schlüssel bleiben bis zur kontrollierten Ablösung der
+  zugehörigen SQL-/Cognee-Projektionen im Keyring.
+- `LUCZOR_MEMORY_LEDGER_KEY` ist ein davon unabhängiger, nicht rotierender Secret-Wert
+  mit mindestens 32 Byte. Er schützt dauerhafte Write-ID- und Request-Fingerprint-
+  Tombstones per domain-separiertem HMAC vor Offline-Enumeration. Da diese Tombstones
+  absichtlich länger als ein Benutzerkonto leben können, muss der Key für ihre gesamte
+  Lebensdauer im Secret-Backup erhalten bleiben; er darf weder `APP_KEY` noch dem
+  Dataset-Namespace-Key entsprechen.
 
 Die HTTP-Healthcheck-Route prüft keine LLM- oder Embedding-Antwort. Deshalb bleibt ein
 echter `add`-/Hintergrund-`cognify`-Smoke-Test nach jeder Erstbereitstellung oder Provideränderung
 verpflichtend.
 
-Geheime Werte liegen ausschließlich als Dateien unter `admin_api_app/docker/secrets/`:
+Cognee-Provider-, Datenbank- und HTTP-Geheimnisse liegen ausschließlich als Dateien unter
+`admin_api_app/docker/secrets/`. Der ausschließlich von Laravel verwendete
+Memory-Namespace-Key liegt dagegen in dessen geschützter Deployment-Umgebung:
 
 | Secret-Datei | Besitzer/Zweck |
 |---|---|
@@ -50,6 +71,34 @@ Alle Befehle werden vom Workspace-Root ausgeführt.
    ```powershell
    Copy-Item .env.docker.example .env.docker
    ```
+
+   Vor `migrate`, API-Start oder einem lokalen Memory-Aufruf muss
+   `LUCZOR_MEMORY_NAMESPACE_KEY` und `LUCZOR_MEMORY_LEDGER_KEY` in
+   `admin_api_app/.env` beziehungsweise `.env.docker` durch zwei unabhängige, einmalig
+   kryptografisch erzeugte Werte mit mindestens 32 Byte ersetzt und im
+   Deployment-Secret-Backup gesichert sein. Die Readiness weist fehlende, zu kurze,
+   gleiche oder unveränderte Beispielwerte ab. Eine bestehende Installation darf ohne
+   den bisherigen Wert beziehungsweise den vollständig gepflegten Previous-Keyring nicht
+   migriert werden, weil ältere Dataset-Aliase sonst nicht mehr adressierbar wären.
+
+   Die Ledger-Migration ist ein technisch erzwungener Cutover: Sie markiert bestehende
+   SHA-Zeilen als Version 1, blockiert anschließend weitere Version-1-Inserts auf
+   PostgreSQL per `NOT VALID`-Check beziehungsweise auf MySQL/MariaDB per Trigger und
+   rekeyt nur diese Zeilen. Neue API-/Horizon-Prozesse schreiben ausdrücklich Version 2.
+   Alte Writer werden danach von der Datenbank abgewiesen. Deshalb zuerst den gesamten
+   Web-/API-Traffic einschließlich Accountänderungen sowie Horizon und Scheduler in
+   Wartung nehmen, dann alle Memory-Migrationen ausführen und erst danach ausschließlich
+   das neue Image starten. Der Cutover ist ausdrücklich kein Zero-Downtime-Backfill.
+   Noch bevor MySQL/MariaDB durch `000004` ein Auto-Commit-DDL ausführt, prüft die
+   Migration sämtliche ownerlosen Live-Upserts. Für jeden ambigen Add muss das exakte
+   Wiederherstellungspaar `(provider_memory_link_id, content_hash)` vollständig und
+   widerspruchsfrei vorliegen. Bei einem Blocker das Paar ausschließlich aus einem
+   vertrauenswürdigen Backup oder Audit rekonstruieren oder den nachweislich zugehörigen
+   Cognee-Bestand kontrolliert bereinigen und den Eingriff dokumentieren; niemals eine ID
+   oder einen Hash schätzen. Danach Backup und Preflight erneut ausführen.
+   Die Produktions-Readiness bleibt rot, solange
+   ein Link nicht Version 2 oder ein Write-Event nicht Version 2 beziehungsweise die
+   nach Kontolöschung unlinkbare Erasure-Version 3 trägt.
 
 2. Fehlende Secret-Dateien idempotent anlegen:
 
@@ -105,6 +154,16 @@ Alle Befehle werden vom Workspace-Root ausgeführt.
    beweist nur, dass die interne API antwortet; LLM und Embeddings gelten erst nach dem
    vollständigen Projektions-Smoke-Test als betriebsbereit.
 
+   Der Runtime-Guard ist für genau **eine Cognee-Replik** ausgelegt. Die Compose-Konfiguration
+   startet daher einen einzelnen Cognee-Prozess. Nicht horizontal skalieren, bevor
+   Prozess-Leases und die Boot-ID-Erkennung explizit auf mehrere Replikate erweitert wurden;
+   sonst wäre ein fremder Prozess-Neustart kein Beweis dafür, dass eine Task beendet ist.
+   Die PostgreSQL-Advisory-Lease umschließt den vollständigen FastAPI-/Cognee-Lifespan:
+   Lease erwerben, erst danach den Upstream-Startup ausführen, Requests bedienen, den
+   Upstream-Shutdown abschließen und erst zuletzt die Lease freigeben. Das ist zwingend,
+   weil bereits Cognee-Startup eine Recovery ausführt; eine zweite Instanz darf diese nie
+   vor ihrer Lease-Ablehnung erreichen.
+
 5. Einmalig den internen Benutzer und Service-Key erzeugen:
 
    ```powershell
@@ -132,7 +191,7 @@ Alle Befehle werden vom Workspace-Root ausgeführt.
      docker compose --env-file .env.docker exec api php artisan luczor:dispatch-memory-projections
      ```
 
-   - Prüfen, dass der Outbox-Eintrag nacheinander die persistierten Phasen `ingested` und
+   - Prüfen, dass der Outbox-Eintrag nacheinander die persistierten Phasen `ingested`,
      `cognify_launching` und `polling` durchläuft, anschließend `done` erreicht und die
      zugehörige Erinnerung `projection_status=ready` trägt. Die Outbox muss die vom
      Cognify-POST gelieferte `pipeline_run_id` speichern und ausschließlich deren exakte
@@ -151,11 +210,74 @@ denselben Cognee-Service-Key wie die API. Fehlgeschlagene Projektionen bleiben m
 in `memory_projection_outbox` erhalten. Der Produktpfad verwendet bewusst nicht den
 blockierenden `/remember`-Aufruf: Nach dem begrenzten `/add` startet er `/cognify` mit
 `run_in_background=true`, stabiler Idempotency-ID und persistierter Boot-ID. Der Wrapper
-spiegelt die Startantwort dauerhaft in seiner Cognee-Datenbank und stellt eine
+kodiert für jeden Add das monotone Wiederherstellungspaar
+`(provider_memory_link_id, content_hash)` in den Dateinamen. Geht die Add-Antwort verloren,
+liefert die exklusive Exact-Data-Abfrage sämtliche UUIDs genau dieses Paars; der Worker
+übernimmt eine kanonische UUID und erzeugt für jede weitere eine dauerhafte Kompensation.
+Ein wartender Exact-Lookup blockiert neue Adds bereits vor dem Warten auf laufende Adds,
+damit Recovery und ein nachfolgendes Forget auch unter Dauerlast Fortschritt machen. Der Wrapper
+spiegelt die Startantwort zunächst dauerhaft in seiner Cognee-Datenbank und stellt eine
 authentisierte Exact-Run-Abfrage bereit, weil Cognees Activity-Feed nur die neuesten 50
-Zeilen liefert. Ein Timeout setzt deshalb nie blind einen zweiten Run in Gang. Der
-HTTP-Timeout muss kleiner als der Job-Timeout und dieser kleiner als Redis `retry_after`
-bleiben.
+Zeilen liefert. Ein Timeout setzt deshalb nie blind einen zweiten Run in Gang. Das
+HTTP-Gesamtbudget muss kleiner als der Job-Timeout und dieser kleiner als Redis `retry_after`
+bleiben. Erst nach dem dauerhaften Speichern von Run-ID und Polling-Phase sendet Laravel
+einen authentisierten Launch-Ack. Ein nicht zugestellter Ack bleibt im
+Projektions-Outbox-Payload stehen und wird vor jedem
+weiteren Poll sowie vor dem endgültigen Abschluss erneut versucht. Vor einer neuen
+Startgeneration nach einem Runtime-Wechsel muss der alte Ack erfolgreich zugestellt sein;
+sein Schlüssel wird niemals durch den neuen Start überschrieben.
+Bestätigte Registry-Zeilen werden stattdessen auf die minimale, bereits bereinigte
+Startantwort reduziert und als dauerhafte Tombstones behalten. So können weder ein
+verspäteter Queue-Replay noch ein wiederhergestelltes Backup denselben Lauf erneut starten.
+Es gibt absichtlich keinen scheinbaren TTL- oder Cleanup-Schalter: Die Tabelle
+`luczor_cognify_idempotency` wird betrieblich überwacht und gesichert. Eine spätere
+Archivierung ist nur zulässig, wenn Operation, Principal, Request-Fingerprint und die
+minimale Run-Antwort in einem ebenso dauerhaften Idempotenz-Ledger erhalten bleiben.
+
+Für den längsten synchronen Worker-Pfad gilt ein hartes Gesamtbudget: begrenzter Daten-/
+Startaufruf (45 Sekunden), bis zu drei Control-Aufrufe (je 8), bis zu drei Ack-Versuche
+(je 3) und fünf Sekunden SQL-/Queue-Reserve, also höchstens 83 Sekunden. Das bleibt unter
+dem 85-Sekunden-Job-Limit; dieses liegt wiederum unter Redis `retry_after=90`. Die Produktions-
+Readiness lehnt Konfigurationen ab, die diese Reihenfolge verletzen. Zusätzlich muss der
+120-Sekunden-Inhalts-Lock länger als der Job laufen. Die Werte lassen sich mit
+`COGNEE_TIMEOUT`, `COGNEE_CONTROL_TIMEOUT`, `COGNEE_ACK_TIMEOUT` und
+`COGNEE_CONTENT_LOCK_SECONDS` nur innerhalb dieses Gesamtbudgets anpassen.
+
+Recall bündelt alle autorisierten und in SQL tatsächlich belegten Dataset-Aliase in genau
+einer Cognee-Search-Anfrage. `COGNEE_SEMANTIC_QUERY_TIMEOUT` begrenzt diesen gesamten
+optionalen Aufruf standardmäßig auf drei Sekunden. Timeout, Netzwerkfehler oder eine
+fehlerhafte Providerantwort verwerfen sämtliche semantischen Ränge dieses Recalls; die
+bereits autorisierte SQL-Recency-/Lexical-Kandidatenmenge wird ohne weiteren Alias-Aufruf
+zurückgegeben.
+
+Ein explizit angefordertes und freigeschaltetes `improve` läuft ebenfalls über die Outbox. Es verwendet die
+Phasen `improve_launching` und `improve_polling`, eine stabile Idempotency-ID sowie die
+exakte `improve_pipeline`-Run-ID. Upsert, Forget und Improve werden pro Dataset gemeinsam
+serialisiert; Improve persistiert den geschützten Turn atomar vor der Runtime-Probe und
+Forget prüft ihn nach dem Erwerb des Inhalts-Locks erneut. Ein belegter Inhalts-Lock wird
+nicht blockierend abgewartet: Die Outbox geht ohne Fehlversuch fünf Sekunden auf `pending`
+und nimmt ihre dauerhafte Phase später wieder auf. Ein alter Run wird nur nach nachgewiesenem Prozesswechsel neu gestartet;
+eine reine Laufzeitüberschreitung reicht dafür nicht aus. Direkte Hintergrundaufrufe von
+`/cognify` und `/improve` ohne gültigen `X-Luczor-Idempotency-Key` weist der Wrapper
+fail-closed zurück. Improve setzt mindestens eine aktive, sichere `ready`-Projektion voraus,
+wird je Dataset zusammengeführt und ist zusätzlich pro Actor begrenzt. Vor jedem neuen
+Cognify- oder Improve-Start prüft Laravel außerdem die authentisierte Wrapper-Route
+`/api/v1/luczor/runtime`; fehlende oder zwischen Probe und Start wechselnde Boot-IDs brechen
+den Launch fail-closed ab. Trägt ein ambiger Improve bereits einen Account-Erasure-Marker,
+wird er bei gleicher Boot-ID ausschließlich idempotent fortgesetzt; nach einer geänderten
+Boot-ID gilt die alte prozesslokale Task als beendet und der Turn wird ohne privaten Relaunch
+für Forget freigegeben.
+
+Cognee 1.4 kann einen hängenden Improve-Lauf ohne wirksamen Upstream-Timeout halten, während
+`/health` weiterhin erfolgreich antwortet ([Issue #4309](https://github.com/topoteretes/cognee/issues/4309)).
+Ein synchron terminaler Improve-Fehler wird in dieser Version als HTTP 420 mit Run-Information
+geliefert; Luczor persistiert diesen Zustand als sicher nicht mehr laufend, bestätigt den
+terminalen Wrapper-Cache und lässt dadurch ein späteres Forget sofort vor.
+Darum Improve nicht allein aufgrund eines erfolgreichen Normal-Smoke-Tests aktivieren. In
+einer isolierten Abnahme einen hängenden LLM-/Pipeline-Aufruf provozieren, den kontrollierten
+Container-Restart sowie Luczors exakte Run-Recovery prüfen und erst danach
+`COGNEE_IMPROVE_ENABLED=true` setzen. Ohne diese Abnahme bleibt die Funktion aus; normales
+Remember/Add/Cognify, Recall und Forget arbeiten unabhängig davon weiter.
 
 ## Bestehende Volumes und Umstellung
 

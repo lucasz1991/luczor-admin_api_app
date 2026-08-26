@@ -69,4 +69,46 @@ class MemoryDlpTest extends TestCase
             'provenance' => ['source' => ['type' => 'raw_code']],
         ]));
     }
+
+    public function test_only_plain_language_queries_are_allowed_to_reach_the_semantic_provider(): void
+    {
+        $this->assertTrue(MemoryDlp::allowsExternalSemanticQuery('Welche Architekturentscheidung gilt für das Projekt?'));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery('Architektur sk-proj-abcdefghijklmnopqrstuvwxyz'));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery('Welche Erinnerung gehört max.mustermann@example.com?'));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery('Was weißt du über +49 171 1234567?'));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery('Rufe 0171 1234567 zurück.'));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery('Bitte merke dir DE89370400440532013000.'));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery('Bitte merke dir 4111 1111 1111 1111.'));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery("function leakSecret() {\n    return config('app.key');\n}"));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticQuery('Prüfe C:\\Users\\alice\\repo\\src\\Memory.php:42'));
+    }
+
+    public function test_direct_identifiers_and_sensitive_content_never_reach_external_semantic_storage(): void
+    {
+        $this->assertTrue(MemoryDlp::allowsExternalSemanticContent([
+            'content' => 'Die Oberfläche soll standardmäßig Deutsch verwenden.',
+            'sensitivity' => 'normal',
+            'source_type' => 'user',
+        ]));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticContent([
+            'content' => 'Kontakt max.mustermann@example.com, Telefon +49 171 1234567.',
+            'sensitivity' => 'normal',
+            'source_type' => 'user',
+        ]));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticContent([
+            'content' => 'Kontonummer DE89 3704 0044 0532 0130 00',
+            'sensitivity' => 'normal',
+            'source_type' => 'user',
+        ]));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticContent([
+            'content' => 'Zahlungskarte 4111-1111-1111-1111',
+            'sensitivity' => 'normal',
+            'source_type' => 'user',
+        ]));
+        $this->assertFalse(MemoryDlp::allowsExternalSemanticContent([
+            'content' => 'Eine intern bestätigte Personalentscheidung.',
+            'sensitivity' => 'sensitive',
+            'source_type' => 'user',
+        ]));
+    }
 }

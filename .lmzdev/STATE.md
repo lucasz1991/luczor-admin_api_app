@@ -1,0 +1,30 @@
+# Current state
+
+## Confirmed
+
+- `MemoryOrchestrator` is the shared policy boundary for HTTP, Context, Workflows, and Skills; Laravel SQL is canonical and Cognee is a rebuildable semantic projection.
+- Automatic or inferred writes remain candidates until promotion. Active durable writes carry provenance, confidence, validity, supersession, stable write identities, and a durable projection outbox.
+- Cognee Add/Cognify/Improve/Forget recovery is idempotent and restart-aware. Exact Add recovery uses the immutable `(provider_memory_link_id, content_hash)` pair; account erasure and migrations stop fail-closed when that pair is missing or contradictory.
+- Account deletion serializes against writes, removes user-owned memories, detaches only proven shared memories, re-HMACs ledger tombstones, and keeps exact provider deletion durable until acknowledged.
+- Recall unions authorized SQL recency, complete chunked lexical discovery, and SQL-revalidated Cognee hits. All occupied authorized aliases share one three-second semantic request; any provider failure immediately falls back to SQL.
+- The Cognee singleton lease wraps the complete upstream lifespan. Exact Add lookup has writer priority, and an erased ambiguous Improve is never relaunched after a wrapper restart.
+- Desktop memory is encrypted and bound to a server-verified account principal. Repository indexing is local-only through Tree-sitter plus SQLite/FTS5; server graph indexing remains an explicit legacy profile.
+
+## Verification
+
+- `php artisan test` — 323 passed, 2238 assertions.
+- `vendor\bin\phpstan analyse --no-progress` — no errors.
+- `vendor\bin\pint --test` — passed.
+- Cognee Python discovery — 4 tests passed; `py_compile` passed.
+- Desktop — formatting, lint, typecheck, build, 203 Vitest tests, 37 Rust tests, `cargo fmt`, and `cargo clippy -D warnings` passed.
+- `docker compose --env-file .env.docker.example config --quiet` — passed.
+- Final focused concurrency/security review — no remaining P0-P2 findings.
+
+## Deployment blockers
+
+- No production migration or deployment was performed.
+- The active `.env.docker` is not deployable yet: Cognee LLM/embedding provider settings and both stable Memory HMAC keys are absent.
+- Provision two independent stable secrets for `LUCZOR_MEMORY_NAMESPACE_KEY` and `LUCZOR_MEMORY_LEDGER_KEY`; do not invent or rotate them during rollout.
+- Run migrations `2026_08_23_000001` through `000005` only in full maintenance mode with backup and the documented ownerless-Add preflight/recovery procedure.
+- Keep Cognee 1.4 Improve disabled until the documented live hang, timeout, restart, and Forget smoke test passes.
+- The desktop build warned that installed Node 22.11 is below the package requirement of 22.12 or newer.

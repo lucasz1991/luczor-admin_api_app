@@ -17,7 +17,8 @@ return new class extends Migration
             $table->decimal('confidence', 5, 4)->default(0.5)->after('importance');
             $table->char('content_hash', 64)->nullable()->after('summary')->index();
             $table->char('idempotency_key', 64)->nullable()->after('content_hash')->unique();
-            $table->string('source_type', 60)->default('user')->after('content_hash');
+            $table->char('write_fingerprint', 64)->nullable()->after('idempotency_key');
+            $table->string('source_type', 60)->default('user')->after('write_fingerprint');
             $table->string('source_ref', 255)->nullable()->after('source_type');
             $table->json('provenance')->nullable()->after('source_ref');
             $table->timestamp('observed_at')->nullable()->after('provenance');
@@ -88,7 +89,7 @@ return new class extends Migration
             $table->dropIndex(['content_hash']);
             $table->dropUnique(['idempotency_key']);
             $table->dropColumn([
-                'status', 'retention', 'sensitivity', 'confidence', 'content_hash', 'idempotency_key',
+                'status', 'retention', 'sensitivity', 'confidence', 'content_hash', 'idempotency_key', 'write_fingerprint',
                 'source_type', 'source_ref', 'provenance', 'observed_at', 'valid_from',
                 'valid_until', 'recorded_at', 'expires_at', 'write_reason', 'projection_status',
             ]);

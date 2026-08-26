@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class MemoryLink extends Model
 {
+    protected $attributes = [
+        'ledger_identity_version' => 2,
+    ];
+
     protected $fillable = [
         'user_id',
         'tenant_id',
@@ -30,6 +34,8 @@ class MemoryLink extends Model
         'summary',
         'content_hash',
         'idempotency_key',
+        'write_fingerprint',
+        'ledger_identity_version',
         'source_type',
         'source_ref',
         'provenance',
@@ -44,6 +50,7 @@ class MemoryLink extends Model
     ];
 
     protected $casts = [
+        'ledger_identity_version' => 'integer',
         'importance' => 'float',
         'confidence' => 'float',
         'meta' => 'array',
@@ -58,5 +65,12 @@ class MemoryLink extends Model
     public function supersedes()
     {
         return $this->belongsTo(self::class, 'supersedes_id');
+    }
+
+    public function logicalExternalId(): string
+    {
+        $meta = is_array($this->meta) ? $this->meta : [];
+
+        return trim((string) ($meta['source_external_id'] ?? '')) ?: (string) $this->external_id;
     }
 }

@@ -1,6 +1,20 @@
 <?php
 
 return [
+    'memory' => [
+        // This secret deliberately has a lifecycle separate from APP_KEY.
+        // During rotation, move the old current key to previous_namespace_keys
+        // before installing the new key so existing aliases remain addressable.
+        'namespace_key' => env('LUCZOR_MEMORY_NAMESPACE_KEY', ''),
+        // Durable write tombstones cannot be rekeyed from their request
+        // preimage. Keep this independent ledger key stable for their lifetime.
+        'ledger_key' => env('LUCZOR_MEMORY_LEDGER_KEY', ''),
+        'previous_namespace_keys' => array_values(array_filter(array_map(
+            static fn (string $key): string => trim($key),
+            explode(',', (string) env('LUCZOR_MEMORY_PREVIOUS_NAMESPACE_KEYS', '')),
+        ))),
+    ],
+
     'api_prefix' => env('LUCZOR_API_PREFIX', '/api/v1'),
     'allow_registration' => filter_var(env('LUCZOR_ALLOW_REGISTRATION', true), FILTER_VALIDATE_BOOLEAN),
     'default_model_profile' => env('LUCZOR_DEFAULT_MODEL_PROFILE', 'chat-fast'),
@@ -45,7 +59,20 @@ return [
         'api_key' => env('COGNEE_API_KEY', ''),
         // Only the bounded /add ingestion and short control-plane calls run
         // in a worker now; LLM-backed cognify is launched asynchronously.
-        'timeout' => (int) env('COGNEE_TIMEOUT', 60),
+        'timeout' => max(1, (int) env('COGNEE_TIMEOUT', 45)),
+        'control_timeout' => max(1, (int) env('COGNEE_CONTROL_TIMEOUT', 8)),
+        'ack_timeout' => max(1, (int) env('COGNEE_ACK_TIMEOUT', 3)),
+        // Semantic recall is optional and must never inherit the much longer
+        // ingestion timeout or multiply it by the number of dataset aliases.
+        'semantic_query_timeout' => max(1, (int) env('COGNEE_SEMANTIC_QUERY_TIMEOUT', 3)),
+        'content_lock_seconds' => max(90, (int) env('COGNEE_CONTENT_LOCK_SECONDS', 120)),
+        // Lost /add responses retain only an encrypted recovery envelope and
+        // erase it after this hard upper bound when the source was forgotten.
+        'content_snapshot_ttl_seconds' => max(300, (int) env('COGNEE_CONTENT_SNAPSHOT_TTL_SECONDS', 3600)),
+        // Cognee 1.4 background improve has no reliable upstream task timeout.
+        // Keep it opt-in until the deployment smoke test proves bounded runs.
+        'improve_enabled' => filter_var(env('COGNEE_IMPROVE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'improve_min_interval_seconds' => max(300, (int) env('COGNEE_IMPROVE_MIN_INTERVAL_SECONDS', 3600)),
     ],
 
     // Repository graph policy. The authoritative graph is always local to the

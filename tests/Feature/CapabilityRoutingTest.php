@@ -141,6 +141,8 @@ class CapabilityRoutingTest extends TestCase
             ],
         ]);
         Config::set('reverb.apps.apps.0.allowed_origins', ['*']);
+        Config::set('luczor.memory.namespace_key', 'replace-with-stable-32-byte-memory-secret');
+        Config::set('luczor.memory.ledger_key', 'replace-with-stable-32-byte-ledger-secret');
 
         $checks = app(DeploymentHealthService::class)->checks(
             enforceProduction: true,
@@ -148,6 +150,18 @@ class CapabilityRoutingTest extends TestCase
         );
 
         $this->assertNotEmpty($checks);
-        $this->assertNotContains(true, $checks);
+        foreach (array_keys($checks) as $name) {
+            if ($name !== 'cognee_projection_timeout_budget') {
+                $this->assertFalse($checks[$name], $name.' must fail closed.');
+            }
+        }
+        $this->assertTrue($checks['cognee_projection_timeout_budget']);
+
+        Config::set('luczor.cognee.timeout', 60);
+        $unsafeBudget = app(DeploymentHealthService::class)->checks(
+            enforceProduction: true,
+            includeRuntime: false,
+        );
+        $this->assertFalse($unsafeBudget['cognee_projection_timeout_budget']);
     }
 }

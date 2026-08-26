@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Jobs\ProcessMemoryProjection;
 use Carbon\Carbon;
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Throwable;
 
@@ -33,6 +35,9 @@ class DeploymentHealthService
                 'queue_uses_redis' => config('queue.default') === 'redis',
                 'horizon_handles_notification_queue' => $this->horizonHandlesNotificationQueue(),
                 'reverb_configured' => $this->reverbConfigured(),
+                'memory_namespace_key_configured' => $this->memoryNamespaceKeyIsSafe(),
+                'memory_ledger_key_configured' => $this->memoryLedgerKeyIsSafe(),
+                'cognee_projection_timeout_budget' => $this->cogneeProjectionTimeoutBudgetIsSafe(),
             ];
         }
 
@@ -40,6 +45,7 @@ class DeploymentHealthService
             $checks['database'] = $this->databaseAvailable();
 
             if ($strict) {
+                $checks['memory_ledger_identities_hardened'] = $this->memoryLedgerIdentitiesAreHardened();
                 $checks['migrations_current'] = $this->migrationsCurrent();
                 $checks['redis'] = $this->redisAvailable();
                 $checks['horizon'] = $this->horizonRunning();
@@ -94,6 +100,60 @@ class DeploymentHealthService
             && $port <= 65_535
             && $transportIsAccepted
             && $this->originsAreRestricted((array) ($app['allowed_origins'] ?? []));
+    }
+
+    private function cogneeProjectionTimeoutBudgetIsSafe(): bool
+    {
+        $dataTimeout = (int) config('luczor.cognee.timeout', 45);
+        $controlTimeout = (int) config('luczor.cognee.control_timeout', 8);
+        $ackTimeout = (int) config('luczor.cognee.ack_timeout', 3);
+        $contentLockSeconds = (int) config('luczor.cognee.content_lock_seconds', 120);
+        $jobTimeout = (new ProcessMemoryProjection(0))->timeout;
+        $retryAfter = (int) config('queue.connections.redis.retry_after', 90);
+
+        // Worst Add recovery: exact lookup + Add + runtime probe + Cognify,
+        // with up to three durable Ack calls. Five seconds are reserved for
+        // SQL/queue/PHP overhead rather than treating socket timeouts as the
+        // whole job budget.
+        $overheadReserve = 5;
+
+        return min($dataTimeout, $controlTimeout, $ackTimeout) > 0
+            && ($dataTimeout + (3 * $controlTimeout) + (3 * $ackTimeout) + $overheadReserve) < $jobTimeout
+            && $contentLockSeconds > $jobTimeout
+            && $jobTimeout < $retryAfter;
+    }
+
+    private function memoryNamespaceKeyIsSafe(): bool
+    {
+        $key = trim((string) config('luczor.memory.namespace_key', ''));
+
+        return strlen($key) >= 32 && $this->credentialIsConfigured($key);
+    }
+
+    private function memoryLedgerKeyIsSafe(): bool
+    {
+        $key = trim((string) config('luczor.memory.ledger_key', ''));
+        $namespaceKey = trim((string) config('luczor.memory.namespace_key', ''));
+
+        return strlen($key) >= 32
+            && $this->credentialIsConfigured($key)
+            && ($namespaceKey === '' || ! hash_equals($namespaceKey, $key));
+    }
+
+    private function memoryLedgerIdentitiesAreHardened(): bool
+    {
+        try {
+            if (! Schema::hasColumn('memory_links', 'ledger_identity_version')
+                || ! Schema::hasColumn('memory_write_events', 'ledger_identity_version')
+                || DB::table('memory_links')->where('ledger_identity_version', '!=', 2)->exists()
+                || DB::table('memory_write_events')->whereNotIn('ledger_identity_version', [2, 3])->exists()) {
+                return false;
+            }
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     private function databaseAvailable(): bool

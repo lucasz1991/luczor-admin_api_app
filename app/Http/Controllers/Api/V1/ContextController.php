@@ -8,6 +8,7 @@ use App\Services\ApiActor;
 use App\Services\ContextController as ContextService;
 use App\Services\MemoryOrchestrator;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ContextController extends Controller
 {
@@ -80,7 +81,16 @@ class ContextController extends Controller
             'project_id' => ['nullable', 'string', 'max:120'],
             'feature_key' => ['nullable', 'string', 'max:160'],
             'importance' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'write_id' => ['nullable', 'string', 'max:190'],
+            'expected_previous_id' => ['nullable', 'integer', 'min:1'],
         ]);
+        $writeId = trim((string) ($data['write_id'] ?? $request->header('Idempotency-Key', '')));
+        if ($writeId === '' || mb_strlen($writeId) > 190) {
+            throw ValidationException::withMessages([
+                'write_id' => 'A write_id or Idempotency-Key header with at most 190 characters is required.',
+            ]);
+        }
+        $data['write_id'] = $writeId;
         $project = $actor->project($request, $data['project_id'] ?? null);
         $result = $memory->remember($data + [
             'user_id' => $actor->userId($request),

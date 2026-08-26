@@ -2,8 +2,11 @@
 
 namespace App\Services\Cognee;
 
+use App\Services\MemoryDlp;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * HTTP adapter for the Cognee 1.4 API pinned by services/cognee/Dockerfile.
@@ -23,7 +26,11 @@ class CogneeClient
 
     private const EXACT_PIPELINE_RUN = '/api/v1/luczor/pipeline-runs/';
 
-    private const REMEMBER = '/api/v1/remember';
+    private const EXACT_DATA_LOOKUP = '/api/v1/luczor/data';
+
+    private const RUNTIME = '/api/v1/luczor/runtime';
+
+    private const LAUNCH_ACK = '/api/v1/luczor/launches/ack';
 
     private const SEARCH = '/api/v1/search';
 
@@ -42,8 +49,15 @@ class CogneeClient
         private string $apiKey = '',
         private int $timeout = 15,
         ?Client $http = null,
+        private int $controlTimeout = 8,
+        private int $ackTimeout = 3,
+        private int $semanticQueryTimeout = 3,
     ) {
         $this->baseUrl = rtrim($this->baseUrl, '/');
+        $this->timeout = max(1, $this->timeout);
+        $this->controlTimeout = max(1, min($this->timeout, $this->controlTimeout));
+        $this->ackTimeout = max(1, min($this->controlTimeout, $this->ackTimeout));
+        $this->semanticQueryTimeout = max(1, min($this->timeout, $this->semanticQueryTimeout));
         $this->http = $http;
     }
 
@@ -52,49 +66,17 @@ class CogneeClient
         return new self(
             (string) config('luczor.cognee.base_url', ''),
             (string) config('luczor.cognee.api_key', ''),
-            (int) config('luczor.cognee.timeout', 15),
+            (int) config('luczor.cognee.timeout', 45),
+            null,
+            (int) config('luczor.cognee.control_timeout', 8),
+            (int) config('luczor.cognee.ack_timeout', 3),
+            (int) config('luczor.cognee.semantic_query_timeout', 3),
         );
     }
 
     public function enabled(): bool
     {
         return $this->baseUrl !== '' && $this->apiKey !== '';
-    }
-
-    /**
-     * Project one confirmed Luczor memory into Cognee.
-     *
-     * @param  array<string,mixed>  $metadata
-     * @return array<string,mixed>
-     */
-    public function remember(string $dataset, string $content, array $metadata = [], bool $throw = false): array
-    {
-        $memoryId = max(0, (int) ($metadata['memory_link_id'] ?? 0));
-        $contentHash = strtolower((string) ($metadata['content_hash'] ?? hash('sha256', $this->normalizeText($content))));
-        if (! preg_match('/^[a-f0-9]{64}$/', $contentHash)) {
-            $contentHash = hash('sha256', $this->normalizeText($content));
-        }
-
-        // This non-sensitive filename provides an additional diagnostic link.
-        // The authoritative result mapping uses Cognee's Data UUID instead.
-        $filename = "luczor-memory-{$memoryId}-{$contentHash}.txt";
-
-        return $this->postMultipart(self::REMEMBER, [
-            [
-                'name' => 'datasetName',
-                'contents' => $dataset,
-            ],
-            [
-                'name' => 'run_in_background',
-                'contents' => 'false',
-            ],
-            [
-                'name' => 'data',
-                'contents' => $content,
-                'filename' => $filename,
-                'headers' => ['Content-Type' => 'text/plain; charset=utf-8'],
-            ],
-        ], $throw);
     }
 
     /**
@@ -122,15 +104,6 @@ class CogneeClient
         ], $throw);
     }
 
-    /** Launch Cognee 1.4 graph construction and return immediately. */
-    public function cognify(string $dataset, bool $throw = false): array
-    {
-        return $this->postJson(self::COGNIFY, [
-            'datasets' => [$dataset],
-            'run_in_background' => true,
-        ], $throw);
-    }
-
     /** Launch one idempotency-guarded Cognee background generation. */
     public function cognifyOnce(string $dataset, string $idempotencyKey, bool $throw = false): array
     {
@@ -144,6 +117,7 @@ class CogneeClient
                 'run_in_background' => true,
             ],
             'headers' => ['X-Luczor-Idempotency-Key' => $idempotencyKey],
+            ...$this->timeoutOptions($this->controlTimeout),
         ], $throw);
     }
 
@@ -152,7 +126,7 @@ class CogneeClient
     {
         $query = 'dataset='.rawurlencode($datasetId)
             .'&pipeline=add_pipeline&pipeline=cognify_pipeline';
-        $response = $this->getJson(self::DATASET_STATUS, $query, $throw);
+        $response = $this->getJson(self::DATASET_STATUS, $query, $throw, $this->controlTimeout);
         $status = $response[$datasetId] ?? (count($response) === 1 ? reset($response) : null);
         if (is_string($status)) {
             return ['add' => 'unknown', 'cognify' => $status];
@@ -174,6 +148,7 @@ class CogneeClient
             self::ACTIVITY_RUNS,
             'dataset_id='.rawurlencode($datasetId),
             $throw,
+            $this->controlTimeout,
         );
 
         return array_values(array_filter($response, fn ($row) => is_array($row)));
@@ -190,9 +165,52 @@ class CogneeClient
             self::EXACT_PIPELINE_RUN.rawurlencode($runId),
             'dataset_id='.rawurlencode($datasetId),
             $throw,
+            $this->controlTimeout,
         );
 
         return isset($response['pipeline_run_id']) ? $response : null;
+    }
+
+    /**
+     * Recover every Cognee Data UUID created for one deterministic Luczor
+     * upload. The wrapper serializes this lookup against all foreground Adds,
+     * so an empty result proves an ambiguous Add did not commit.
+     *
+     * @return array{dataset_id:?string,data_ids:list<string>}
+     */
+    public function findData(
+        string $dataset,
+        int $memoryId,
+        string $contentHash,
+        bool $throw = false,
+    ): array {
+        $filename = $this->memoryFilename($memoryId, $contentHash);
+        $response = $this->getJson(
+            self::EXACT_DATA_LOOKUP,
+            'dataset_name='.rawurlencode($dataset).'&name='.rawurlencode($filename),
+            $throw,
+            $this->controlTimeout,
+        );
+        $datasetId = strtolower(trim((string) ($response['dataset_id'] ?? '')));
+        $dataIds = array_values(array_unique(array_filter(array_map(
+            fn ($id) => strtolower(trim((string) $id)),
+            is_array($response['data_ids'] ?? null) ? $response['data_ids'] : [],
+        ), fn (string $id) => $this->isUuid($id))));
+        $valid = ($datasetId === '' || $this->isUuid($datasetId))
+            && ($dataIds === [] || $datasetId !== '')
+            && count($dataIds) === count(is_array($response['data_ids'] ?? null) ? $response['data_ids'] : []);
+        if (! $valid) {
+            if ($throw) {
+                throw new \RuntimeException('Cognee exact Data lookup returned an invalid identity response.');
+            }
+
+            return ['dataset_id' => null, 'data_ids' => []];
+        }
+
+        return [
+            'dataset_id' => $datasetId !== '' ? $datasetId : null,
+            'data_ids' => $dataIds,
+        ];
     }
 
     public function observedInstanceId(): ?string
@@ -205,10 +223,48 @@ class CogneeClient
         return $this->observedLaunchInstanceId;
     }
 
+    /** Mark a durably persisted launch response reclaimable after retention. */
+    public function acknowledgeLaunch(string $idempotencyKey, bool $throw = false): bool
+    {
+        if (! preg_match('/^[a-f0-9]{64}$/', $idempotencyKey)) {
+            throw new \InvalidArgumentException('Cognee idempotency key must be a lowercase SHA-256 value.');
+        }
+
+        $response = $this->request('POST', self::LAUNCH_ACK, [
+            'headers' => ['X-Luczor-Idempotency-Key' => $idempotencyKey],
+            ...$this->timeoutOptions($this->ackTimeout),
+        ], $throw);
+
+        return ($response['acknowledged'] ?? false) === true;
+    }
+
+    /** Return the authenticated Luczor wrapper boot UUID or fail closed. */
+    public function probeRuntime(bool $throw = false): ?string
+    {
+        $response = $this->getJson(self::RUNTIME, '', $throw, $this->controlTimeout);
+        $instanceId = strtolower(trim((string) ($response['instance_id'] ?? '')));
+        if (! $this->isUuid($instanceId)
+            || ! $this->observedInstanceId
+            || ! hash_equals($instanceId, $this->observedInstanceId)) {
+            if ($throw) {
+                throw new \RuntimeException('Cognee runtime guard did not return a matching boot UUID.');
+            }
+
+            return null;
+        }
+
+        return $instanceId;
+    }
+
     public function cognifyRunId(array $response, string $datasetId): ?string
     {
         $run = $response[$datasetId] ?? (count($response) === 1 ? reset($response) : null);
         if (! is_array($run)) {
+            return null;
+        }
+        $responseDatasetId = strtolower(trim((string) ($run['dataset_id'] ?? '')));
+        if (! $this->isUuid($responseDatasetId)
+            || ! hash_equals(strtolower($datasetId), $responseDatasetId)) {
             return null;
         }
         $id = trim((string) ($run['pipeline_run_id'] ?? ''));
@@ -219,24 +275,50 @@ class CogneeClient
     /** @return array<int,array<string,mixed>> */
     public function search(string $dataset, string $query, int $topK = 6): array
     {
-        $response = $this->postJson(self::SEARCH, [
-            'datasets' => [$dataset],
-            'query' => $query,
-            'search_type' => 'CHUNKS',
-            'top_k' => max(1, min(100, $topK)),
-            'only_context' => false,
-        ]);
-
-        return $this->normalizeSearchResults($response);
+        try {
+            return $this->searchDatasetsOrFail([$dataset], $query, $topK);
+        } catch (\Throwable) {
+            // Preserve the existing fail-closed adapter contract for direct
+            // callers. Recall uses the throwing batch method so it can abort
+            // semantic ranking and return its canonical SQL fallback.
+            return [];
+        }
     }
 
-    /** @return array<string,mixed> */
-    public function improve(string $dataset, bool $throw = false): array
+    /**
+     * Search every authorized alias in one bounded provider request.
+     *
+     * @param  array<int,string>  $datasets
+     * @return array<int,array<string,mixed>>
+     */
+    public function searchDatasetsOrFail(array $datasets, string $query, int $topK = 6): array
     {
-        return $this->postJson(self::IMPROVE, [
-            'dataset_name' => $dataset,
-            'run_in_background' => true,
-        ], $throw);
+        // Defense in depth: even a future direct adapter call cannot bypass
+        // the orchestrator's semantic-query DLP boundary.
+        if (! MemoryDlp::allowsExternalSemanticQuery($query)) {
+            return [];
+        }
+
+        $datasets = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $dataset): string => trim((string) $dataset),
+            $datasets,
+        ), static fn (string $dataset): bool => $dataset !== '')));
+        if ($datasets === []) {
+            return [];
+        }
+
+        $response = $this->request('POST', self::SEARCH, [
+            'json' => [
+                'datasets' => $datasets,
+                'query' => $query,
+                'search_type' => 'CHUNKS',
+                'top_k' => max(1, min(100, $topK)),
+                'only_context' => false,
+            ],
+            ...$this->timeoutOptions($this->semanticQueryTimeout),
+        ], true);
+
+        return $this->normalizeSearchResults($response);
     }
 
     /** Launch one idempotency-guarded Cognee improvement. */
@@ -252,6 +334,7 @@ class CogneeClient
                 'run_in_background' => true,
             ],
             'headers' => ['X-Luczor-Idempotency-Key' => $idempotencyKey],
+            ...$this->timeoutOptions($this->controlTimeout),
         ], $throw);
     }
 
@@ -272,7 +355,19 @@ class CogneeClient
         ], $throw);
     }
 
-    /** Extract the uploaded Data UUID returned by blocking /remember. */
+    /** @param array<string,mixed> $response */
+    public function forgetSucceeded(array $response, string $expectedDataId): bool
+    {
+        $dataId = strtolower(trim((string) ($response['data_id'] ?? '')));
+        $datasetId = strtolower(trim((string) ($response['dataset_id'] ?? '')));
+
+        return ($response['status'] ?? null) === 'success'
+            && $this->isUuid($dataId)
+            && $this->isUuid($datasetId)
+            && hash_equals(strtolower($expectedDataId), $dataId);
+    }
+
+    /** Extract an uploaded Data UUID from Cognee's ingestion response. */
     public function dataId(array $response): ?string
     {
         foreach (['items', 'payload', 'data_ingestion_info'] as $key) {
@@ -345,9 +440,18 @@ class CogneeClient
     }
 
     /** @return array<mixed> */
-    private function getJson(string $path, string $query, bool $throw = false): array
-    {
-        return $this->request('GET', $path, ['query' => $query], $throw);
+    private function getJson(
+        string $path,
+        string $query,
+        bool $throw = false,
+        ?int $timeout = null,
+    ): array {
+        $options = ['query' => $query];
+        if ($timeout !== null) {
+            $options = array_merge($options, $this->timeoutOptions($timeout));
+        }
+
+        return $this->request('GET', $path, $options, $throw);
     }
 
     /**
@@ -360,31 +464,85 @@ class CogneeClient
             return [];
         }
 
+        // Never let a previous response authenticate the current call.
+        $this->observedInstanceId = null;
+        $this->observedLaunchInstanceId = null;
+
         try {
             $options['headers'] = array_merge($this->headers(), (array) ($options['headers'] ?? []));
             $response = $this->client()->request($method, $path, $options);
-            $instanceId = trim($response->getHeaderLine('X-Luczor-Cognee-Instance'));
-            if ($this->isUuid($instanceId)) {
-                $this->observedInstanceId = strtolower($instanceId);
-            }
-            $launchInstanceId = trim($response->getHeaderLine('X-Luczor-Cognee-Launch-Instance'));
-            $this->observedLaunchInstanceId = $this->isUuid($launchInstanceId)
-                ? strtolower($launchInstanceId)
-                : null;
+            $this->observeRuntimeHeaders($response);
             $decoded = json_decode((string) $response->getBody(), true);
 
             return is_array($decoded) ? $decoded : [];
-        } catch (\Throwable $error) {
-            Log::warning('Cognee call failed', [
+        } catch (RequestException $error) {
+            $response = $error->getResponse();
+            $statusCode = $response?->getStatusCode() ?? 0;
+            $decoded = [];
+            if ($response) {
+                $this->observeRuntimeHeaders($response);
+                $body = json_decode((string) $response->getBody(), true);
+                $decoded = is_array($body) ? $body : [];
+            }
+            // Keep the structured status/body available to the state machine,
+            // but never chain Guzzle's exception: its rendered message may
+            // include the complete provider response body and memory content.
+            $failure = new CogneeRequestException($path, $statusCode, $decoded);
+            $this->logFailure([
                 'path' => $path,
-                'error' => $error->getMessage(),
+                'status' => $statusCode ?: null,
+                'exception_class' => $error::class,
             ]);
 
             if ($throw) {
-                throw new \RuntimeException('Cognee projection failed: '.$error->getMessage(), 0, $error);
+                throw $failure;
             }
 
             return [];
+        } catch (\Throwable $error) {
+            $this->logFailure([
+                'path' => $path,
+                'exception_class' => $error::class,
+            ]);
+
+            if ($throw) {
+                throw new \RuntimeException('Cognee projection request failed.');
+            }
+
+            return [];
+        }
+    }
+
+    private function observeRuntimeHeaders(ResponseInterface $response): void
+    {
+        $instanceId = trim($response->getHeaderLine('X-Luczor-Cognee-Instance'));
+        $this->observedInstanceId = $this->isUuid($instanceId)
+            ? strtolower($instanceId)
+            : null;
+        $launchInstanceId = trim($response->getHeaderLine('X-Luczor-Cognee-Launch-Instance'));
+        $this->observedLaunchInstanceId = $this->isUuid($launchInstanceId)
+            ? strtolower($launchInstanceId)
+            : null;
+    }
+
+    /** @return array{timeout:int,connect_timeout:int} */
+    private function timeoutOptions(int $seconds): array
+    {
+        $seconds = max(1, $seconds);
+
+        return [
+            'timeout' => $seconds,
+            'connect_timeout' => min(3, $seconds),
+        ];
+    }
+
+    /** @param array<string,mixed> $context */
+    private function logFailure(array $context): void
+    {
+        // The adapter is also exercised as a standalone unit without a booted
+        // Laravel application. Production calls still use the configured log.
+        if (function_exists('app') && app()->bound('log')) {
+            Log::warning('Cognee call failed', $context);
         }
     }
 
@@ -446,8 +604,13 @@ class CogneeClient
             : hash('sha256', $this->normalizeText($content));
     }
 
-    private function memoryFilename(int $memoryId, string $contentHash): string
+    public function memoryFilename(int $memoryId, string $contentHash): string
     {
+        $contentHash = strtolower($contentHash);
+        if ($memoryId < 0 || ! preg_match('/^[a-f0-9]{64}$/', $contentHash)) {
+            throw new \InvalidArgumentException('Cognee memory filename identity is invalid.');
+        }
+
         return "luczor-memory-{$memoryId}-{$contentHash}.txt";
     }
 

@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Models\ApiKey;
 use App\Models\DeviceJob;
 use App\Models\MemoryLink;
+use App\Models\MemoryWriteEvent;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
 use App\Services\WorkflowService;
+use App\Services\WorkflowStepExecutor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
@@ -55,6 +57,27 @@ class WorkflowTaskExecutionTest extends TestCase
             'type' => 'workflow',
             'summary' => 'Kunde bevorzugt Rechnungen als PDF.',
         ]);
+    }
+
+    public function test_memory_remember_retry_after_commit_reuses_the_step_write_event(): void
+    {
+        $user = User::factory()->create();
+        $run = $this->startRun($user, [
+            ['key' => 'm', 'type' => 'memory.remember', 'payload' => ['content' => 'Retry-sichere Workflow-Erinnerung.']],
+        ]);
+        $step = $run->steps()->firstOrFail();
+
+        // Model the failure boundary directly after the memory transaction:
+        // the same durable step is made ready again and executed by a retry.
+        $step->update(['status' => 'ready', 'finished_at' => null]);
+        $run->update(['status' => 'running', 'finished_at' => null]);
+        app(WorkflowStepExecutor::class)->execute($step->id);
+
+        $this->assertSame('completed', $step->fresh()->status);
+        $this->assertSame('completed', $run->fresh()->status);
+        $this->assertSame(1, MemoryLink::query()->where('user_id', $user->id)->count());
+        $this->assertSame(1, MemoryWriteEvent::query()->where('user_id', $user->id)->count());
+        $this->assertSame("workflow-step:{$step->id}:memory", MemoryLink::query()->sole()->external_id);
     }
 
     public function test_memory_recall_step_fills_output_and_run_context(): void

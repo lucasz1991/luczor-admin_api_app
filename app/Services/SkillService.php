@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\MemoryLink;
 use App\Models\Skill;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -26,39 +28,65 @@ class SkillService
         abort_if($kind === 'prompt' && trim((string) ($data['prompt'] ?? '')) === '', 422, 'Ein Prompt-Skill braucht einen Prompt-Text.');
         abort_if($kind === 'workflow' && empty($data['workflow_definition_id']), 422, 'Ein Workflow-Skill braucht eine Workflow-Definition.');
 
-        $skill = Skill::updateOrCreate(
-            ['slug' => Str::slug($data['name'])],
-            [
-                'user_id' => $data['user_id'] ?? null,
-                'name' => $data['name'],
-                'description' => $data['description'] ?? null,
-                'kind' => $kind,
-                'prompt' => $kind === 'prompt' ? $data['prompt'] : null,
-                'workflow_definition_id' => $kind === 'workflow' ? (int) $data['workflow_definition_id'] : null,
-                'tags' => $this->normalizeTags($data['tags'] ?? null),
-                'active' => (bool) ($data['active'] ?? true),
-            ]
-        );
+        return DB::transaction(function () use ($data, $kind) {
+            $skill = Skill::updateOrCreate(
+                ['slug' => Str::slug($data['name'])],
+                [
+                    'user_id' => $data['user_id'] ?? null,
+                    'name' => $data['name'],
+                    'description' => $data['description'] ?? null,
+                    'kind' => $kind,
+                    'prompt' => $kind === 'prompt' ? $data['prompt'] : null,
+                    'workflow_definition_id' => $kind === 'workflow' ? (int) $data['workflow_definition_id'] : null,
+                    'tags' => $this->normalizeTags($data['tags'] ?? null),
+                    'active' => (bool) ($data['active'] ?? true),
+                ]
+            );
 
-        // Mirror into skill-scoped memory so recall can find reusable skills.
-        if (isset($data['user_id'])) {
-            $this->memory->remember([
-                'user_id' => $data['user_id'],
-                'external_id' => 'skill:'.$skill->slug,
-                'scope' => 'skill',
-                'type' => 'skill',
-                'visibility' => 'syncable',
-                'importance' => 0.7,
-                'confidence' => 1.0,
-                'write_intent' => 'system',
-                'source_type' => 'skill_registry',
-                'memory_key' => 'skill:'.$skill->slug,
-                'content' => trim($skill->name."\n".($skill->description ?? '')."\n".($skill->prompt ?? '')),
-                'meta' => ['skill_id' => $skill->id, 'kind' => $skill->kind],
-            ]);
-        }
+            // Reconcile the mirror from its expected state. This repairs a gap
+            // left by older code after a crash, while an identical retry with
+            // an already-current mirror stays a true no-op. The surrounding
+            // transaction makes registry row and SQL mirror atomic going forward.
+            if (isset($data['user_id'])) {
+                $memoryKey = 'skill:'.$skill->slug;
+                $content = trim($skill->name."\n".($skill->description ?? '')."\n".($skill->prompt ?? ''));
+                $normalized = preg_replace('/\s+/u', ' ', $content) ?? $content;
+                $hasCurrentMirror = MemoryLink::query()
+                    ->where('user_id', $data['user_id'])
+                    ->where('scope', 'skill')
+                    ->where('status', 'active')
+                    ->where('content_hash', hash('sha256', $normalized))
+                    ->where('meta->kind', $skill->kind)
+                    ->where(function ($query) use ($memoryKey) {
+                        $query->where('external_id', $memoryKey)
+                            ->orWhere('meta->source_external_id', $memoryKey)
+                            ->orWhere('meta->memory_key', $memoryKey);
+                    })
+                    ->exists();
 
-        return $skill;
+                if (! $hasCurrentMirror) {
+                    $writeId = trim((string) ($data['write_id'] ?? ''));
+                    $this->memory->remember([
+                        'user_id' => $data['user_id'],
+                        'external_id' => $memoryKey,
+                        'scope' => 'skill',
+                        'type' => 'skill',
+                        'visibility' => 'syncable',
+                        'importance' => 0.7,
+                        'confidence' => 1.0,
+                        'write_intent' => 'system',
+                        // Each actual registry state can be revisited (A -> B -> A).
+                        'write_id' => $writeId !== '' ? $writeId : (string) Str::uuid(),
+                        'source_type' => 'skill_registry',
+                        'memory_key' => $memoryKey,
+                        'content' => $content,
+                        'meta' => ['skill_id' => $skill->id, 'kind' => $skill->kind],
+                    ]);
+                }
+            }
+
+            return $skill;
+        });
     }
 
     /**

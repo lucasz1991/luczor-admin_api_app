@@ -1,0 +1,12 @@
+# Tasks
+
+| Task | Owner | Status | Updated (UTC) |
+|---|---|---|---|
+| Review project state | Codex/root | completed | 2026-08-23T10:56:55Z |
+| Unified Memory Orchestrator and write policy | Codex/root | completed | 2026-08-23T10:56:55Z |
+| Durable Cognee projection and exact recovery | Codex/root | completed | 2026-08-23T10:56:55Z |
+| Scope-aware account memory erasure | Codex/user_memory_erasure | completed | 2026-08-23T10:56:55Z |
+| Bounded semantic recall with SQL fallback | Codex/semantic_recall_timeout | completed | 2026-08-23T10:56:55Z |
+| Local-only repository graph and encrypted desktop memory | Codex/root | completed | 2026-08-23T10:56:55Z |
+| Final concurrency/security recheck | Codex/final_concurrency_review | completed | 2026-08-23T10:56:55Z |
+| Production rollout and live Cognee smoke tests | operator | blocked | 2026-08-23T10:56:55Z |

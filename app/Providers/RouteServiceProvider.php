@@ -17,6 +17,19 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(600)->by($request->user()?->id ?: $request->ip());
         });
+        RateLimiter::for('memory-improve', function (Request $request) {
+            $credential = trim((string) $request->header('X-Api-Key', ''));
+            $actor = $request->user()?->id
+                ? 'user:'.$request->user()->id
+                : ($credential !== ''
+                    ? 'key:'.hash('sha256', $credential)
+                    : 'ip:'.$request->ip());
+
+            return [
+                Limit::perMinute(2)->by('memory-improve:minute:'.$actor),
+                Limit::perHour(12)->by('memory-improve:hour:'.$actor),
+            ];
+        });
 
         $this->routes(function () {
             Route::middleware('api')

@@ -16,8 +16,8 @@ class ProcessMemoryProjection implements ShouldQueue
 
     public int $tries = 5;
 
-    /** Keep the job below Redis' 90-second retry_after boundary. */
-    public int $timeout = 75;
+    /** Keep worst-case provider recovery below Redis' 90-second boundary. */
+    public int $timeout = 85;
 
     public bool $failOnTimeout = true;
 

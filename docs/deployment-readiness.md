@@ -41,3 +41,17 @@ Das ersetzt nicht den WebSocket-End-to-End-Test über den Reverse Proxy.
 
 Der Load-Balancer darf Traffic erst nach einem erfolgreichen Readiness-Check zuschalten.
 Die konkreten Plesk-/Reverb-Schritte stehen in `docs/push-notifications-plesk.md`.
+
+## Betriebs- und Desktop-Gesamtabnahme
+
+Die netzlose lokale Vorprüfung und das fail-closed Evidence-Format für Migration,
+Redis/Horizon/Scheduler/Reverb, gepackte GUI, Keychain, Audio, Notifications sowie
+Updater-/Plattform-Signing sind in `docs/operations-acceptance.md` beschrieben. Der
+zugehörige Runner ist:
+
+```text
+php artisan luczor:operations-acceptance --workspace-root=.. --local-only
+```
+
+Ohne explizite, revisionsgebundene Evidence bestätigt dieser Befehl keine
+Produktionsbereitschaft.

@@ -1,6 +1,6 @@
 # Pin both the audited release and its multi-architecture manifest. `main`
 # changes without notice and makes production rebuilds non-reproducible.
-FROM cognee/cognee:1.4.0@sha256:d8931a59034a6c69f3cf4a81e1ba0b5ddc660691a600a7711f6278aad26bb678
+FROM cognee/cognee:1.4.0@sha256:d8931a59034a6c69f3cf4a81e1ba0b5ddc660691a600a7711f6278aad26bb678 AS luczor-cognee-runtime
 
 # The upstream image intentionally ships only local defaults. Its runtime venv
 # has no pip binary, so install the pinned PostgreSQL extras into that venv
@@ -17,7 +17,20 @@ RUN sed -i 's/logging.getLogger("alembic.env").info("Using database: %s", db_uri
 # Wrap the pinned application with a boot identity header. This is used only
 # to recover provably dead process-local background runs after a restart.
 COPY luczor_cognee_app.py /app/luczor_cognee_app.py
+COPY luczor_identities.py /app/luczor_identities.py
+COPY luczor_lifespan.py /app/luczor_lifespan.py
+COPY luczor_upload_policy.py /app/luczor_upload_policy.py
 RUN sed -i 's/cognee\.api\.client:app/luczor_cognee_app:app/g' /app/entrypoint.sh
 
 COPY --chmod=755 entrypoint.sh /usr/local/bin/luczor-cognee-entrypoint
 ENTRYPOINT ["/usr/local/bin/luczor-cognee-entrypoint"]
+
+# The acceptance target is opt-in and is never selected by the production
+# compose file. It contains only the deterministic local provider and runner;
+# no provider credentials or production data are copied into the image.
+FROM luczor-cognee-runtime AS luczor-cognee-e2e
+COPY e2e /opt/luczor-cognee-e2e
+COPY test_luczor_identities.py test_luczor_upload_policy.py /opt/luczor-cognee-tests/
+
+# Keep the default/final target production-identical for existing builds.
+FROM luczor-cognee-runtime AS luczor-cognee-production

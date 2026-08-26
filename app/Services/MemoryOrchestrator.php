@@ -58,15 +58,20 @@ class MemoryOrchestrator
         }
 
         $tenantId = $data['tenant_id'] ?? $this->tenantId($data['user_id'] ?? null);
-        abort_if($scope === 'workspace' && ! $tenantId, 422, 'Workspace memory requires a tenant.');
+        $this->assertWorkspaceTenant($scope, $tenantId);
 
         $candidate = in_array($intent, ['automatic', 'inferred'], true);
         $retention = (string) ($data['retention'] ?? ($scope === 'session' ? 'session' : 'durable'));
         $status = $candidate ? 'candidate' : 'active';
-        $projectToCognee = ! $candidate
+        $cogneeEligible = ! $candidate
             && ! in_array($scope, ['session'], true)
             && in_array($retention, ['durable', 'permanent'], true)
-            && $this->store->cogneeEnabled();
+            && MemoryDlp::allowsExternalSemanticContent(array_merge($policyPayload, [
+                'content' => $content,
+                'sensitivity' => $sensitivity,
+            ]));
+        $projectToCognee = $cogneeEligible && $this->store->cogneeEnabled();
+        $deferCogneeProjection = $cogneeEligible && ! $projectToCognee;
 
         $link = $this->store->remember(array_merge($data, [
             'tenant_id' => $tenantId,
@@ -79,6 +84,7 @@ class MemoryOrchestrator
             'confidence' => max(0, min(1, (float) ($data['confidence'] ?? ($candidate ? 0.35 : 0.85)))),
             'write_reason' => $candidate ? 'awaiting_confirmation' : 'explicit_or_trusted_write',
             'project_to_cognee' => $projectToCognee,
+            'defer_cognee_projection' => $deferCogneeProjection,
             'provenance' => $provenance,
         ]));
 
@@ -87,6 +93,8 @@ class MemoryOrchestrator
         $targets = ['sql'];
         if ($projectToCognee) {
             $targets[] = 'cognee_outbox';
+        } elseif ($deferCogneeProjection) {
+            $targets[] = 'cognee_deferred';
         }
 
         return new MemoryWriteResult(
@@ -105,6 +113,7 @@ class MemoryOrchestrator
             return [];
         }
         $ids['tenant_id'] ??= $this->tenantId($ids['user_id'] ?? null);
+        $this->assertWorkspaceTenant($scope, $ids['tenant_id']);
 
         return $this->store->recall($query, $scope, $ids, $topK);
     }
@@ -116,6 +125,7 @@ class MemoryOrchestrator
             return false;
         }
         $ids['tenant_id'] ??= $this->tenantId($ids['user_id'] ?? null);
+        $this->assertWorkspaceTenant($scope, $ids['tenant_id']);
         $deleted = $this->store->forget($scope, $externalId, $ids);
         if ($deleted) {
             $this->contextCache->invalidateMemory((int) ($ids['user_id'] ?? 0), $ids['project_id'] ?? null);
@@ -132,6 +142,7 @@ class MemoryOrchestrator
             return null;
         }
         $ids['tenant_id'] ??= $this->tenantId($ids['user_id'] ?? null);
+        $this->assertWorkspaceTenant($scope, $ids['tenant_id']);
         $ids['scope'] = $scope;
         $link = $this->store->promote($externalId, $ids);
         if ($link) {
@@ -141,14 +152,16 @@ class MemoryOrchestrator
         return $link;
     }
 
-    public function improve(string $scope, array $ids = []): void
+    public function improve(string $scope, array $ids = []): bool
     {
         $this->assertGlobalManagement($scope, $ids['user_id'] ?? null);
         if (in_array($scope, ['device', 'private', 'session'], true)) {
-            return;
+            return false;
         }
         $ids['tenant_id'] ??= $this->tenantId($ids['user_id'] ?? null);
-        $this->store->improve($scope, $ids);
+        $this->assertWorkspaceTenant($scope, $ids['tenant_id']);
+
+        return $this->store->improve($scope, $ids);
     }
 
     private function tenantId(mixed $userId): ?int
@@ -168,5 +181,10 @@ class MemoryOrchestrator
 
         $user = $userId ? User::query()->find($userId) : null;
         abort_if(! $user?->isAdmin(), 403, 'Global memory is administrator-managed.');
+    }
+
+    private function assertWorkspaceTenant(string $scope, mixed $tenantId): void
+    {
+        abort_if($scope === 'workspace' && ! $tenantId, 422, 'Workspace memory requires a tenant.');
     }
 }

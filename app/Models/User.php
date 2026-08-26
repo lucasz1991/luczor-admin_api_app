@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 /** @property int|null $tenant_id */
@@ -68,5 +69,24 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isActive(): bool
     {
         return (bool) $this->status;
+    }
+
+    /**
+     * Keep model events, memory erasure and the account delete atomic.
+     * Query-builder bulk deletes are separately blocked by the MemoryLink FK.
+     *
+     * @return bool|null
+     */
+    public function delete()
+    {
+        if (! $this->exists) {
+            return null;
+        }
+
+        return DB::transaction(function () {
+            static::query()->whereKey($this->getKey())->lockForUpdate()->firstOrFail();
+
+            return parent::delete();
+        }, 3);
     }
 }

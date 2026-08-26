@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\ApiActor;
 use App\Services\MemoryOrchestrator;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Server memory API. The desktop client calls these with its device key; the
@@ -38,6 +39,8 @@ class MemoryController extends Controller
             'visibility' => ['nullable', 'string', 'in:private,syncable,public'],
             'importance' => ['nullable', 'numeric', 'min:0', 'max:1'],
             'external_id' => ['nullable', 'string', 'max:190'],
+            'write_id' => ['nullable', 'string', 'max:190'],
+            'expected_previous_id' => ['nullable', 'integer', 'min:1'],
             'client_id' => ['nullable', 'string', 'max:120'],
             'tags' => ['nullable', 'array'],
             'meta' => ['nullable', 'array'],
@@ -55,6 +58,7 @@ class MemoryController extends Controller
         ]);
 
         abort_if(($data['scope'] ?? 'project') === 'global' && ! $request->user()?->isAdmin(), 403, 'Only an administrator can publish global memory.');
+        $data['write_id'] = $this->writeIdentity($request, $data);
 
         $project = $actor->project($request, $data['project_id'] ?? null);
         $result = $memory->remember(array_merge($data, [
@@ -71,6 +75,35 @@ class MemoryController extends Controller
         return response()->json(array_merge([
             'ok' => true,
         ], $payload), $result->decision === 'accepted' ? 201 : 202);
+    }
+
+    /** @param array<string,mixed> $data */
+    private function writeIdentity(Request $request, array $data): string
+    {
+        $writeId = trim((string) ($data['write_id'] ?? ''));
+        if ($writeId !== '') {
+            return $writeId;
+        }
+
+        $header = trim((string) $request->header('Idempotency-Key', ''));
+        if ($header !== '') {
+            if (mb_strlen($header) > 190) {
+                throw ValidationException::withMessages([
+                    'write_id' => 'The Idempotency-Key header must not exceed 190 characters.',
+                ]);
+            }
+
+            return $header;
+        }
+
+        $externalId = trim((string) ($data['external_id'] ?? ''));
+        if ($externalId !== '') {
+            return 'external:'.hash('sha256', $externalId);
+        }
+
+        throw ValidationException::withMessages([
+            'write_id' => 'A write_id, external_id, or Idempotency-Key header is required.',
+        ]);
     }
 
     public function recall(Request $request, MemoryOrchestrator $memory)
@@ -128,9 +161,9 @@ class MemoryController extends Controller
 
         abort_if(($data['scope'] ?? 'project') === 'global' && ! $request->user()?->isAdmin(), 403, 'Global memory is administrator-managed.');
 
-        $memory->improve($data['scope'] ?? 'project', $this->ids($request));
+        $scheduled = $memory->improve($data['scope'] ?? 'project', $this->ids($request));
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'scheduled' => $scheduled]);
     }
 
     public function promote(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
@@ -153,7 +186,7 @@ class MemoryController extends Controller
         abort_unless($link !== null, 404, 'Memory candidate not found.');
 
         return response()->json(['ok' => true, 'data' => [
-            'id' => $link->external_id,
+            'id' => $link->logicalExternalId(),
             'status' => $link->status,
             'projection_status' => $link->projection_status,
         ]]);

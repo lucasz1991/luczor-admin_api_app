@@ -27,7 +27,7 @@ final readonly class MemoryWriteResult
             'reason' => $this->reason,
             'targets' => $this->targets,
             'persisted' => $this->persisted(),
-            'id' => $this->link?->external_id,
+            'id' => $this->link?->logicalExternalId(),
             'memory_link_id' => $this->link?->id,
             'status' => $this->link?->status,
             'projection_status' => $this->link?->projection_status,
