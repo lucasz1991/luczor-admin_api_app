@@ -346,6 +346,9 @@ class CogneeClient
                 // against canonical SQL. Asking Cognee for a generated answer
                 // here would add an unnecessary LLM call to every recall.
                 'only_context' => true,
+                // In context-only mode Cognee exposes exact chunk metadata via
+                // objects_result. Luczor needs document_id for SQL revalidation.
+                'verbose' => true,
             ],
             ...$this->timeoutOptions($this->semanticQueryTimeout),
         ], true);
@@ -603,7 +606,7 @@ class CogneeClient
                 'dataset_name' => $row['dataset_name'] ?? null,
                 'dataset_tenant_id' => $row['dataset_tenant_id'] ?? null,
             ], fn ($value) => $value !== null);
-            $result = $row['search_result'] ?? $row;
+            $result = $row['objects_result'] ?? ($row['search_result'] ?? $row);
             $hits = is_array($result) && array_is_list($result) ? $result : [$result];
 
             foreach ($hits as $hit) {
@@ -612,6 +615,12 @@ class CogneeClient
                 }
                 if (! is_array($hit)) {
                     continue;
+                }
+
+                // Cognee 1.4 verbose context-only search wraps each vector hit
+                // as {id, score, payload:{document_id,text,...}}.
+                if (is_array($hit['payload'] ?? null)) {
+                    $hit = array_merge($hit, $hit['payload']);
                 }
 
                 $normalized[] = array_merge($datasetMeta, $hit);

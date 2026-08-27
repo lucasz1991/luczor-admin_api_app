@@ -64,10 +64,16 @@ class CogneeClientTest extends TestCase
             'dataset_id' => '3e1e6f13-0360-4bb8-a14e-7ed8c9cb6ff9',
             'dataset_name' => 'project-1',
             'dataset_tenant_id' => null,
-            'search_result' => [[
+            'text_result' => null,
+            'context_result' => 'Remember this.',
+            'objects_result' => [[
                 'id' => '074467ad-aa1c-41d7-9918-46f16e868720',
-                'document_id' => '09393f2c-238c-4db8-853e-7e71fa2bd9bd',
-                'text' => 'Remember this.',
+                'score' => 0.97,
+                'payload' => [
+                    'id' => '2288b800-848a-4189-b051-d45d2c14db47',
+                    'document_id' => '09393f2c-238c-4db8-853e-7e71fa2bd9bd',
+                    'text' => 'Remember this.',
+                ],
             ]],
         ]], JSON_THROW_ON_ERROR);
         $client = $this->client([new Response(200, ['Content-Type' => 'application/json'], $body)], $history);
@@ -91,6 +97,7 @@ class CogneeClientTest extends TestCase
             'search_type' => 'CHUNKS',
             'top_k' => 9,
             'only_context' => true,
+            'verbose' => true,
         ], json_decode((string) $request->getBody(), true, flags: JSON_THROW_ON_ERROR));
         $this->assertSame('Bearer internal-service-key', $request->getHeaderLine('Authorization'));
         $this->assertSame('internal-service-key', $request->getHeaderLine('X-Api-Key'));

@@ -37,8 +37,9 @@ Nicht geheime Werte stehen in `.env.docker`:
   standardmäßig eine Stunde.
 - `COGNEE_SEMANTIC_QUERY_TIMEOUT=3` begrenzt standardmäßig die gesamte optionale
   Batch-Suche über alle belegten Namespace-Aliase. Die Suche verwendet `CHUNKS` mit
-  `only_context=true`: Cognee liefert nur Retrieval-Kontext und ruft für Recall kein LLM auf.
-  Auf einem reinen CPU-Plesk-Host sind 15 Sekunden als Kaltstartreserve vorgesehen.
+  `only_context=true` und `verbose=true`: Cognee liefert den Retrieval-Kontext samt exakter
+  `document_id`, ruft für Recall aber kein LLM auf. Auf einem reinen CPU-Plesk-Host sind
+  15 Sekunden als Kaltstartreserve vorgesehen.
 - `LUCZOR_MEMORY_NAMESPACE_KEY` ist ein eigener, stabiler Secret-Wert mit mindestens
   32 Byte. Er darf weder aus `APP_KEY` abgeleitet noch zusammen mit diesem rotiert werden.
   Die Datasetnamen enthalten dadurch keine lesbaren Benutzer-, Tenant- oder Projekt-IDs.
@@ -350,8 +351,9 @@ Readiness lehnt Konfigurationen ab, die diese Reihenfolge verletzen. Zusätzlich
 `COGNEE_CONTENT_LOCK_SECONDS` nur innerhalb dieses Gesamtbudgets anpassen.
 
 Recall bündelt alle autorisierten und in SQL tatsächlich belegten Dataset-Aliase in genau
-einer Cognee-Search-Anfrage. `CHUNKS` und `only_context=true` halten diesen Pfad rein
-retrieval-basiert; die Antwortformulierung bleibt beim von Luczor ausgewählten Modell.
+einer Cognee-Search-Anfrage. `CHUNKS`, `only_context=true` und `verbose=true` halten diesen
+Pfad rein retrieval-basiert und liefern trotzdem die `document_id` für die SQL-Revalidierung;
+die Antwortformulierung bleibt beim von Luczor ausgewählten Modell.
 `COGNEE_SEMANTIC_QUERY_TIMEOUT` begrenzt den gesamten optionalen Aufruf standardmäßig auf
 drei Sekunden; für einen CPU-lokalen Plesk-Stack nutzt das obige Profil 15 Sekunden als
 Kaltstartreserve. Timeout, Netzwerkfehler oder eine fehlerhafte Providerantwort verwerfen
