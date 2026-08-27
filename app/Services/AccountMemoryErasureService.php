@@ -671,7 +671,10 @@ final class AccountMemoryErasureService
             'memory_link_id' => null,
             'user_id' => null,
             'dataset' => $this->erasedDataset((string) $outbox->dataset),
-            'dedupe_key' => MemoryErasureIdentity::dedupe((string) $outbox->dedupe_key),
+            'dedupe_key' => MemoryErasureIdentity::outboxDedupe(
+                (string) $outbox->dedupe_key,
+                (int) $outbox->id,
+            ),
             'payload' => [
                 'phase' => 'erasure_cleanup_complete',
                 'erasure_reason' => $reason,

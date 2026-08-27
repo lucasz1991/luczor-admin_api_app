@@ -702,7 +702,7 @@ class MemoryProjectionService
             'memory_link_id' => null,
             'user_id' => null,
             'dataset' => MemoryErasureIdentity::dataset((string) $row->dataset),
-            'dedupe_key' => MemoryErasureIdentity::dedupe((string) $row->dedupe_key),
+            'dedupe_key' => MemoryErasureIdentity::outboxDedupe((string) $row->dedupe_key, (int) $row->id),
             'payload' => array_filter([
                 'phase' => 'erasure_cleanup_complete',
                 'erasure_reason' => $reason,

@@ -1933,7 +1933,10 @@ class UserMemoryErasureTest extends TestCase
             $this->assertNull($terminal->memory_link_id);
             $this->assertNull($terminal->user_id);
             $this->assertSame(MemoryErasureIdentity::dataset($dataset), $terminal->dataset);
-            $this->assertSame(MemoryErasureIdentity::dedupe($rawDedupe), $terminal->dedupe_key);
+            $this->assertSame(
+                MemoryErasureIdentity::outboxDedupe($rawDedupe, (int) $terminal->id),
+                $terminal->dedupe_key,
+            );
             $this->assertSame('erasure_cleanup_complete', $terminal->payload['phase']);
             $this->assertSame('account_deleted', $terminal->payload['erasure_reason']);
         }
@@ -2003,7 +2006,10 @@ class UserMemoryErasureTest extends TestCase
         $this->assertSame('done', $delete->status);
         $this->assertNull($delete->memory_link_id);
         $this->assertSame($erasedDataset, $delete->dataset);
-        $this->assertSame(MemoryErasureIdentity::dedupe($rawDeleteDedupe), $delete->dedupe_key);
+        $this->assertSame(
+            MemoryErasureIdentity::outboxDedupe($rawDeleteDedupe, (int) $delete->id),
+            $delete->dedupe_key,
+        );
         $this->assertNotSame(hash('sha256', $rawDeleteDedupe), $delete->dedupe_key);
         $this->assertSame('erasure_cleanup_complete', $delete->payload['phase']);
         $this->assertSame('account_deleted', $delete->payload['erasure_reason']);
@@ -2014,7 +2020,10 @@ class UserMemoryErasureTest extends TestCase
         $legacyTerminal->refresh();
         $this->assertNull($legacyTerminal->memory_link_id);
         $this->assertSame($erasedDataset, $legacyTerminal->dataset);
-        $this->assertSame(MemoryErasureIdentity::dedupe($rawLegacyDedupe), $legacyTerminal->dedupe_key);
+        $this->assertSame(
+            MemoryErasureIdentity::outboxDedupe($rawLegacyDedupe, (int) $legacyTerminal->id),
+            $legacyTerminal->dedupe_key,
+        );
         $this->assertSame([
             'phase' => 'erasure_cleanup_complete',
             'erasure_reason' => 'account_deleted',
@@ -2022,6 +2031,57 @@ class UserMemoryErasureTest extends TestCase
 
         $projection->process($delete->id);
         $this->assertSame(1, $cognee->forgets);
+    }
+
+    public function test_later_erasure_tombstone_cannot_collide_with_a_legacy_anonymized_dedupe_key(): void
+    {
+        $dataset = 'luczor:v2:project:erasure-dedupe-collision';
+        $rawDedupe = hash('sha256', 'shared-live-outbox-turn');
+
+        MemoryProjectionOutbox::create([
+            'memory_link_id' => null,
+            'user_id' => null,
+            'action' => 'upsert',
+            'dataset' => MemoryErasureIdentity::dataset($dataset),
+            'dedupe_key' => MemoryErasureIdentity::dedupe($rawDedupe),
+            'payload' => [
+                'phase' => 'erasure_cleanup_complete',
+                'erasure_reason' => 'account_deleted',
+            ],
+            'status' => 'done',
+            'processed_at' => now(),
+        ]);
+        $later = MemoryProjectionOutbox::create([
+            'memory_link_id' => null,
+            'user_id' => null,
+            'action' => 'improve',
+            'dataset' => $dataset,
+            'dedupe_key' => $rawDedupe,
+            'payload' => [
+                'phase' => 'account_erased',
+                'account_erasure_reason' => 'account_deleted',
+            ],
+            'status' => 'queued',
+        ]);
+        $cognee = new class extends CogneeClient
+        {
+            public function enabled(): bool
+            {
+                return true;
+            }
+        };
+
+        (new MemoryProjectionService($cognee))->process($later->id);
+
+        $later->refresh();
+        $this->assertSame('done', $later->status);
+        $this->assertSame(MemoryErasureIdentity::dataset($dataset), $later->dataset);
+        $this->assertSame(
+            MemoryErasureIdentity::outboxDedupe($rawDedupe, (int) $later->id),
+            $later->dedupe_key,
+        );
+        $this->assertNotSame(MemoryErasureIdentity::dedupe($rawDedupe), $later->dedupe_key);
+        $this->assertSame('erasure_cleanup_complete', $later->payload['phase']);
     }
 
     public function test_in_flight_upsert_cannot_restore_a_scrubbed_snapshot_after_account_erasure(): void
