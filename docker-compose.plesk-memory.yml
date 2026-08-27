@@ -53,6 +53,8 @@ services:
     entrypoint:
       - /bin/sh
       - /usr/local/bin/luczor-postgres-entrypoint
+    command:
+      - postgres
     environment:
       POSTGRES_DB: ${COGNEE_POSTGRES_ADMIN_DB:-luczor_cognee_admin}
       POSTGRES_USER: ${COGNEE_POSTGRES_ADMIN_USER:-luczor_cognee_admin}

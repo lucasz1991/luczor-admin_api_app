@@ -33,6 +33,17 @@ class CogneePleskDeploymentTest extends TestCase
         $this->assertStringNotContainsString('graph-indexer:', $compose);
     }
 
+    public function test_postgres_wrapper_keeps_the_upstream_server_command(): void
+    {
+        $compose = file_get_contents(dirname(__DIR__, 2).'/docker-compose.plesk-memory.yml');
+
+        $this->assertIsString($compose);
+        $this->assertMatchesRegularExpression(
+            '/postgres:\R\s+image: pgvector\/pgvector:pg16.*?entrypoint:.*?command:\R\s+- postgres/s',
+            $compose,
+        );
+    }
+
     public function test_linux_provisioner_stores_the_key_atomically_without_printing_it(): void
     {
         $script = file_get_contents(dirname(__DIR__, 2).'/docker/provision-cognee.sh');
