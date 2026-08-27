@@ -429,40 +429,49 @@ final class MemoryProductionSmoke extends Command
         $liveLink = $linkId ? MemoryLink::query()->find($linkId) : null;
         $dataset ??= $liveLink?->dataset;
         $contentHash ??= $liveLink?->content_hash;
-        if ($user?->exists && $liveLink) {
-            $memory->forget('project', $externalId, [
-                'user_id' => $user->id,
-                'tenant_id' => $user->tenant_id,
-                'project_id' => $projectId,
-            ]);
-        }
+        $providerCleanupFailed = false;
 
-        if ($dataset) {
-            // A failure can happen after Add but before the command receives a
-            // Data UUID. Drain the unique synthetic dataset until the Upsert
-            // has recovered any ambiguous Add and every compensating Delete is
-            // exact and terminal.
-            do {
-                $pending = MemoryProjectionOutbox::query()
-                    ->where('dataset', $dataset)
-                    ->where('status', '!=', 'done')
-                    ->orderBy('id')
-                    ->get();
-                foreach ($pending as $outbox) {
-                    $this->driveProjection($outbox->id, $projections, $deadline);
-                }
-            } while ($pending->isNotEmpty()
-                && MemoryProjectionOutbox::query()
-                    ->where('dataset', $dataset)
-                    ->where('status', '!=', 'done')
-                    ->exists());
+        try {
+            if ($user?->exists && $liveLink) {
+                $memory->forget('project', $externalId, [
+                    'user_id' => $user->id,
+                    'tenant_id' => $user->tenant_id,
+                    'project_id' => $projectId,
+                ]);
+            }
 
-            if ($linkId && $contentHash) {
-                $providerData = $cognee->findData($dataset, $linkId, $contentHash, true);
-                if ($providerData['data_ids'] !== []) {
-                    throw new RuntimeException('Synthetic provider data survived cleanup.');
+            if ($dataset) {
+                // A failure can happen after Add but before the command receives a
+                // Data UUID. Drain the unique synthetic dataset until the Upsert
+                // has recovered any ambiguous Add and every compensating Delete is
+                // exact and terminal.
+                do {
+                    $pending = MemoryProjectionOutbox::query()
+                        ->where('dataset', $dataset)
+                        ->where('status', '!=', 'done')
+                        ->orderBy('id')
+                        ->get();
+                    foreach ($pending as $outbox) {
+                        $this->driveProjection($outbox->id, $projections, $deadline);
+                    }
+                } while ($pending->isNotEmpty()
+                    && MemoryProjectionOutbox::query()
+                        ->where('dataset', $dataset)
+                        ->where('status', '!=', 'done')
+                        ->exists());
+
+                if ($linkId && $contentHash) {
+                    $providerData = $cognee->findData($dataset, $linkId, $contentHash, true);
+                    if ($providerData['data_ids'] !== []) {
+                        throw new RuntimeException('Synthetic provider data survived cleanup.');
+                    }
                 }
             }
+        } catch (Throwable) {
+            // Provider cleanup remains durable in the content-free outbox.
+            // Never retain a temporary account or API key merely because the
+            // projection is unavailable; the command still fails below.
+            $providerCleanupFailed = true;
         }
 
         $userId = $user?->id;
@@ -489,6 +498,9 @@ final class MemoryProductionSmoke extends Command
             if ($containsContent) {
                 throw new RuntimeException('Synthetic content survived in the projection outbox.');
             }
+        }
+        if ($providerCleanupFailed) {
+            throw new RuntimeException('Synthetic provider cleanup remains pending.');
         }
     }
 
