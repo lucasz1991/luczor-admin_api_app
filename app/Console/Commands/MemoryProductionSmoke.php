@@ -206,7 +206,12 @@ final class MemoryProductionSmoke extends Command
 
             $this->stage = 'provider_cleanup';
             $delete = $this->findDeleteOutbox($dataset, $dataId);
-            $this->driveProjection($delete->id, $projections, $deadline);
+            // Forget can reopen the completed Upsert as a source-ineligible
+            // recovery turn before its exact Delete may claim the dataset.
+            // Drain this unique synthetic dataset in row order so the smoke
+            // never depends on the scheduler's five-minute abandoned-queue
+            // recovery window.
+            $this->driveDatasetProjections($dataset, $projections, $deadline);
             $delete->refresh();
             if (trim((string) (($delete->payload ?? [])['exact_forget_ack_at'] ?? '')) === '') {
                 throw new RuntimeException('Cognee did not durably acknowledge exact Forget.');
@@ -445,20 +450,7 @@ final class MemoryProductionSmoke extends Command
                 // Data UUID. Drain the unique synthetic dataset until the Upsert
                 // has recovered any ambiguous Add and every compensating Delete is
                 // exact and terminal.
-                do {
-                    $pending = MemoryProjectionOutbox::query()
-                        ->where('dataset', $dataset)
-                        ->where('status', '!=', 'done')
-                        ->orderBy('id')
-                        ->get();
-                    foreach ($pending as $outbox) {
-                        $this->driveProjection($outbox->id, $projections, $deadline);
-                    }
-                } while ($pending->isNotEmpty()
-                    && MemoryProjectionOutbox::query()
-                        ->where('dataset', $dataset)
-                        ->where('status', '!=', 'done')
-                        ->exists());
+                $this->driveDatasetProjections($dataset, $projections, $deadline);
 
                 if ($linkId && $contentHash) {
                     $providerData = $cognee->findData($dataset, $linkId, $contentHash, true);
@@ -502,6 +494,27 @@ final class MemoryProductionSmoke extends Command
         if ($providerCleanupFailed) {
             throw new RuntimeException('Synthetic provider cleanup remains pending.');
         }
+    }
+
+    private function driveDatasetProjections(
+        string $dataset,
+        MemoryProjectionService $projections,
+        float $deadline,
+    ): void {
+        do {
+            $pending = MemoryProjectionOutbox::query()
+                ->where('dataset', $dataset)
+                ->where('status', '!=', 'done')
+                ->orderBy('id')
+                ->get();
+            foreach ($pending as $outbox) {
+                $this->driveProjection($outbox->id, $projections, $deadline);
+            }
+        } while ($pending->isNotEmpty()
+            && MemoryProjectionOutbox::query()
+                ->where('dataset', $dataset)
+                ->where('status', '!=', 'done')
+                ->exists());
     }
 
     private function isUuid(string $value): bool
