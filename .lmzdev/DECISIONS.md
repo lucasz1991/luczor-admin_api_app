@@ -46,3 +46,9 @@ Record durable decisions with date, context, decision, and consequences.
 - Luczor setzt global `Schema::defaultStringLength(191)`; die beim ersten MySQL-Lauf von `000002` angelegte `memory_write_events.dataset`-Spalte ist deshalb vertragsgemäß `VARCHAR(191)`.
 - `000002` verwendet für Erstellung und Existing-Table-Prüfung dieselbe explizite Konstante. Eine partielle Tabelle wird weiterverwendet und weder gelöscht noch unnötig verändert.
 - Ein echter MySQL-/MariaDB-Migrationslauf bleibt Teil der Produktionsabnahme, da SQLite deklarierte Zeichenlängen nicht zuverlässig validiert.
+
+## 2026-08-27 | Plesk erreicht Cognee nur ueber Host-Loopback
+
+- Laravel unter Plesk verwendet `http://127.0.0.1:8010`; Cognee wird weder an eine externe Hostadresse noch an die oeffentliche Laravel-Domain gebunden.
+- `COGNEE_API_KEY_FILE` hat Vorrang vor dem direkten ENV-Wert und scheitert bei relativen, fehlenden, leeren oder unlesbaren Dateien fail closed.
+- Der read-only `luczor:cognee-check` ersetzt nicht den Add-/Cognify-/Search-/Forget-Produktpfad-Smoke.

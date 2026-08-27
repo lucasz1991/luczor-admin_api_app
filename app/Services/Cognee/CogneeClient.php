@@ -63,15 +63,44 @@ class CogneeClient
 
     public static function fromConfig(): self
     {
+        $baseUrl = trim((string) config('luczor.cognee.base_url', ''));
+
         return new self(
-            (string) config('luczor.cognee.base_url', ''),
-            (string) config('luczor.cognee.api_key', ''),
+            $baseUrl,
+            $baseUrl !== '' ? self::configuredApiKey() : '',
             (int) config('luczor.cognee.timeout', 45),
             null,
             (int) config('luczor.cognee.control_timeout', 8),
             (int) config('luczor.cognee.ack_timeout', 3),
             (int) config('luczor.cognee.semantic_query_timeout', 3),
         );
+    }
+
+    private static function configuredApiKey(): string
+    {
+        $path = trim((string) config('luczor.cognee.api_key_file', ''));
+        if ($path === '') {
+            return trim((string) config('luczor.cognee.api_key', ''));
+        }
+
+        $isAbsolute = str_starts_with($path, '/')
+            || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
+        if (! $isAbsolute || ! is_file($path) || ! is_readable($path)) {
+            throw new \RuntimeException('Configured Cognee API key file is not a readable absolute file.');
+        }
+
+        $size = filesize($path);
+        if (! is_int($size) || $size < 1 || $size > 16_384) {
+            throw new \RuntimeException('Configured Cognee API key file has an invalid size.');
+        }
+
+        $apiKey = file_get_contents($path);
+        $apiKey = is_string($apiKey) ? trim($apiKey) : '';
+        if ($apiKey === '' || preg_match('/\s/u', $apiKey) === 1) {
+            throw new \RuntimeException('Configured Cognee API key file has invalid content.');
+        }
+
+        return $apiKey;
     }
 
     public function enabled(): bool

@@ -57,6 +57,10 @@ return [
     'cognee' => [
         'base_url' => env('COGNEE_BASE_URL', ''),
         'api_key' => env('COGNEE_API_KEY', ''),
+        // Plesk deployments should keep the service credential in a protected
+        // file outside the public web root. When configured, the file is the
+        // authoritative source and an unreadable/invalid file fails closed.
+        'api_key_file' => env('COGNEE_API_KEY_FILE', ''),
         // Only the bounded /add ingestion and short control-plane calls run
         // in a worker now; LLM-backed cognify is launched asynchronously.
         'timeout' => max(1, (int) env('COGNEE_TIMEOUT', 45)),

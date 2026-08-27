@@ -14,6 +14,49 @@ use Tests\TestCase;
 
 class CogneeClientTest extends TestCase
 {
+    public function test_from_config_reads_the_service_key_from_an_absolute_file(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'luczor-cognee-key-');
+        $this->assertIsString($path);
+        file_put_contents($path, 'file-service-key');
+
+        try {
+            config([
+                'luczor.cognee.base_url' => 'http://127.0.0.1:8010',
+                'luczor.cognee.api_key' => 'ignored-env-key',
+                'luczor.cognee.api_key_file' => $path,
+            ]);
+
+            $this->assertTrue(CogneeClient::fromConfig()->enabled());
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_from_config_fails_closed_for_an_unreadable_key_file(): void
+    {
+        config([
+            'luczor.cognee.base_url' => 'http://127.0.0.1:8010',
+            'luczor.cognee.api_key' => 'must-not-fallback',
+            'luczor.cognee.api_key_file' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'missing-luczor-cognee-key',
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('not a readable absolute file');
+
+        CogneeClient::fromConfig();
+    }
+
+    public function test_disabled_cognee_does_not_require_a_configured_key_file(): void
+    {
+        config([
+            'luczor.cognee.base_url' => '',
+            'luczor.cognee.api_key_file' => 'relative/missing/key',
+        ]);
+
+        $this->assertFalse(CogneeClient::fromConfig()->enabled());
+    }
+
     public function test_search_uses_the_cognee_1_4_chunks_contract_and_normalizes_acl_wrappers(): void
     {
         $history = [];

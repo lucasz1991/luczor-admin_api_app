@@ -11,6 +11,7 @@
 - Desktop memory is encrypted and bound to a server-verified account principal. Repository indexing is local-only through Tree-sitter plus SQLite/FTS5; server graph indexing remains an explicit legacy profile.
 - The production `write_fingerprint` failure was traced to an already-deployed migration being edited after release. The published `000001` shape is restored, a separately logged repair runs before `000002`, and `000002` safely resumes a MySQL partial-DDL table only after validating its complete column/index/foreign-key contract.
 - The production `000002` retry exposed a contract bug rather than schema damage: Luczor's global string default created `dataset` as `VARCHAR(191)`. Creation and validation now share that published length, so the retained MySQL partial table can resume without destructive DDL.
+- Plesk-Laravel kann Cognee jetzt ueber einen ausschließlich auf `127.0.0.1:8010` gebundenen Docker-Endpunkt erreichen. Der Service-Key wird bevorzugt aus einer absoluten geschuetzten Datei gelesen; `luczor:cognee-check` prueft Authentifizierung und Wrapper-Boot-ID ohne Memory-Write.
 
 ## Verification
 
@@ -22,14 +23,16 @@
 - `docker compose --env-file .env.docker.example config --quiet` — passed.
 - Final focused concurrency/security review — no remaining P0-P2 findings.
 - Memory write-event upgrade regression — published legacy schema, pre-existing fingerprint, Laravel discovery order, partial event table, repeatable backfill, malformed columns, nullability, unique index and both foreign keys covered; 8 focused tests plus a fresh-migration/orchestrator smoke passed.
+- Plesk-Cognee adapter — 344 tests / 2,309 assertions, PHPStan, Pint, Laravel config cache and merged loopback Compose configuration passed.
 
 ## Deployment blockers
 
 - No production migration or deployment was performed.
-- The active `.env.docker` is not deployable yet: Cognee LLM/embedding provider settings and both stable Memory HMAC keys are absent.
+- The local `.env.docker` is not deployable yet: Cognee LLM/embedding provider settings and Cognee secret files are absent.
 - Provision two independent stable secrets for `LUCZOR_MEMORY_NAMESPACE_KEY` and `LUCZOR_MEMORY_LEDGER_KEY`; do not invent or rotate them during rollout.
 - Run migrations `2026_08_23_000001` through `000005` only in full maintenance mode with backup and the documented ownerless-Add preflight/recovery procedure.
 - Before retrying the failed production `000002`, deploy the repair, inspect `migrate:status`, `memory_links.write_fingerprint`, `SHOW CREATE TABLE memory_write_events` and its row count read-only; do not drop or mark the partial table manually.
-- The latest production configuration-only gate still reports six failures: debug, Redis cache, Redis queue, Reverb, namespace key, and ledger key. Resolve every one before retrying migrations; `--isolated` depends on a shared cache lock and `000005` requires the stable ledger key.
+- The latest Plesk configuration-only gate reports only `debug_disabled`; Redis cache/queue, Reverb and both stable Memory keys are now loaded. Set `APP_DEBUG=false`, clear caches and re-run the gate before switching traffic.
+- Docker Desktop was not running locally, so the real Cognee container, provider quality and Add/Cognify/Search/Forget product-path smoke remain production acceptance work.
 - Keep Cognee 1.4 Improve disabled until the documented live hang, timeout, restart, and Forget smoke test passes.
 - The desktop build warned that installed Node 22.11 is below the package requirement of 22.12 or newer.

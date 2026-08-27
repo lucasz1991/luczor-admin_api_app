@@ -1,10 +1,15 @@
 # Cognee: isolierter und authentisierter Betrieb
 
-Cognee ist nur über die internen Docker-Netze erreichbar und verwendet eine eigene
+Cognee ist standardmäßig nur über die internen Docker-Netze erreichbar und verwendet eine eigene
 PostgreSQL-Datenbank, eine eingeschränkte Datenbankrolle sowie eigene LLM- und
 Embedding-Zugangsdaten. Laravel kennt weder das Cognee-Datenbankpasswort noch die
 Provider-Schlüssel. Cognee kennt umgekehrt weder das Laravel-Datenbankpasswort noch den
 Laravel-/OpenRouter-Schlüssel.
+
+Wenn Laravel wie bei Plesk direkt auf dem Host statt im Compose-Netz läuft, veröffentlicht
+`docker-compose.plesk-cognee.yml` ausschließlich den Cognee-Port auf `127.0.0.1`. Eine
+Bindung an `0.0.0.0`, eine öffentliche Subdomain oder die Laravel-URL selbst sind nicht
+zulässig.
 
 Die HTTP-API verlangt zusätzlich Authentisierung. Laravel verwendet dafür einen eigenen,
 gehashten Cognee-Service-Key. Lokale Pfade, ausgehende URL-Abrufe und direkte
@@ -61,6 +66,70 @@ LLM- und Embedding-Schlüssel werden absichtlich nicht aus `openrouter_key` übe
 lassen sich Anbieterrechte, Kostenlimits und Rotation für die Memory-Pipeline getrennt
 steuern. Auch wenn derselbe Anbieter verwendet wird, sollten getrennte, minimal berechtigte
 Provider-Schlüssel eingesetzt werden.
+
+## Plesk: Laravel auf dem Host, Cognee in Docker
+
+Diese Variante startet nur PostgreSQL, den Cognee-DB-Initialisierer und Cognee. Laravel,
+Redis, Horizon, Scheduler und Reverb bleiben in der vorhandenen Plesk-Installation.
+
+1. Vom Workspace-Root die Loopback-Konfiguration prüfen und die drei Dienste starten:
+
+   ```bash
+   docker compose --env-file .env.docker \
+     -f docker-compose.yml -f docker-compose.plesk-cognee.yml config --quiet
+   docker compose --env-file .env.docker \
+     -f docker-compose.yml -f docker-compose.plesk-cognee.yml \
+     up -d postgres cognee-db-init cognee
+   curl --fail --silent --show-error http://127.0.0.1:8010/openapi.json >/dev/null
+   ```
+
+   `COGNEE_HOST_PORT` darf den Loopback-Port ändern. Die Compose-Datei bindet unabhängig
+   davon immer nur an `127.0.0.1`.
+
+2. Nach dem Healthcheck den Service-Key mit dem vorhandenen Provisioning-Skript erzeugen.
+   Das Skript gibt den Key nicht aus und schreibt ihn nur in die lokale Secret-Datei:
+
+   ```bash
+   sh ./admin_api_app/docker/provision-cognee.sh
+   ```
+
+3. Den Key ohne Ausgabe in Laravels geschützten Storage kopieren. Besitzer und Gruppe
+   werden vom bestehenden Storage-Verzeichnis übernommen:
+
+   ```bash
+   app_root=/var/www/vhosts/follow-flow.de/luczor.follow-flow.de
+   key_owner="$(stat -c '%U' "$app_root/storage/app/keys")"
+   key_group="$(stat -c '%G' "$app_root/storage/app/keys")"
+   install -m 600 -o "$key_owner" -g "$key_group" \
+     admin_api_app/docker/secrets/cognee_api_key \
+     "$app_root/storage/app/keys/cognee_api_key"
+   ```
+
+4. In der produktiven Laravel-`.env` konfigurieren; der direkte Key bleibt leer:
+
+   ```dotenv
+   COGNEE_BASE_URL=http://127.0.0.1:8010
+   COGNEE_API_KEY=
+   COGNEE_API_KEY_FILE=/var/www/vhosts/follow-flow.de/luczor.follow-flow.de/storage/app/keys/cognee_api_key
+   COGNEE_TIMEOUT=45
+   COGNEE_CONTROL_TIMEOUT=8
+   COGNEE_ACK_TIMEOUT=3
+   COGNEE_SEMANTIC_QUERY_TIMEOUT=3
+   COGNEE_IMPROVE_ENABLED=false
+   ```
+
+5. Laravel-Konfiguration und langlebige Prozesse neu laden und dann ausschließlich lesend
+   den authentisierten Wrapper prüfen:
+
+   ```bash
+   php artisan optimize:clear
+   php artisan config:cache
+   php artisan horizon:terminate
+   php artisan luczor:cognee-check
+   ```
+
+   Danach folgt weiterhin der unten beschriebene echte Produktpfad-Smoke-Test. Ein grüner
+   `openapi.json`-Aufruf beweist weder Authentifizierung noch LLM-/Embedding-Funktion.
 
 ## Erstbereitstellung
 

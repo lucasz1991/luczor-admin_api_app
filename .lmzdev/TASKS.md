@@ -12,3 +12,4 @@
 | Production rollout and live Cognee smoke tests | operator | blocked | 2026-08-23T10:56:55Z |
 | Produktionsmigration write_fingerprint upgrade- und retry-sicher reparieren | Codex/root | completed | 2026-08-26T11:57:31Z |
 | MySQL-Stringlaengenvertrag der Memory-Write-Event-Migration korrigieren | Codex/root | completed | 2026-08-26T20:07:49Z |
+| Loopback-only Cognee-Endpunkt fuer Plesk und dateibasierte Service-Key-Anbindung | Codex/root | completed | 2026-08-27T03:04:50Z |

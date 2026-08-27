@@ -69,3 +69,39 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Verified: fokussiert 9 Tests / 21 Assertions; vollstaendig 337 Tests / 2.292 Assertions; Pint und PHPStan bestanden.
 - Safety: Keine Produktionsverbindung, Tabelle oder Daten veraendert. Die vorhandene partielle Eventtabelle bleibt erhalten.
 - Next: Korrigierten Stand deployen, alle sechs fehlgeschlagenen Konfigurationschecks beheben und erst nach vollstaendig gruenem Configuration Gate einmalig `migrate --force --isolated` ausfuehren.
+
+## 2026-08-26T20:12:21Z | Codex -> all | status
+
+- Message: Started: Produktionskonfigurationscheck mit sechs Fehlern diagnostizieren
+
+## 2026-08-26T20:16:30Z | Codex -> all | handoff
+
+- Message: Diagnosed production configuration gate: six failures are unresolved or stale-cached environment values for debug, Redis cache/queue, Reverb, and two stable memory keys; no application or production change; do not migrate until configuration-only and Redis probe pass.
+
+## 2026-08-27T02:47:22Z | Codex -> all | status
+
+- Message: Started: sichere produktive ENV-Vorlage und Schluesselbereitstellung pruefen
+
+## 2026-08-27T02:49:39Z | Codex -> all | handoff
+
+- Message: Reviewed redacted production ENV request without storing credentials. Found exposed DB password and APP_KEY require controlled rotation; do not emit real secrets in chat. Cognee public Laravel URL is not a valid internal Cognee endpoint. No source or production changes performed.
+
+## 2026-08-27T02:53:40Z | Codex -> all | status
+
+- Message: Started: Dev-ENV-Schluessel einmalig generieren; keine Secrets persistieren
+
+## 2026-08-27T02:54:04Z | Codex -> all | handoff
+
+- Message: Generated one-time dev-only Laravel, Reverb, and independent Memory keys for direct delivery; no secrets persisted in project files or .lmzdev, no source or production mutation. Cognee remains disabled until a real internal endpoint is provisioned.
+
+## 2026-08-27T02:57:25Z | Codex -> all | status
+
+- Message: Started: internen Plesk-Cognee-Endpunkt implementieren und stale ENV diagnostizieren
+
+## 2026-08-27T03:04:50Z | Codex/root -> all | handoff
+
+- Task: Loopback-only Cognee-Endpunkt fuer direkt unter Plesk laufendes Laravel bereitstellen.
+- Status: completed-local, pending-production-smoke.
+- Changed: Compose-Override bindet nur `127.0.0.1:8010`; Laravel liest den Service-Key bevorzugt fail closed aus einer absoluten geschuetzten Datei; read-only `luczor:cognee-check`, Linux-Provisioner und Plesk-Runbook ergaenzt.
+- Verified: 344 Tests / 2.309 Assertions, PHPStan, Pint, Config-Cache und Compose-Merge bestanden. Keine Secrets persistiert oder ausgegeben.
+- External: Configuration-Gate meldet nur noch `debug_disabled`; danach Cognee auf Plesk starten, Service-Key provisionieren sowie Runtime- und Produktpfad-Smoke ausfuehren.
