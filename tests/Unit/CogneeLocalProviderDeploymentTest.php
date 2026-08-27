@@ -73,6 +73,10 @@ class CogneeLocalProviderDeploymentTest extends TestCase
         $this->assertStringContainsString('"onnxruntime==1.23.2"', $dockerfile);
         $this->assertStringContainsString('RUN /app/.venv/bin/python -c', $dockerfile);
         $this->assertStringContainsString("TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'", $dockerfile);
+        $this->assertStringContainsString("connection.execute('INSTALL JSON;')", $dockerfile);
+        $this->assertStringContainsString("connection.execute('LOAD EXTENSION JSON;')", $dockerfile);
+        $this->assertStringContainsString('/root/.lbdb/extension', $dockerfile);
+        $this->assertStringContainsString('sha256sum -c -', $dockerfile);
         $this->assertStringContainsString('db_uri.replace("%", "%%")', $dockerfile);
         $this->assertStringContainsString('HF_HUB_OFFLINE=1', $dockerfile);
     }

@@ -17,6 +17,22 @@ RUN /usr/local/bin/python -m pip install --no-cache-dir --target /app/.venv/lib/
 # registry access for embeddings.
 ENV FASTEMBED_CACHE_PATH=/opt/luczor-fastembed-cache
 RUN /app/.venv/bin/python -c "from fastembed import TextEmbedding; model = TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/opt/luczor-fastembed-cache'); next(model.embed(['Luczor Erinnerung']))"
+
+# Cognee's Kuzu/Ladybug graph adapter needs the JSON extension during every
+# Cognify and Forget. Install it while the image build has controlled egress,
+# validate the immutable binary, and ship the cache in the runtime image so an
+# internal-only production container never downloads executable code.
+ARG TARGETARCH
+RUN /app/.venv/bin/python -c "import ladybug; database = ladybug.Database('/tmp/luczor-ladybug-extension-probe.lbug'); connection = ladybug.Connection(database); connection.execute('INSTALL JSON;'); connection.execute('LOAD EXTENSION JSON;')" \
+    && extension_file="$(find /root/.lbdb/extension -type f -path '*/json/libjson.lbug_extension' -print -quit)" \
+    && test -n "$extension_file" \
+    && case "$TARGETARCH" in \
+        amd64) expected_hash=8a5eb3c6c70cc86ea34aea777e9fc78687f69d1396055d878d2b9e0a79cb5114 ;; \
+        arm64) expected_hash=f5b825eef48100a99dc4867f7882cc0368d6c5b89b4e9c33b875a37af2cfcd22 ;; \
+        *) echo "Unsupported Ladybug extension architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+    && printf '%s  %s\n' "$expected_hash" "$extension_file" | sha256sum -c - \
+    && rm -rf /tmp/luczor-ladybug-extension-probe.lbug*
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1 \
     HF_DATASETS_OFFLINE=1 \

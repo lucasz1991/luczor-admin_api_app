@@ -12,6 +12,9 @@ Der Stack in `docker-compose.plesk-memory.yml` verarbeitet LLM- und Embedding-An
   Der Gateway hat als einziges festes Upstream-Ziel `http://cognee:8000`; Cognee selbst
   erhaelt dadurch weder einen Host-Port noch ein ausgehendes Netz.
 - Das FastEmbed-Modell wird bereits beim Bau des Cognee-Images geladen. Im Produktivbetrieb erzwingen die Hugging-Face-Offline-Schalter den lokalen Cache.
+- Die von Kuzu/Ladybug benoetigte JSON-Erweiterung wird ebenfalls ausschließlich beim
+  Image-Build geladen, fuer amd64 beziehungsweise arm64 per SHA-256 verifiziert und in
+  das Image eingebettet. Cognify und Forget laden im internen Runtime-Netz keinen Code nach.
 - Der opt-in Dienst `ollama-model-bootstrap` hat fuer den einmaligen Modelldownload ein
   ausgehendes Netz. Er gehoert zum deaktivierten Compose-Profil `model-bootstrap` und
   beendet sich nach dem Download. Der nginx-Gateway braucht technisch eine regulaere
