@@ -66,6 +66,9 @@ class CapabilityRoutingTest extends TestCase
         Config::set('database.redis.cache.url', null);
         Config::set('database.redis.cache.host', '127.0.0.1');
         Config::set('database.redis.cache.password', str_repeat('r', 48));
+        Config::set('database.redis.horizon.url', null);
+        Config::set('database.redis.horizon.host', '127.0.0.1');
+        Config::set('database.redis.horizon.password', str_repeat('r', 48));
         Config::set('luczor.notifications.queue', 'notifications');
         Config::set('horizon.defaults.supervisor-1.queue', ['notifications', 'default']);
         Config::set('broadcasting.default', 'reverb');
@@ -140,6 +143,9 @@ class CapabilityRoutingTest extends TestCase
         Config::set('database.redis.cache.url', null);
         Config::set('database.redis.cache.host', 'redis.example.test');
         Config::set('database.redis.cache.password', 'change-me');
+        Config::set('database.redis.horizon.url', null);
+        Config::set('database.redis.horizon.host', 'redis.example.test');
+        Config::set('database.redis.horizon.password', 'change-me');
         Config::set('luczor.notifications.queue', 'notifications');
         Config::set('horizon.defaults.supervisor-1.queue', ['default']);
         Config::set('broadcasting.default', 'reverb');

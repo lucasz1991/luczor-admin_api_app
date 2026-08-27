@@ -132,7 +132,7 @@ class DeploymentHealthService
 
     private function redisAuthenticationIsConfigured(): bool
     {
-        foreach (['default', 'cache'] as $name) {
+        foreach (['default', 'cache', 'horizon'] as $name) {
             $connection = (array) config("database.redis.$name", []);
             $url = $connection['url'] ?? null;
 
@@ -155,7 +155,7 @@ class DeploymentHealthService
 
     private function redisEndpointIsPrivate(): bool
     {
-        foreach (['default', 'cache'] as $name) {
+        foreach (['default', 'cache', 'horizon'] as $name) {
             $connection = (array) config("database.redis.$name", []);
             $url = $connection['url'] ?? null;
 

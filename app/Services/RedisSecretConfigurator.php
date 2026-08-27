@@ -59,6 +59,11 @@ class RedisSecretConfigurator
         config([
             'database.redis.default.password' => $password,
             'database.redis.cache.password' => $password,
+            // Horizon clones the configured connection into its own
+            // `database.redis.horizon` connection during provider startup.
+            // Hydrate that runtime copy as well so Horizon never falls back
+            // to an anonymous connection when REDIS_PASSWORD_FILE is used.
+            'database.redis.horizon.password' => $password,
             'reverb.servers.reverb.scaling.server.password' => $password,
         ]);
     }

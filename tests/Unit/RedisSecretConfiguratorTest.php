@@ -30,11 +30,13 @@ class RedisSecretConfiguratorTest extends TestCase
         Config::set('database.redis.password_file', $this->temporarySecret);
         Config::set('database.redis.default.url', null);
         Config::set('database.redis.cache.url', null);
+        Config::set('database.redis.horizon.url', null);
 
         app(RedisSecretConfigurator::class)->apply();
 
         $this->assertSame($password, Config::get('database.redis.default.password'));
         $this->assertSame($password, Config::get('database.redis.cache.password'));
+        $this->assertSame($password, Config::get('database.redis.horizon.password'));
         $this->assertSame($password, Config::get('reverb.servers.reverb.scaling.server.password'));
     }
 
@@ -60,6 +62,7 @@ class RedisSecretConfiguratorTest extends TestCase
         Config::set('database.redis.cache.url', null);
         Config::set('database.redis.default.password', null);
         Config::set('database.redis.cache.password', null);
+        Config::set('database.redis.horizon.password', null);
 
         $originalArgv = $_SERVER['argv'] ?? null;
         $_SERVER['argv'] = ['artisan', 'config:cache'];
@@ -76,6 +79,7 @@ class RedisSecretConfiguratorTest extends TestCase
 
         $this->assertNull(Config::get('database.redis.default.password'));
         $this->assertNull(Config::get('database.redis.cache.password'));
+        $this->assertNull(Config::get('database.redis.horizon.password'));
         $this->assertNotSame($password, Config::get('reverb.servers.reverb.scaling.server.password'));
     }
 
