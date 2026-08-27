@@ -20,7 +20,8 @@ require_identifier "$COGNEE_POSTGRES_USER"
 
 hba_file="$PGDATA/pg_hba.conf"
 guard_file="$PGDATA/luczor-cognee-hba.conf"
-include_line="include_if_exists 'luczor-cognee-hba.conf'"
+include_line="include_if_exists luczor-cognee-hba.conf"
+legacy_include_line="include_if_exists 'luczor-cognee-hba.conf'"
 
 if [ ! -f "$hba_file" ]; then
     # On a fresh volume the official entrypoint creates pg_hba.conf first and
@@ -46,7 +47,8 @@ trap cleanup EXIT HUP INT TERM
 # matching rule and never falls through after an authentication failure.
 {
     printf '%s\n' "$include_line"
-    awk -v include_line="$include_line" '$0 != include_line { print }' "$hba_file"
+    awk -v include_line="$include_line" -v legacy_include_line="$legacy_include_line" \
+        '$0 != include_line && $0 != legacy_include_line { print }' "$hba_file"
 } > "$hba_tmp"
 
 chown --reference="$hba_file" "$guard_tmp" "$hba_tmp"
@@ -54,4 +56,3 @@ chmod --reference="$hba_file" "$guard_tmp" "$hba_tmp"
 mv -f "$guard_tmp" "$guard_file"
 mv -f "$hba_tmp" "$hba_file"
 trap - EXIT HUP INT TERM
-

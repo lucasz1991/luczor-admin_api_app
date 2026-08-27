@@ -65,7 +65,11 @@ class CogneeDatabaseIsolationTest extends TestCase
             self::fail('Unable to read '.$path.'.');
         }
 
-        $this->assertStringContainsString("include_if_exists 'luczor-cognee-hba.conf'", $script);
+        $this->assertStringContainsString('include_line="include_if_exists luczor-cognee-hba.conf"', $script);
+        $this->assertStringContainsString(
+            'legacy_include_line="include_if_exists \'luczor-cognee-hba.conf\'"',
+            $script,
+        );
         $this->assertStringContainsString(
             "printf 'host %s %s all scram-sha-256\\n' \"\$COGNEE_POSTGRES_DB\" \"\$COGNEE_POSTGRES_USER\"",
             $script,
