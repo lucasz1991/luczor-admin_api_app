@@ -56,7 +56,18 @@ class CogneeLocalProviderDeploymentTest extends TestCase
         $this->assertStringContainsString('"onnxruntime==1.23.2"', $dockerfile);
         $this->assertStringContainsString('RUN /app/.venv/bin/python -c', $dockerfile);
         $this->assertStringContainsString("TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'", $dockerfile);
+        $this->assertStringContainsString('db_uri.replace("%", "%%")', $dockerfile);
         $this->assertStringContainsString('HF_HUB_OFFLINE=1', $dockerfile);
+    }
+
+    public function test_generated_cognee_database_secret_is_uri_and_alembic_safe(): void
+    {
+        $script = $this->readProjectFile('docker/init-secrets.sh');
+
+        $this->assertStringContainsString(
+            'write_if_missing cognee_postgres_password "$(openssl rand -hex 32',
+            $script,
+        );
     }
 
     public function test_entrypoint_does_not_require_provider_secrets_for_local_engines(): void

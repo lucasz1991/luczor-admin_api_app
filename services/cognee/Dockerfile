@@ -24,7 +24,10 @@ ENV HF_HUB_OFFLINE=1 \
 
 # Cognee's Alembic environment logs the full asyncpg URL by default, including
 # the password. Keep connection diagnostics without ever emitting a secret.
-RUN sed -i 's/logging.getLogger("alembic.env").info("Using database: %s", db_uri)/logging.getLogger("alembic.env").info("Using configured database")/' /app/cognee/alembic/env.py
+# ConfigParser also treats percent escapes in URL-encoded passwords as
+# interpolation syntax, so escape them only while storing the option.
+RUN sed -i 's/logging.getLogger("alembic.env").info("Using database: %s", db_uri)/logging.getLogger("alembic.env").info("Using configured database")/' /app/cognee/alembic/env.py \
+    && sed -i 's/^    db_uri,$/    db_uri.replace("%", "%%"),/' /app/cognee/alembic/env.py
 
 # Wrap the pinned application with a boot identity header. This is used only
 # to recover provably dead process-local background runs after a restart.
