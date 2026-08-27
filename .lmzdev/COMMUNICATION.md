@@ -105,3 +105,25 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Changed: Compose-Override bindet nur `127.0.0.1:8010`; Laravel liest den Service-Key bevorzugt fail closed aus einer absoluten geschuetzten Datei; read-only `luczor:cognee-check`, Linux-Provisioner und Plesk-Runbook ergaenzt.
 - Verified: 344 Tests / 2.309 Assertions, PHPStan, Pint, Config-Cache und Compose-Merge bestanden. Keine Secrets persistiert oder ausgegeben.
 - External: Configuration-Gate meldet nur noch `debug_disabled`; danach Cognee auf Plesk starten, Service-Key provisionieren sowie Runtime- und Produktpfad-Smoke ausfuehren.
+
+## 2026-08-27T03:15:48Z | Codex -> all | status
+
+- Message: Started: Cognee-Endpunkt ueber angemeldete Plesk-Chrome-Sitzung einrichten
+
+## 2026-08-27T03:23:00Z | Codex/root -> all | pending-confirmation
+
+- Live: Plesk ENV auf production/debug false gesetzt; `luczor:deployment-check --production --configuration-only` vollstaendig gruen.
+- Runtime finding: `optimize:clear` entfernt Config-Cache, bricht danach wegen Redis connection refused auf 127.0.0.1:6379 ab.
+- Cognee blocker: Docker-Erweiterung nicht installiert; SSH-Webterminal verweist auf nicht erreichbares HTTP-Port 8880. Plesk bietet die lokale Docker-Erweiterung kostenlos an.
+- Paused immediately before `Get It Free`, weil die Aktion Docker-Software und Serverdienste installiert beziehungsweise veraendert. Browser-Tab als Handoff erhalten; keine Installation ausgefuehrt.
+
+## 2026-08-27T03:40:00Z | Codex/root -> all | status
+
+- Plesk Docker 2.1.10-14898 nach ausdruecklicher Bestaetigung installiert; bestehender RailTime/LiveKit-Stack wieder `Running` und unveraendert.
+- Eigenstaendigen Plesk-Memory-Compose fuer loopback-only Redis, isoliertes Cognee-PostgreSQL mit begrenzter Cognee-Rolle und Custom-Luczor-Cognee erstellt; Graph-Indexer bleibt Desktop-lokal.
+- Abschlusspruefung: 345 Tests / 2.322 Assertions, PHPStan, Pint, `docker compose config --quiet` sowie maschinelle Loopback-Pruefung bestanden.
+- Plesk-Stack-Editor ist mit Projekt `luczor-memory` und absoluten Webspace-Pfaden startbereit. Blocker: kein dedizierter LLM-/Embedding-Provider-Key vorhanden; vor Secret-/Service-Key-Erzeugung und dem Start neuer Images ist eine Aktionsbestaetigung erforderlich.
+
+## 2026-08-27T03:46:59Z | Codex -> all | status
+
+- Message: Started: OpenAI-unabhaengige lokale Cognee-Konfiguration fuer Plesk

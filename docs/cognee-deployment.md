@@ -67,30 +67,36 @@ lassen sich Anbieterrechte, Kostenlimits und Rotation für die Memory-Pipeline g
 steuern. Auch wenn derselbe Anbieter verwendet wird, sollten getrennte, minimal berechtigte
 Provider-Schlüssel eingesetzt werden.
 
-## Plesk: Laravel auf dem Host, Cognee in Docker
+## Plesk: Laravel auf dem Host, Memory-Dienste in Docker
 
-Diese Variante startet nur PostgreSQL, den Cognee-DB-Initialisierer und Cognee. Laravel,
-Redis, Horizon, Scheduler und Reverb bleiben in der vorhandenen Plesk-Installation.
+`docker-compose.plesk-memory.yml` ist eine eigenständige Plesk-Konfiguration. Sie startet
+einen nur an Loopback veröffentlichten Redis, eine ausschließlich intern erreichbare,
+dedizierte Cognee-PostgreSQL-Instanz und genau eine Instanz des angepassten Luczor-Cognee-
+Wrappers. Laravel, MySQL, Horizon, Scheduler und Reverb bleiben in der vorhandenen
+Plesk-Installation. Der lokale Repository-Graph-Indexer gehört weiterhin ausschließlich
+zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
 
-1. Vom Workspace-Root die Loopback-Konfiguration prüfen und die drei Dienste starten:
+1. Im Laravel-Anwendungsverzeichnis die Konfiguration prüfen und den Stack starten:
 
    ```bash
-   docker compose --env-file .env.docker \
-     -f docker-compose.yml -f docker-compose.plesk-cognee.yml config --quiet
-   docker compose --env-file .env.docker \
-     -f docker-compose.yml -f docker-compose.plesk-cognee.yml \
-     up -d postgres cognee-db-init cognee
+   docker compose -f docker-compose.plesk-memory.yml config --quiet
+   docker compose -f docker-compose.plesk-memory.yml up -d --build
    curl --fail --silent --show-error http://127.0.0.1:8010/openapi.json >/dev/null
+   REDISCLI_AUTH="$(cat docker/secrets/redis_password)" \
+     redis-cli -h 127.0.0.1 ping
    ```
 
-   `COGNEE_HOST_PORT` darf den Loopback-Port ändern. Die Compose-Datei bindet unabhängig
-   davon immer nur an `127.0.0.1`.
+   `COGNEE_HOST_PORT` und `REDIS_HOST_PORT` dürfen die Loopback-Ports ändern. Die
+   Compose-Datei bindet unabhängig davon immer nur an `127.0.0.1`. Wird bereits ein
+   produktiver Host-Redis betrieben, muss dessen Betrieb bewusst übernommen und der
+   Redis-Dienst aus diesem Stack entfernt werden; niemals zwei Prozesse an Port 6379
+   konkurrieren lassen.
 
 2. Nach dem Healthcheck den Service-Key mit dem vorhandenen Provisioning-Skript erzeugen.
    Das Skript gibt den Key nicht aus und schreibt ihn nur in die lokale Secret-Datei:
 
    ```bash
-   sh ./admin_api_app/docker/provision-cognee.sh
+   sh ./docker/provision-cognee.sh
    ```
 
 3. Den Key ohne Ausgabe in Laravels geschützten Storage kopieren. Besitzer und Gruppe
@@ -101,7 +107,7 @@ Redis, Horizon, Scheduler und Reverb bleiben in der vorhandenen Plesk-Installati
    key_owner="$(stat -c '%U' "$app_root/storage/app/keys")"
    key_group="$(stat -c '%G' "$app_root/storage/app/keys")"
    install -m 600 -o "$key_owner" -g "$key_group" \
-     admin_api_app/docker/secrets/cognee_api_key \
+     docker/secrets/cognee_api_key \
      "$app_root/storage/app/keys/cognee_api_key"
    ```
 

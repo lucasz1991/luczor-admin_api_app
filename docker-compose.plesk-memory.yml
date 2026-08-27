@@ -1,0 +1,209 @@
+name: luczor-memory
+
+x-luczor-logging: &luczor-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  redis:
+    image: redis:7-alpine
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$(cat /run/secrets/redis_password)"
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+    secrets:
+      - redis_password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" redis-cli ping | grep -qx PONG
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - cache
+    logging: *luczor-logging
+    pids_limit: 128
+    mem_limit: ${LUCZOR_REDIS_MEMORY_LIMIT:-256m}
+    cpus: ${LUCZOR_REDIS_CPU_LIMIT:-0.75}
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/luczor-postgres-entrypoint
+    environment:
+      POSTGRES_DB: ${COGNEE_POSTGRES_ADMIN_DB:-luczor_cognee_admin}
+      POSTGRES_USER: ${COGNEE_POSTGRES_ADMIN_USER:-luczor_cognee_admin}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      COGNEE_POSTGRES_DB: ${COGNEE_POSTGRES_DB:-luczor_cognee}
+      COGNEE_POSTGRES_USER: ${COGNEE_POSTGRES_USER:-luczor_cognee}
+    secrets:
+      - postgres_password
+    volumes:
+      - cognee_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init/05-configure-cognee-hba.sh:/docker-entrypoint-initdb.d/05-configure-cognee-hba.sh:ro
+      - ./docker/postgres/entrypoint.sh:/usr/local/bin/luczor-postgres-entrypoint:ro
+      - ./docker/postgres/configure-cognee-hba.sh:/usr/local/bin/configure-cognee-hba:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - data
+    logging: *luczor-logging
+    pids_limit: 256
+    mem_limit: ${LUCZOR_COGNEE_POSTGRES_MEMORY_LIMIT:-768m}
+    cpus: ${LUCZOR_COGNEE_POSTGRES_CPU_LIMIT:-1.0}
+
+  cognee-db-init:
+    image: pgvector/pgvector:pg16
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/ensure-cognee-db
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_ADMIN_DB: ${COGNEE_POSTGRES_ADMIN_DB:-luczor_cognee_admin}
+      POSTGRES_ADMIN_USER: ${COGNEE_POSTGRES_ADMIN_USER:-luczor_cognee_admin}
+      COGNEE_POSTGRES_DB: ${COGNEE_POSTGRES_DB:-luczor_cognee}
+      COGNEE_POSTGRES_USER: ${COGNEE_POSTGRES_USER:-luczor_cognee}
+    secrets:
+      - postgres_password
+      - cognee_postgres_password
+    volumes:
+      - ./docker/postgres/ensure-cognee-db.sh:/usr/local/bin/ensure-cognee-db:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - data
+    logging: *luczor-logging
+    pids_limit: 64
+    mem_limit: ${LUCZOR_COGNEE_DB_INIT_MEMORY_LIMIT:-128m}
+    cpus: ${LUCZOR_COGNEE_DB_INIT_CPU_LIMIT:-0.5}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+
+  cognee:
+    build:
+      context: ./services/cognee
+      target: luczor-cognee-production
+    environment:
+      TELEMETRY_DISABLED: "true"
+      OTEL_SDK_DISABLED: "true"
+      VECTOR_DB_PROVIDER: lancedb
+      GRAPH_DATABASE_PROVIDER: kuzu
+      GRAPH_DATASET_DATABASE_HANDLER: kuzu
+      DB_PROVIDER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${COGNEE_POSTGRES_DB:-luczor_cognee}
+      DB_USERNAME: ${COGNEE_POSTGRES_USER:-luczor_cognee}
+      SYSTEM_ROOT_DIRECTORY: /data/system
+      DATA_ROOT_DIRECTORY: /data/data
+      LLM_PROVIDER: ${COGNEE_LLM_PROVIDER:-openai}
+      LLM_MODEL: ${COGNEE_LLM_MODEL:-openai/gpt-5-mini}
+      LLM_ENDPOINT: ${COGNEE_LLM_ENDPOINT:-}
+      LLM_MAX_COMPLETION_TOKENS: ${COGNEE_LLM_MAX_COMPLETION_TOKENS:-16384}
+      EMBEDDING_PROVIDER: ${COGNEE_EMBEDDING_PROVIDER:-openai}
+      EMBEDDING_MODEL: ${COGNEE_EMBEDDING_MODEL:-openai/text-embedding-3-large}
+      EMBEDDING_ENDPOINT: ${COGNEE_EMBEDDING_ENDPOINT:-}
+      EMBEDDING_DIMENSIONS: ${COGNEE_EMBEDDING_DIMENSIONS:-3072}
+      HUGGINGFACE_TOKENIZER: ${COGNEE_HUGGINGFACE_TOKENIZER:-}
+      REQUIRE_AUTHENTICATION: "true"
+      ENABLE_BACKEND_ACCESS_CONTROL: "true"
+      DEFAULT_USER_EMAIL: luczor-cognee@invalid.local
+      JWT_LIFETIME_SECONDS: 3600
+      CORS_ALLOWED_ORIGINS: http://127.0.0.1
+      ACCEPT_LOCAL_FILE_PATH: "false"
+      ALLOW_HTTP_REQUESTS: "false"
+      ALLOW_CYPHER_QUERY: "false"
+      HASH_API_KEY: "true"
+    secrets:
+      - cognee_postgres_password
+      - cognee_llm_api_key
+      - cognee_embedding_api_key
+      - cognee_jwt_secret
+      - cognee_default_password
+      - cognee_verification_secret
+      - cognee_reset_secret
+    volumes:
+      - cognee_data:/data
+    ports:
+      - "127.0.0.1:${COGNEE_HOST_PORT:-8010}:8000"
+    depends_on:
+      cognee-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - data
+      - egress
+    logging: *luczor-logging
+    pids_limit: 512
+    mem_limit: ${LUCZOR_COGNEE_MEMORY_LIMIT:-4g}
+    cpus: ${LUCZOR_COGNEE_CPU_LIMIT:-2.0}
+
+secrets:
+  redis_password:
+    file: ./docker/secrets/redis_password
+  postgres_password:
+    file: ./docker/secrets/postgres_password
+  cognee_postgres_password:
+    file: ./docker/secrets/cognee_postgres_password
+  cognee_llm_api_key:
+    file: ./docker/secrets/cognee_llm_api_key
+  cognee_embedding_api_key:
+    file: ./docker/secrets/cognee_embedding_api_key
+  cognee_jwt_secret:
+    file: ./docker/secrets/cognee_jwt_secret
+  cognee_default_password:
+    file: ./docker/secrets/cognee_default_password
+  cognee_verification_secret:
+    file: ./docker/secrets/cognee_verification_secret
+  cognee_reset_secret:
+    file: ./docker/secrets/cognee_reset_secret
+
+volumes:
+  redis_data:
+  cognee_postgres_data:
+  cognee_data:
+
+networks:
+  cache:
+    internal: true
+  data:
+    internal: true
+  egress:

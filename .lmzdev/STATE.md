@@ -24,6 +24,7 @@
 - Final focused concurrency/security review — no remaining P0-P2 findings.
 - Memory write-event upgrade regression — published legacy schema, pre-existing fingerprint, Laravel discovery order, partial event table, repeatable backfill, malformed columns, nullability, unique index and both foreign keys covered; 8 focused tests plus a fresh-migration/orchestrator smoke passed.
 - Plesk-Cognee adapter — 344 tests / 2,309 assertions, PHPStan, Pint, Laravel config cache and merged loopback Compose configuration passed.
+- Standalone Plesk-Memory-Stack — 345 tests / 2,322 assertions, PHPStan, Pint, `docker compose config --quiet` und maschinelle Loopback-Portpruefung bestanden.
 
 ## Deployment blockers
 
@@ -33,6 +34,9 @@
 - Run migrations `2026_08_23_000001` through `000005` only in full maintenance mode with backup and the documented ownerless-Add preflight/recovery procedure.
 - Before retrying the failed production `000002`, deploy the repair, inspect `migrate:status`, `memory_links.write_fingerprint`, `SHOW CREATE TABLE memory_write_events` and its row count read-only; do not drop or mark the partial table manually.
 - The latest Plesk configuration-only gate reports only `debug_disabled`; Redis cache/queue, Reverb and both stable Memory keys are now loaded. Set `APP_DEBUG=false`, clear caches and re-run the gate before switching traffic.
+- Plesk `.env` verwendet jetzt `APP_ENV=production` und `APP_DEBUG=false`; der Configuration-only-Gate ist vollstaendig gruen. `optimize:clear` hat den Config-Cache entfernt, scheiterte danach aber am nicht erreichbaren Redis-Dienst auf `127.0.0.1:6379`.
+- Die kostenlose Plesk-Docker-Erweiterung 2.1.10-14898 ist installiert. Der vorhandene `railtime-media`/LiveKit-Stack wurde dabei kurz neu gestartet und ist wieder `Running`; er wurde nicht veraendert. Der SSH-Webterminal bleibt ueber unverschluesseltes Port 8880 unerreichbar.
+- Der eigenstaendige Plesk-Memory-Stack ist lokal erstellt, per Compose validiert und im Plesk-Stack-Editor startbereit. Redis und Cognee werden ausschließlich an `127.0.0.1` gebunden, Cognee-PostgreSQL bleibt intern, und der Repository-Graph-Indexer wird nicht serverseitig gestartet. Vor Containerstart, Secret-/Service-Key-Erzeugung und Provider-Credential-Uebertragung ist eine Aktionsbestaetigung samt dediziertem Provider-Key erforderlich.
 - Docker Desktop was not running locally, so the real Cognee container, provider quality and Add/Cognify/Search/Forget product-path smoke remain production acceptance work.
 - Keep Cognee 1.4 Improve disabled until the documented live hang, timeout, restart, and Forget smoke test passes.
 - The desktop build warned that installed Node 22.11 is below the package requirement of 22.12 or newer.

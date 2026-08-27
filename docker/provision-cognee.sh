@@ -2,19 +2,35 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+app_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 workspace_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 environment_file=${1:-"$workspace_root/.env.docker"}
-compose_file="$workspace_root/docker-compose.yml"
+compose_file=${2:-}
+if [ -z "$compose_file" ]; then
+    if [ -f "$workspace_root/docker-compose.yml" ]; then
+        compose_file="$workspace_root/docker-compose.yml"
+    else
+        compose_file="$app_root/docker-compose.plesk-memory.yml"
+    fi
+fi
 secret_directory="$script_dir/secrets"
 api_key_file="$secret_directory/cognee_api_key"
 default_password_file="$secret_directory/cognee_default_password"
 
-for required_file in "$compose_file" "$environment_file" "$api_key_file" "$default_password_file"; do
+for required_file in "$compose_file" "$api_key_file" "$default_password_file"; do
     if [ ! -f "$required_file" ]; then
         echo "Required Cognee provisioning file is missing: $required_file" >&2
         exit 1
     fi
 done
+
+compose_exec() {
+    if [ -f "$environment_file" ]; then
+        docker compose --env-file "$environment_file" -f "$compose_file" "$@"
+    else
+        docker compose -f "$compose_file" "$@"
+    fi
+}
 
 if [ -s "$api_key_file" ] && [ "${LUCZOR_FORCE_COGNEE_KEY_ROTATION:-false}" != "true" ]; then
     echo "Cognee service API key is already provisioned. Set LUCZOR_FORCE_COGNEE_KEY_ROTATION=true only for an intentional rotation."
@@ -22,8 +38,7 @@ if [ -s "$api_key_file" ] && [ "${LUCZOR_FORCE_COGNEE_KEY_ROTATION:-false}" != "
 fi
 
 provision_output=$(
-    docker compose --env-file "$environment_file" -f "$compose_file" \
-        exec -T cognee /usr/local/bin/python - <<'PYTHON'
+    compose_exec exec -T cognee /usr/local/bin/python - <<'PYTHON'
 import json
 import urllib.error
 import urllib.parse

@@ -13,3 +13,4 @@
 | Produktionsmigration write_fingerprint upgrade- und retry-sicher reparieren | Codex/root | completed | 2026-08-26T11:57:31Z |
 | MySQL-Stringlaengenvertrag der Memory-Write-Event-Migration korrigieren | Codex/root | completed | 2026-08-26T20:07:49Z |
 | Loopback-only Cognee-Endpunkt fuer Plesk und dateibasierte Service-Key-Anbindung | Codex/root | completed | 2026-08-27T03:04:50Z |
+| Cognee auf Plesk ueber angemeldete Chrome-Sitzung live bereitstellen | Codex/root + operator | pending-provider-and-runtime-confirmation | 2026-08-27T03:40:00Z |
