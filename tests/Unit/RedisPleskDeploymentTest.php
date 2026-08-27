@@ -6,6 +6,32 @@ use PHPUnit\Framework\TestCase;
 
 class RedisPleskDeploymentTest extends TestCase
 {
+    public function test_deployment_shell_scripts_are_persistently_normalized_to_lf(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $attributes = file_get_contents($root.'/.gitattributes');
+
+        $this->assertIsString($attributes);
+        $this->assertStringContainsString('*.sh text eol=lf', $attributes);
+
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+        );
+        $shellScripts = [];
+        foreach ($files as $file) {
+            if ($file instanceof \SplFileInfo && $file->isFile() && $file->getExtension() === 'sh') {
+                $shellScripts[] = $file->getPathname();
+            }
+        }
+
+        $this->assertNotEmpty($shellScripts);
+        foreach ($shellScripts as $script) {
+            $contents = file_get_contents($script);
+            $this->assertIsString($contents);
+            $this->assertStringNotContainsString("\r", $contents, $script.' must use LF line endings.');
+        }
+    }
+
     public function test_compose_keeps_authenticated_redis_private_and_persistent(): void
     {
         $compose = file_get_contents(dirname(__DIR__, 2).'/docker-compose.plesk-memory.yml');
