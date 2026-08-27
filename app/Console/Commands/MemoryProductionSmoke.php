@@ -471,6 +471,14 @@ final class MemoryProductionSmoke extends Command
         if ($user?->exists) {
             $user->delete();
         }
+        if ($dataset !== null) {
+            // Account erasure deliberately reopens an otherwise completed
+            // Upsert when its provider launch was still in a recoverable
+            // phase. Queue jobs are faked by this command, so finish that
+            // final content-free compensation synchronously as well instead
+            // of leaving it for the five-minute abandoned-queue recovery.
+            $this->driveDatasetProjections($dataset, $projections, $deadline);
+        }
         if ($userId !== null
             && (User::query()->whereKey($userId)->exists()
                 || ApiKey::query()->where('user_id', $userId)->exists()
@@ -480,6 +488,12 @@ final class MemoryProductionSmoke extends Command
             throw new RuntimeException('Synthetic account attribution survived cleanup.');
         }
         if ($dataset !== null) {
+            if (MemoryProjectionOutbox::query()
+                ->where('dataset', $dataset)
+                ->where('status', '!=', 'done')
+                ->exists()) {
+                throw new RuntimeException('Synthetic projection cleanup remained non-terminal.');
+            }
             $containsContent = MemoryProjectionOutbox::query()
                 ->where('dataset', $dataset)
                 ->get(['payload'])
