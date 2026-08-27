@@ -162,12 +162,12 @@ services:
     entrypoint:
       - /bin/sh
       - -ec
-    command: |
-      ollama serve &
-      server_pid=$$!
-      trap 'kill "$$server_pid" 2>/dev/null || true' EXIT INT TERM
-      until OLLAMA_HOST=127.0.0.1:11434 ollama list >/dev/null 2>&1; do sleep 1; done
-      OLLAMA_HOST=127.0.0.1:11434 ollama pull "$${LUCZOR_OLLAMA_LLM_MODEL}"
+      - |
+        ollama serve &
+        server_pid=$$!
+        trap 'kill "$$server_pid" 2>/dev/null || true' EXIT INT TERM
+        until OLLAMA_HOST=127.0.0.1:11434 ollama list >/dev/null 2>&1; do sleep 1; done
+        OLLAMA_HOST=127.0.0.1:11434 ollama pull "$${LUCZOR_OLLAMA_LLM_MODEL}"
     environment:
       OLLAMA_HOST: 127.0.0.1:11434
       LUCZOR_OLLAMA_LLM_MODEL: ${COGNEE_OLLAMA_LLM_MODEL:-llama3.2:3b}

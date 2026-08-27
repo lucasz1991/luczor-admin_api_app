@@ -42,6 +42,7 @@ class CogneeLocalProviderDeploymentTest extends TestCase
 
         $this->assertStringContainsString('ollama-model-bootstrap:', $compose);
         $this->assertStringContainsString('- model-bootstrap', $compose);
+        $this->assertStringContainsString("entrypoint:\n      - /bin/sh\n      - -ec\n      - |", $compose);
         $this->assertStringContainsString('ollama pull "$${LUCZOR_OLLAMA_LLM_MODEL}"', $compose);
         $this->assertStringContainsString('- ollama_models:/root/.ollama', $compose);
         $this->assertStringContainsString('ollama show "$${LUCZOR_OLLAMA_LLM_MODEL}"', $compose);
