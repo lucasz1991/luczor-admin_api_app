@@ -23,6 +23,20 @@ class CogneeLocalProviderDeploymentTest extends TestCase
         $this->assertStringNotContainsString('file: ./docker/secrets/cognee_embedding_api_key', $compose);
     }
 
+    public function test_cognee_stays_internal_behind_a_secret_free_loopback_gateway(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.plesk-memory.yml');
+        $gateway = $this->readProjectFile('docker/nginx/cognee-loopback.conf');
+
+        $this->assertStringContainsString('cognee-loopback:', $compose);
+        $this->assertStringContainsString('127.0.0.1:${COGNEE_HOST_PORT:-8010}:8080', $compose);
+        $this->assertStringContainsString('cap_drop:', $compose);
+        $this->assertStringContainsString('read_only: true', $compose);
+        $this->assertStringContainsString('set $cognee_upstream http://cognee:8000;', $gateway);
+        $this->assertStringContainsString('resolver 127.0.0.11', $gateway);
+        $this->assertStringNotContainsString('proxy_pass $http_', $gateway);
+    }
+
     public function test_ollama_runtime_is_internal_bounded_and_cloud_disabled(): void
     {
         $compose = $this->readProjectFile('docker-compose.plesk-memory.yml');

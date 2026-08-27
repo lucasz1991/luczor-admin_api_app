@@ -22,7 +22,9 @@ class CogneePleskDeploymentTest extends TestCase
         $this->assertIsString($compose);
         $this->assertStringContainsString('context: ./services/cognee', $compose);
         $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:6379', $compose);
-        $this->assertStringContainsString('127.0.0.1:${COGNEE_HOST_PORT:-8010}:8000', $compose);
+        $this->assertStringContainsString('cognee-loopback:', $compose);
+        $this->assertStringContainsString('127.0.0.1:${COGNEE_HOST_PORT:-8010}:8080', $compose);
+        $this->assertStringContainsString('./docker/nginx/cognee-loopback.conf:/etc/nginx/luczor-loopback.conf:ro', $compose);
         $this->assertStringContainsString('internal: true', $compose);
         $this->assertStringContainsString('LLM_PROVIDER: ollama', $compose);
         $this->assertStringContainsString('EMBEDDING_PROVIDER: fastembed', $compose);
@@ -33,6 +35,14 @@ class CogneePleskDeploymentTest extends TestCase
         $this->assertStringNotContainsString('@invalid.local', $compose);
         $this->assertStringNotContainsString('- "0.0.0.0:', $compose);
         $this->assertStringNotContainsString('graph-indexer:', $compose);
+        $this->assertMatchesRegularExpression(
+            '/cognee:\R.*?networks:\R\s+- data\R\s+- inference\R.*?cognee-loopback:/s',
+            $compose,
+        );
+        $this->assertMatchesRegularExpression(
+            '/cognee-loopback:\R.*?networks:\R\s+- data\R\s+- loopback-publish/s',
+            $compose,
+        );
     }
 
     public function test_postgres_wrapper_keeps_the_upstream_server_command(): void

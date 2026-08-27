@@ -82,18 +82,26 @@ Wrappers. Laravel, MySQL, Horizon, Scheduler und Reverb bleiben in der vorhanden
 Plesk-Installation. Der lokale Repository-Graph-Indexer gehört weiterhin ausschließlich
 zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
 
-1. Im Laravel-Anwendungsverzeichnis die Konfiguration prüfen und den Stack starten:
+1. Im Laravel-Anwendungsverzeichnis die Konfiguration prüfen. Bei einer bestehenden
+   Installation den bereits produktiven Redis nicht nochmals aus diesem Stack starten.
+   Die lokalen Cognee-Dienste werden gezielt in Abhaengigkeitsreihenfolge gestartet:
 
    ```bash
    docker compose -f docker-compose.plesk-memory.yml config --quiet
-   docker compose -f docker-compose.plesk-memory.yml up -d --build
+   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps postgres
+   docker compose -f docker-compose.plesk-memory.yml run --rm --no-deps cognee-db-init
+   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps ollama
+   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps cognee
+   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps cognee-loopback
    curl --fail --silent --show-error http://127.0.0.1:8010/openapi.json >/dev/null
    REDISCLI_AUTH="$(cat docker/secrets/redis_password)" \
      redis-cli -h 127.0.0.1 ping
    ```
 
    `COGNEE_HOST_PORT` und `REDIS_HOST_PORT` dürfen die Loopback-Ports ändern. Die
-   Compose-Datei bindet unabhängig davon immer nur an `127.0.0.1`. Wird bereits ein
+   Compose-Datei bindet unabhängig davon immer nur an `127.0.0.1`. Cognee selbst bleibt
+   in internen Netzen; nur der geheimnisfreie nginx-Gateway besitzt die fuer Docker
+   notwendige Publish-Bridge und leitet fest an Cognee weiter. Wird bereits ein
    produktiver Host-Redis betrieben, muss dessen Betrieb bewusst übernommen und der
    Redis-Dienst aus diesem Stack entfernt werden; niemals zwei Prozesse an Port 6379
    konkurrieren lassen.
@@ -108,7 +116,10 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    Das Skript gibt den Key nicht aus und schreibt ihn nur in die lokale Secret-Datei:
 
    ```bash
-   sh ./docker/provision-cognee.sh
+   app_root=/var/www/vhosts/follow-flow.de/luczor.follow-flow.de
+   sh ./docker/provision-cognee.sh \
+     "$app_root/.env.docker" \
+     "$app_root/docker-compose.plesk-memory.yml"
    ```
 
 3. Den Key ohne Ausgabe in Laravels geschützten Storage kopieren. Besitzer und Gruppe

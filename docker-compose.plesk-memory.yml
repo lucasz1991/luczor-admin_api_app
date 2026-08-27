@@ -236,8 +236,6 @@ services:
       - cognee_reset_secret
     volumes:
       - cognee_data:/data
-    ports:
-      - "127.0.0.1:${COGNEE_HOST_PORT:-8010}:8000"
     depends_on:
       cognee-db-init:
         condition: service_completed_successfully
@@ -262,6 +260,49 @@ services:
     pids_limit: 512
     mem_limit: ${LUCZOR_COGNEE_MEMORY_LIMIT:-4g}
     cpus: ${LUCZOR_COGNEE_CPU_LIMIT:-2.0}
+
+  # Docker does not publish ports for containers attached exclusively to
+  # internal networks. Keep Cognee itself isolated and expose it through this
+  # secret-free, fixed-upstream gateway bound only to the host loopback.
+  cognee-loopback:
+    image: nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    user: "101:101"
+    entrypoint:
+      - nginx
+    command:
+      - -c
+      - /etc/nginx/luczor-loopback.conf
+      - -g
+      - daemon off;
+    volumes:
+      - ./docker/nginx/cognee-loopback.conf:/etc/nginx/luczor-loopback.conf:ro
+    ports:
+      - "127.0.0.1:${COGNEE_HOST_PORT:-8010}:8080"
+    depends_on:
+      cognee:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:8080/openapi.json
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - data
+      - loopback-publish
+    logging: *luczor-logging
+    pids_limit: 64
+    mem_limit: ${LUCZOR_COGNEE_LOOPBACK_MEMORY_LIMIT:-64m}
+    cpus: ${LUCZOR_COGNEE_LOOPBACK_CPU_LIMIT:-0.25}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
 
 secrets:
   redis_password:
@@ -292,3 +333,7 @@ networks:
   inference:
     internal: true
   model-bootstrap:
+  # Only this secret-free gateway uses a regular bridge so Docker can publish
+  # its port. Its nginx configuration can connect solely to the fixed Cognee
+  # upstream; Cognee, Ollama and PostgreSQL remain on internal networks.
+  loopback-publish:
