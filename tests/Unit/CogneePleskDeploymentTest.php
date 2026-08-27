@@ -29,6 +29,8 @@ class CogneePleskDeploymentTest extends TestCase
         $this->assertStringContainsString('cognee-db-init:', $compose);
         $this->assertStringContainsString('POSTGRES_ADMIN_USER:', $compose);
         $this->assertStringContainsString('GRAPH_DATABASE_PROVIDER: kuzu', $compose);
+        $this->assertStringContainsString('DEFAULT_USER_EMAIL: cognee-service@luczor.follow-flow.de', $compose);
+        $this->assertStringNotContainsString('@invalid.local', $compose);
         $this->assertStringNotContainsString('- "0.0.0.0:', $compose);
         $this->assertStringNotContainsString('graph-indexer:', $compose);
     }
@@ -55,5 +57,7 @@ class CogneePleskDeploymentTest extends TestCase
         $this->assertStringNotContainsString('echo "$api_key"', $script);
         $this->assertStringContainsString('docker-compose.plesk-memory.yml', $script);
         $this->assertStringContainsString('compose_exec exec -T cognee', $script);
+        $this->assertStringContainsString('cognee-service@luczor.follow-flow.de', $script);
+        $this->assertStringNotContainsString('@invalid.local', $script);
     }
 }

@@ -45,7 +45,7 @@ import urllib.parse
 import urllib.request
 
 base_url = "http://127.0.0.1:8000"
-email = "luczor-cognee@invalid.local"
+email = "cognee-service@luczor.follow-flow.de"
 with open("/run/secrets/cognee_default_password", encoding="utf-8") as handle:
     password = handle.read().strip()
 if not password:
