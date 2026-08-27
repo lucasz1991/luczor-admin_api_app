@@ -52,3 +52,23 @@ Record durable decisions with date, context, decision, and consequences.
 - Laravel unter Plesk verwendet `http://127.0.0.1:8010`; Cognee wird weder an eine externe Hostadresse noch an die oeffentliche Laravel-Domain gebunden.
 - `COGNEE_API_KEY_FILE` hat Vorrang vor dem direkten ENV-Wert und scheitert bei relativen, fehlenden, leeren oder unlesbaren Dateien fail closed.
 - Der read-only `luczor:cognee-check` ersetzt nicht den Add-/Cognify-/Search-/Forget-Produktpfad-Smoke.
+
+## 2026-08-27 | Redis bleibt host-lokal, dateibasiert authentisiert und kernelgeprueft
+
+- Plesk-Redis wird ausschließlich an `127.0.0.1` veröffentlicht und behält seine AOF-Daten im expliziten Host-Verzeichnis `/var/lib/luczor/redis`; ein zweiter Prozess darf Port 6379 nie parallel übernehmen.
+- Der Container liest ein mindestens 32 Zeichen langes Docker-Secret in eine nur im tmpfs liegende Konfigurationsdatei. Das Passwort erscheint weder in Compose noch im `redis-server`-Prozessargument.
+- Host-Laravel verwendet bevorzugt einen absoluten `REDIS_PASSWORD_FILE`. Der Wert wird nach dem Laden des Config-Caches nur in die Laufzeitkonfiguration injiziert; beim Cache-Bau wird die Datei validiert, aber der Wert nicht serialisiert.
+- Der statische Production-Gate verlangt Redis-Authentisierung und Loopback. Der volle Runtime-Gate verlangt zusätzlich den von Redis empfohlenen Linux-Hostwert `vm.overcommit_memory=1`.
+
+## 2026-08-27 | Der Plesk-Cognee-Runtimepfad verwendet nur lokale Modellprovider
+
+- Der eigenstaendige Plesk-Memory-Stack setzt Cognee fest auf Ollama `llama3.2:3b` und FastEmbed mit `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 Dimensionen). Providerwahl per ENV ist in diesem Produktionspfad bewusst ausgeschlossen.
+- Cognee und der Ollama-Runtime-Dienst besitzen ausschliesslich interne Docker-Netze. Ollama wird nicht am Host veroeffentlicht und startet mit `OLLAMA_NO_CLOUD=1`, genau einem geladenen Modell und genau einer parallelen Anfrage.
+- Registry-Egress ist auf den expliziten, standardmaessig deaktivierten `model-bootstrap`-Dienst begrenzt. FastEmbed wird beim Image-Build geladen und zur Laufzeit durch Offline-Schalter aus dem Image-Cache bezogen.
+- Ollamas formal erforderlicher API-Key-Wert wird aus dem lokalen Providernamen abgeleitet und ist kein Credential. Nichtlokale Providerpfade im gemeinsam genutzten Entry-Point verlangen weiterhin ihre Docker-Secrets fail closed.
+
+## 2026-08-27 | Das Admin-Dashboard trennt Lagebild und direkte Konfiguration
+
+- Der erste Viewport zeigt reale Betriebsdaten und priorisierte Zugaenge; tiefe Verwaltungsformulare liegen weiterhin auf derselben autorisierten Dashboard-Route, aber in fuenf nativen, einzeln aufklappbaren Werkzeuggruppen.
+- Ein Validierungsfehler oeffnet nur die absendende Werkzeuggruppe. Der UI-only Marker `_dashboard_tool_group` wird strikt gegen bekannte Werte verglichen und von keiner Store-Aktion persistiert.
+- Die Darstellung bleibt framework-nativ mit Blade, Tailwind und einer eigenen flachen Dashboard-CSS-Schicht. Keine neue Frontend-Abhaengigkeit wurde eingefuehrt; reduzierte Bewegung, Tastaturfokus und mobile Touchziele sind Teil des Vertrags.

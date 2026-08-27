@@ -1,22 +1,25 @@
 <x-app-layout>
-    <div class="mb-8">
-        <h1 class="text-2xl font-semibold text-white">{{ $isAdmin ? 'Luczor Admin Control' : 'Mein Luczor' }}</h1>
-        <p class="mt-2 text-sm text-slate-400">{{ $isAdmin ? 'Provider, Routing, Telemetrie, Policies und Systembetrieb.' : 'Geräte, Projekte, Memory und sichere Cloud-Verbindung.' }}</p>
-    </div>
+    <div data-dashboard-role="{{ $isAdmin ? 'admin' : 'customer' }}" @class(['admin-command-center' => $isAdmin])>
+    @unless ($isAdmin)
+        <div class="mb-8">
+            <h1 class="text-2xl font-semibold text-white">Mein Luczor</h1>
+            <p class="mt-2 text-sm text-slate-400">Geräte, Projekte, Memory und sichere Cloud-Verbindung.</p>
+        </div>
+    @endunless
 
     @if (session('status'))
-        <div class="mb-6 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100">{{ session('status') }}</div>
+        <div class="mb-6 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100" role="status">{{ session('status') }}</div>
     @endif
 
     @if (session('plain_api_key'))
-        <div class="mb-6 rounded-md border border-cyan-400/30 bg-cyan-400/10 p-4">
+        <div class="mb-6 rounded-md border border-cyan-400/30 bg-cyan-400/10 p-4" role="status" data-dashboard-api-key-reveal>
             <div class="text-sm font-semibold text-cyan-100">Neuer API Key, nur jetzt sichtbar:</div>
             <code class="mt-2 block break-all rounded bg-slate-950 p-3 text-sm text-cyan-200">{{ session('plain_api_key') }}</code>
         </div>
     @endif
 
     @if ($errors->any())
-        <div class="mb-6 rounded-md border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">
+        <div class="mb-6 rounded-md border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100" role="alert">
             <ul class="list-disc pl-5">
                 @foreach ($errors->all() as $error)
                     <li>{{ $error }}</li>
@@ -150,15 +153,41 @@
             </form>
         </section>
     @else
+        @php($openAdminToolGroup = $errors->any() ? old('_dashboard_tool_group') : null)
 
-    <section id="overview" class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        @foreach ($operations as $label => $count)
-            <div class="luczor-card p-4">
-                <div class="text-xs uppercase tracking-wider text-slate-500">{{ str_replace('_', ' ', $label) }}</div>
-                <div class="mt-2 text-2xl font-semibold text-cyan-100">{{ $count }}</div>
-            </div>
-        @endforeach
-    </section>
+        @include('dashboard.partials.admin-command-center')
+
+        <section class="admin-dashboard-advanced" aria-labelledby="advanced-dashboard-title" data-dashboard-reveal>
+            <details data-dashboard-action="advanced-configuration" @if($errors->any()) open @endif>
+                <summary>
+                    <span class="admin-dashboard-advanced__summary-copy">
+                        <span class="admin-command-center__section-kicker">Direkte Konfiguration</span>
+                        <strong id="advanced-dashboard-title">Alle Verwaltungswerkzeuge</strong>
+                        <small>Provider, Modelle, Geräte, Policies und Server-Defaults direkt bearbeiten.</small>
+                    </span>
+                    <span class="admin-dashboard-advanced__summary-action">
+                        <span class="is-closed">Öffnen</span>
+                        <span class="is-open">Schließen</span>
+                        @include('layouts.partials.icon', ['name' => 'chevron-down', 'class' => ''])
+                    </span>
+                </summary>
+
+                <div class="admin-dashboard-advanced__body">
+                    <div class="admin-dashboard-tool-groups">
+                        <details class="admin-dashboard-tool-group" data-dashboard-action="operations-tools" @if($openAdminToolGroup === 'operations') open @endif>
+                            <summary>
+                                <span class="admin-dashboard-tool-group__copy">
+                                    <span>01 / Betrieb</span>
+                                    <strong>Betrieb & Telemetrie</strong>
+                                    <small>Geräte diagnostizieren, Modellläufe auswerten und Archive prüfen.</small>
+                                </span>
+                                <span class="admin-dashboard-tool-group__action">
+                                    <span class="is-closed">Öffnen</span>
+                                    <span class="is-open">Schließen</span>
+                                    @include('layouts.partials.icon', ['name' => 'chevron-down', 'class' => ''])
+                                </span>
+                            </summary>
+                            <div class="admin-dashboard-tool-group__body">
 
     <section id="devices" class="mt-8 luczor-card p-5">
         <div class="flex flex-wrap items-end justify-between gap-3">
@@ -173,7 +202,7 @@
                         <span class="text-xs {{ $device->status === 'online' ? 'text-emerald-300' : 'text-slate-500' }}">{{ $device->status }}</span>
                     </div>
                     <div class="mt-3 flex flex-wrap gap-2">
-                        <form method="POST" action="{{ route('dashboard.devices.debug.request', $device) }}">@csrf<button class="luczor-btn-secondary">Debug anfordern</button></form>
+                        <form method="POST" action="{{ route('dashboard.devices.debug.request', $device) }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="operations"><button class="luczor-btn-secondary">Debug anfordern</button></form>
                         <span class="text-xs text-slate-500">zuletzt {{ optional($device->last_seen_at)->diffForHumans() ?: 'unbekannt' }}</span>
                     </div>
                 </div>
@@ -183,7 +212,7 @@
         </div>
         <div class="mt-5 overflow-x-auto"><table class="min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th class="py-2">Zeit</th><th>Gerät</th><th>Status</th><th></th></tr></thead><tbody class="divide-y divide-slate-900">
             @forelse($debugRequests as $debug)
-                <tr><td class="py-2">{{ optional($debug->requested_at)->format('d.m.Y H:i') }}</td><td class="font-mono text-cyan-200">{{ $debug->device?->device_id }}</td><td class="{{ $debug->status === 'completed' ? 'text-emerald-300' : ($debug->status === 'failed' ? 'text-rose-300' : 'text-amber-300') }}">{{ $debug->status }}</td><td>@if($debug->status === 'completed')<a class="text-cyan-200 hover:text-white" href="{{ route('dashboard.devices.debug.download', $debug) }}">Download</a>@endif</td></tr>
+                <tr><td class="py-2">{{ optional($debug->requested_at)->format('d.m.Y H:i') }}</td><td class="font-mono text-cyan-200">{{ $debug->device?->device_id }}</td><td class="{{ $debug->status === 'completed' ? 'text-emerald-300' : ($debug->status === 'failed' ? 'text-rose-300' : 'text-amber-300') }}">{{ $debug->status }}</td><td>@if($debug->status === 'completed')<a class="admin-dashboard-debug-download text-cyan-200 hover:text-white" href="{{ route('dashboard.devices.debug.download', $debug) }}">Download</a>@endif</td></tr>
             @empty
                 <tr><td colspan="4" class="py-4 text-slate-500">Noch keine Debug-Anforderungen.</td></tr>
             @endforelse
@@ -238,12 +267,31 @@
         @endforeach
     </section>
 
+                            </div>
+                        </details>
+
+                        <details class="admin-dashboard-tool-group" data-dashboard-action="access-tools" @if($openAdminToolGroup === 'access') open @endif>
+                            <summary>
+                                <span class="admin-dashboard-tool-group__copy">
+                                    <span>02 / Infrastruktur</span>
+                                    <strong>Server, Keys & Provider</strong>
+                                    <small>Server-Defaults, Gerätezugänge, Credentials und Preise verwalten.</small>
+                                </span>
+                                <span class="admin-dashboard-tool-group__action">
+                                    <span class="is-closed">Öffnen</span>
+                                    <span class="is-open">Schließen</span>
+                                    @include('layouts.partials.icon', ['name' => 'chevron-down', 'class' => ''])
+                                </span>
+                            </summary>
+                            <div class="admin-dashboard-tool-group__body">
+
     <section id="settings" class="mt-8">
         <div class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Client-Einstellungen (Server-Defaults)</h2>
             <p class="mt-1 text-sm text-slate-400">Werden an die Desktop-App ausgeliefert (<code class="text-cyan-200">/api/v1/runtime-settings</code>).</p>
             <form class="mt-4" method="POST" action="{{ route('dashboard.settings.store') }}">
                 @csrf
+                <input type="hidden" name="_dashboard_tool_group" value="access">
                 <div class="grid gap-3 md:grid-cols-2">
                     @foreach ($settings as $setting)
                         <div class="rounded border border-slate-800 bg-slate-950/50 px-3 py-2">
@@ -251,13 +299,13 @@
                             <div class="mt-2">
                                 @if ($setting->type === 'bool')
                                     <label class="flex items-center gap-2 text-sm text-slate-300">
-                                        <input type="checkbox" class="rounded border-slate-700 bg-slate-950 text-cyan-400" name="settings[{{ $setting->key }}]" value="1" @checked($setting->value['v'] ?? false)>
+                                        <input type="checkbox" class="rounded border-slate-700 bg-slate-950 text-cyan-400" name="settings[{{ $setting->key }}]" value="1" aria-label="{{ $setting->label ?? $setting->key }} aktiviert" @checked($setting->value['v'] ?? false)>
                                         aktiviert
                                     </label>
                                 @elseif ($setting->type === 'number')
-                                    <input type="number" step="any" class="luczor-input" name="settings[{{ $setting->key }}]" value="{{ $setting->value['v'] ?? 0 }}">
+                                    <input type="number" step="any" class="luczor-input" name="settings[{{ $setting->key }}]" value="{{ $setting->value['v'] ?? 0 }}" aria-label="{{ $setting->label ?? $setting->key }}">
                                 @else
-                                    <input type="text" class="luczor-input" name="settings[{{ $setting->key }}]" value="{{ $setting->value['v'] ?? '' }}">
+                                    <input type="text" class="luczor-input" name="settings[{{ $setting->key }}]" value="{{ $setting->value['v'] ?? '' }}" aria-label="{{ $setting->label ?? $setting->key }}">
                                 @endif
                             </div>
                         </div>
@@ -273,12 +321,13 @@
             <h2 class="text-lg font-semibold text-white">Device API Key erstellen</h2>
             <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.api-keys.store') }}">
                 @csrf
-                <input class="luczor-input" name="name" placeholder="Name, z.B. Desktop LZ" required>
+                <input type="hidden" name="_dashboard_tool_group" value="access">
+                <input class="luczor-input" name="name" placeholder="Name, z.B. Desktop LZ" aria-label="Name des API-Schlüssels" required>
                 <div class="grid gap-3 md:grid-cols-2">
-                    <input class="luczor-input" name="device_id" placeholder="Device ID optional">
-                    <input class="luczor-input" name="device_name" placeholder="Device Name optional">
+                    <input class="luczor-input" name="device_id" placeholder="Device ID optional" aria-label="Optionale Geräte-ID">
+                    <input class="luczor-input" name="device_name" placeholder="Device Name optional" aria-label="Optionaler Gerätename">
                 </div>
-                <input class="luczor-input" name="expires_at" type="datetime-local">
+                <input class="luczor-input" name="expires_at" type="datetime-local" aria-label="Ablaufzeitpunkt des API-Schlüssels">
                 <div class="grid gap-2 md:grid-cols-2">
                     @foreach ($abilities as $ability)
                         <label class="flex items-center gap-2 rounded border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-200">
@@ -295,12 +344,13 @@
             <h2 class="text-lg font-semibold text-white">Provider Credential</h2>
             <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.provider-credentials.store') }}">
                 @csrf
+                <input type="hidden" name="_dashboard_tool_group" value="access">
                 <div class="grid gap-3 md:grid-cols-2">
-                    <input class="luczor-input" name="provider" placeholder="openrouter, elevenlabs, ..." required>
-                    <input class="luczor-input" name="label" placeholder="Label" required>
+                    <input class="luczor-input" name="provider" placeholder="openrouter, elevenlabs, ..." aria-label="Provider-Kennung" required>
+                    <input class="luczor-input" name="label" placeholder="Label" aria-label="Anzeigename des Provider-Credentials" required>
                 </div>
-                <input class="luczor-input" name="api_key" placeholder="API Key wird verschluesselt gespeichert" required>
-                <input class="luczor-input" name="base_url" placeholder="Base URL optional">
+                <input class="luczor-input" name="api_key" placeholder="API Key wird verschluesselt gespeichert" aria-label="Provider API-Schlüssel" required>
+                <input class="luczor-input" name="base_url" placeholder="Base URL optional" aria-label="Optionale Provider-Basis-URL">
                 <button class="luczor-btn" type="submit">Credential speichern</button>
             </form>
         </div>
@@ -310,17 +360,35 @@
         <div class="luczor-card p-5">
             <h2 class="text-lg font-semibold text-white">Provider-Preissnapshot</h2>
             <p class="mt-1 text-sm text-slate-400">Fallback, falls der Provider keine Kosten meldet. Historische Läufe behalten ihren Snapshot.</p>
-            <form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.provider-prices.store') }}">@csrf
-                <input class="luczor-input" name="provider_id" value="openrouter" required><input class="luczor-input" name="model_id" placeholder="provider/model-id" required>
-                <input class="luczor-input" name="input_per_million" type="number" min="0" step="0.00000001" placeholder="Input $ / 1M" required><input class="luczor-input" name="output_per_million" type="number" min="0" step="0.00000001" placeholder="Output $ / 1M" required>
-                <input class="luczor-input" name="cache_read_per_million" type="number" min="0" step="0.00000001" placeholder="Cache read $ / 1M"><input class="luczor-input" name="cache_write_per_million" type="number" min="0" step="0.00000001" placeholder="Cache write $ / 1M">
-                <input type="hidden" name="currency" value="USD"><input class="luczor-input" name="valid_from" type="datetime-local" value="{{ now()->format('Y-m-d\TH:i') }}" required>
+            <form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.provider-prices.store') }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="access">
+                <input class="luczor-input" name="provider_id" value="openrouter" aria-label="Provider-Kennung für den Preis" required><input class="luczor-input" name="model_id" placeholder="provider/model-id" aria-label="Modell-ID für den Preis" required>
+                <input class="luczor-input" name="input_per_million" type="number" min="0" step="0.00000001" placeholder="Input $ / 1M" aria-label="Input-Kosten pro Million Tokens" required><input class="luczor-input" name="output_per_million" type="number" min="0" step="0.00000001" placeholder="Output $ / 1M" aria-label="Output-Kosten pro Million Tokens" required>
+                <input class="luczor-input" name="cache_read_per_million" type="number" min="0" step="0.00000001" placeholder="Cache read $ / 1M" aria-label="Cache-Lesekosten pro Million Tokens"><input class="luczor-input" name="cache_write_per_million" type="number" min="0" step="0.00000001" placeholder="Cache write $ / 1M" aria-label="Cache-Schreibkosten pro Million Tokens">
+                <input type="hidden" name="currency" value="USD"><input class="luczor-input" name="valid_from" type="datetime-local" value="{{ now()->format('Y-m-d\TH:i') }}" aria-label="Gültig ab" required>
                 <button class="luczor-btn" type="submit">Preisversion speichern</button>
             </form>
             <div class="mt-4 space-y-2">@foreach($providerPrices->take(10) as $price)<div class="rounded border border-slate-800 p-2 text-xs"><span class="font-mono text-cyan-200">{{ $price->model_id }}</span><span class="ml-2 text-slate-500">in ${{ $price->input_per_million }} · out ${{ $price->output_per_million }} / 1M · ab {{ $price->valid_from }}</span></div>@endforeach</div>
         </div>
-        <div class="luczor-card p-5"><h2 class="text-lg font-semibold text-white">Provider-Status</h2><div class="mt-4 space-y-3">@forelse($providers as $provider)<div class="flex items-center justify-between rounded border border-slate-800 bg-slate-950/50 p-3 text-sm"><div><b>{{ $provider->label }}</b><div class="text-slate-500">{{ $provider->provider }} · {{ $provider->maskedKey() }}</div></div><form method="POST" action="{{ route('dashboard.provider-credentials.toggle', $provider) }}">@csrf<button class="luczor-btn-secondary">{{ $provider->active ? 'Deaktivieren' : 'Aktivieren' }}</button></form></div>@empty<p class="text-slate-500">Keine Provider.</p>@endforelse</div></div>
+        <div class="luczor-card p-5"><h2 class="text-lg font-semibold text-white">Provider-Status</h2><div class="mt-4 space-y-3">@forelse($providers as $provider)<div class="flex items-center justify-between rounded border border-slate-800 bg-slate-950/50 p-3 text-sm"><div><b>{{ $provider->label }}</b><div class="text-slate-500">{{ $provider->provider }} · {{ $provider->maskedKey() }}</div></div><form method="POST" action="{{ route('dashboard.provider-credentials.toggle', $provider) }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="access"><button class="luczor-btn-secondary">{{ $provider->active ? 'Deaktivieren' : 'Aktivieren' }}</button></form></div>@empty<p class="text-slate-500">Keine Provider.</p>@endforelse</div></div>
     </section>
+
+                            </div>
+                        </details>
+
+                        <details class="admin-dashboard-tool-group" data-dashboard-action="routing-tools" @if($openAdminToolGroup === 'routing') open @endif>
+                            <summary>
+                                <span class="admin-dashboard-tool-group__copy">
+                                    <span>03 / Routing</span>
+                                    <strong>Modelle & Fallbacks</strong>
+                                    <small>Profile, Use-Cases und Fallback-Reihenfolgen konfigurieren.</small>
+                                </span>
+                                <span class="admin-dashboard-tool-group__action">
+                                    <span class="is-closed">Öffnen</span>
+                                    <span class="is-open">Schließen</span>
+                                    @include('layouts.partials.icon', ['name' => 'chevron-down', 'class' => ''])
+                                </span>
+                            </summary>
+                            <div class="admin-dashboard-tool-group__body">
 
     <section id="models" class="mt-8 grid gap-6 lg:grid-cols-2">
         <div class="luczor-card p-5">
@@ -328,15 +396,16 @@
             <p class="mt-1 text-sm text-slate-400">Diese Profile werden pro Use-Case in Fallback-Reihenfolge zusammengestellt.</p>
             <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.model-profiles.store') }}">
                 @csrf
-                <input class="luczor-input" name="name" placeholder="Name, z.B. Planner Fast" required>
+                <input type="hidden" name="_dashboard_tool_group" value="routing">
+                <input class="luczor-input" name="name" placeholder="Name, z.B. Planner Fast" aria-label="Name des Modellprofils" required>
                 <div class="grid gap-3 md:grid-cols-2">
-                    <input class="luczor-input" name="provider" placeholder="Provider" required>
-                    <input class="luczor-input" name="model_id" placeholder="Model ID" required>
+                    <input class="luczor-input" name="provider" placeholder="Provider" aria-label="Provider des Modellprofils" required>
+                    <input class="luczor-input" name="model_id" placeholder="Model ID" aria-label="Modell-ID" required>
                 </div>
                 <div class="grid gap-3 md:grid-cols-3">
-                    <input class="luczor-input" name="temperature" type="number" min="0" max="2" step="0.01" value="0.20" required>
-                    <input class="luczor-input" name="max_tokens" type="number" min="1" value="1200" required>
-                    <input class="luczor-input" name="purpose" placeholder="Zweck">
+                    <input class="luczor-input" name="temperature" type="number" min="0" max="2" step="0.01" value="0.20" aria-label="Temperatur" required>
+                    <input class="luczor-input" name="max_tokens" type="number" min="1" value="1200" aria-label="Maximale Ausgabe-Tokens" required>
+                    <input class="luczor-input" name="purpose" placeholder="Zweck" aria-label="Zweck des Modellprofils">
                 </div>
                 <button class="luczor-btn" type="submit">Modellprofil speichern</button>
             </form>
@@ -347,8 +416,9 @@
             <p class="mt-1 text-sm text-slate-400">Jeder Fall bekommt danach eine eigene Modellkette.</p>
             <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.model-use-cases.store') }}">
                 @csrf
-                <input class="luczor-input" name="name" placeholder="z.B. Browser Agent, Vision, TTS" required>
-                <textarea class="luczor-input" name="description" rows="3" placeholder="Beschreibung optional"></textarea>
+                <input type="hidden" name="_dashboard_tool_group" value="routing">
+                <input class="luczor-input" name="name" placeholder="z.B. Browser Agent, Vision, TTS" aria-label="Name des Use-Cases" required>
+                <textarea class="luczor-input" name="description" rows="3" placeholder="Beschreibung optional" aria-label="Optionale Beschreibung des Use-Cases"></textarea>
                 <button class="luczor-btn" type="submit">Use-Case speichern</button>
             </form>
         </div>
@@ -360,19 +430,20 @@
 
         <form class="mt-4 grid gap-3 md:grid-cols-4" method="POST" action="{{ route('dashboard.model-use-case-entries.store') }}">
             @csrf
-            <select class="luczor-input" name="model_use_case_id" required>
+            <input type="hidden" name="_dashboard_tool_group" value="routing">
+            <select class="luczor-input" name="model_use_case_id" aria-label="Use-Case" required>
                 <option value="">Use-Case</option>
                 @foreach ($modelUseCases as $useCase)
                     <option value="{{ $useCase->id }}">{{ $useCase->slug }}</option>
                 @endforeach
             </select>
-            <select class="luczor-input" name="model_profile_id" required>
+            <select class="luczor-input" name="model_profile_id" aria-label="Modellprofil" required>
                 <option value="">Modellprofil</option>
                 @foreach ($modelProfiles as $profile)
                     <option value="{{ $profile->id }}">{{ $profile->name }} / {{ $profile->model_id }}</option>
                 @endforeach
             </select>
-            <input class="luczor-input" name="sort_order" type="number" min="1" value="1" required>
+            <input class="luczor-input" name="sort_order" type="number" min="1" value="1" aria-label="Fallback-Sortierung" required>
             <button class="luczor-btn mt-1" type="submit">Fallback setzen</button>
         </form>
 
@@ -405,24 +476,44 @@
         </div>
     </section>
 
+    <section class="mt-8 luczor-card p-5"><h2 class="font-semibold text-white">Aktive Modellprofile (nur Admin)</h2><div class="mt-4 grid gap-3 lg:grid-cols-2">@foreach($modelProfiles as $profile)<div class="flex items-center justify-between rounded border border-slate-800 bg-slate-950/50 p-3 text-sm"><div><b class="text-cyan-100">{{ $profile->name }}</b><div class="font-mono text-xs text-slate-500">{{ $profile->model_id }} · {{ $profile->purpose }}</div></div><form method="POST" action="{{ route('dashboard.model-profiles.toggle', $profile) }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="routing"><button class="luczor-btn-secondary">{{ $profile->active ? 'Deaktivieren' : 'Aktivieren' }}</button></form></div>@endforeach</div></section>
+
+                            </div>
+                        </details>
+
+                        <details class="admin-dashboard-tool-group" data-dashboard-action="optimizer-tools" @if($openAdminToolGroup === 'optimizer') open @endif>
+                            <summary>
+                                <span class="admin-dashboard-tool-group__copy">
+                                    <span>04 / Optimierung</span>
+                                    <strong>Prompt, Policies & Experimente</strong>
+                                    <small>Kontext, Kostenlimits und kontrollierte Modellversuche festlegen.</small>
+                                </span>
+                                <span class="admin-dashboard-tool-group__action">
+                                    <span class="is-closed">Öffnen</span>
+                                    <span class="is-open">Schließen</span>
+                                    @include('layouts.partials.icon', ['name' => 'chevron-down', 'class' => ''])
+                                </span>
+                            </summary>
+                            <div class="admin-dashboard-tool-group__body">
+
     <section id="optimizer" class="mt-8 grid gap-6 xl:grid-cols-3">
-        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Prompt-Version</h2><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.prompt-templates.store') }}">@csrf<input class="luczor-input" name="key" placeholder="luczor.coding" required><input class="luczor-input" name="task_type" placeholder="coding.fix_bug"><textarea class="luczor-input" name="body" rows="6" placeholder="System-/Prompt-Template" required></textarea><button class="luczor-btn">Neue Version</button></form><div class="mt-4 text-xs text-slate-500">{{ $promptTemplates->count() }} Versionen gespeichert</div></div>
-        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Kontextstrategie</h2><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.context-strategies.store') }}">@csrf<input class="luczor-input" name="key" value="context.memory_code_budgeted" required><input class="luczor-input" name="name" value="Memory + Code budgetiert" required><textarea class="luczor-input font-mono text-xs" name="config" rows="6" required>{"git_tokens":250,"graph_tokens":1000,"memory_tokens":600,"raw_file_tokens":3500,"deduplicate":true}</textarea><button class="luczor-btn">Strategie speichern</button></form></div>
-        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Netzwerk-/Kostenpolicy</h2><form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.network-policies.store') }}">@csrf<input class="luczor-input md:col-span-2" name="key" value="proxy.openrouter.default" required><input class="luczor-input md:col-span-2" name="name" value="OpenRouter Default" required><input class="luczor-input" name="connect_timeout_ms" type="number" value="10000" required><input class="luczor-input" name="request_timeout_ms" type="number" value="90000" required><input class="luczor-input" name="max_attempts" type="number" value="3" required><input class="luczor-input" name="backoff_ms" type="number" value="250" required><input class="luczor-input" name="max_cost_usd" type="number" step="0.000001" placeholder="Max $ / Run"><input class="luczor-input" name="max_input_tokens" type="number" value="24000" placeholder="Max Input"><input class="luczor-input" name="max_output_tokens" type="number" value="8192"><button class="luczor-btn">Policy speichern</button></form></div>
+        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Prompt-Version</h2><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.prompt-templates.store') }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="optimizer"><input class="luczor-input" name="key" placeholder="luczor.coding" aria-label="Schlüssel der Prompt-Version" required><input class="luczor-input" name="task_type" placeholder="coding.fix_bug" aria-label="Optionaler Aufgabentyp"><textarea class="luczor-input" name="body" rows="6" placeholder="System-/Prompt-Template" aria-label="Prompt-Text" required></textarea><button class="luczor-btn">Neue Version</button></form><div class="mt-4 text-xs text-slate-500">{{ $promptTemplates->count() }} Versionen gespeichert</div></div>
+        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Kontextstrategie</h2><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.context-strategies.store') }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="optimizer"><input class="luczor-input" name="key" value="context.memory_code_budgeted" aria-label="Schlüssel der Kontextstrategie" required><input class="luczor-input" name="name" value="Memory + Code budgetiert" aria-label="Name der Kontextstrategie" required><textarea class="luczor-input font-mono text-xs" name="config" rows="6" aria-label="JSON-Konfiguration der Kontextstrategie" required>{"git_tokens":250,"graph_tokens":1000,"memory_tokens":600,"raw_file_tokens":3500,"deduplicate":true}</textarea><button class="luczor-btn">Strategie speichern</button></form></div>
+        <div class="luczor-card p-5"><h2 class="font-semibold text-white">Netzwerk-/Kostenpolicy</h2><form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.network-policies.store') }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="optimizer"><input class="luczor-input md:col-span-2" name="key" value="proxy.openrouter.default" aria-label="Schlüssel der Netzwerk-Policy" required><input class="luczor-input md:col-span-2" name="name" value="OpenRouter Default" aria-label="Name der Netzwerk-Policy" required><input class="luczor-input" name="connect_timeout_ms" type="number" value="10000" aria-label="Verbindungs-Timeout in Millisekunden" required><input class="luczor-input" name="request_timeout_ms" type="number" value="90000" aria-label="Anfrage-Timeout in Millisekunden" required><input class="luczor-input" name="max_attempts" type="number" value="3" aria-label="Maximale Versuche" required><input class="luczor-input" name="backoff_ms" type="number" value="250" aria-label="Wartezeit zwischen Versuchen in Millisekunden" required><input class="luczor-input" name="max_cost_usd" type="number" step="0.000001" placeholder="Max $ / Run" aria-label="Maximale Kosten je Lauf in US-Dollar"><input class="luczor-input" name="max_input_tokens" type="number" value="24000" placeholder="Max Input" aria-label="Maximale Eingabe-Tokens"><input class="luczor-input" name="max_output_tokens" type="number" value="8192" aria-label="Maximale Ausgabe-Tokens"><button class="luczor-btn">Policy speichern</button></form></div>
     </section>
 
     <section id="experiments" class="mt-8 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div class="luczor-card p-5">
             <h2 class="font-semibold text-white">A/B-Modellversuch</h2>
             <p class="mt-1 text-xs text-slate-500">Varianten dürfen ausschließlich bereits administrierte Modellprofile referenzieren. Das Routing bleibt serverseitig.</p>
-            <form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.llm-experiments.store') }}">@csrf
-                <input class="luczor-input" name="key" placeholder="coding-fast-v1" required>
-                <input class="luczor-input" name="name" placeholder="Coding: Qualität gegen Kosten" required>
-                <input class="luczor-input" name="task_type" value="coding" required>
-                <select class="luczor-input" name="status"><option value="draft">Entwurf</option><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="completed">Beendet</option></select>
-                <input class="luczor-input" name="traffic_percent" type="number" min="0" max="100" value="10" required>
-                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="variants" rows="4" required>[{"model_profile_slug":"luczor-default","weight":100}]</textarea>
-                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="success_criteria" rows="3">{"quality_min":0.8,"cost_max_usd":0.05,"latency_max_ms":15000}</textarea>
+            <form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.llm-experiments.store') }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="optimizer">
+                <input class="luczor-input" name="key" placeholder="coding-fast-v1" aria-label="Schlüssel des Experiments" required>
+                <input class="luczor-input" name="name" placeholder="Coding: Qualität gegen Kosten" aria-label="Name des Experiments" required>
+                <input class="luczor-input" name="task_type" value="coding" aria-label="Aufgabentyp des Experiments" required>
+                <select class="luczor-input" name="status" aria-label="Status des Experiments"><option value="draft">Entwurf</option><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="completed">Beendet</option></select>
+                <input class="luczor-input" name="traffic_percent" type="number" min="0" max="100" value="10" aria-label="Traffic-Anteil in Prozent" required>
+                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="variants" rows="4" aria-label="JSON-Liste der Modellvarianten" required>[{"model_profile_slug":"luczor-default","weight":100}]</textarea>
+                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="success_criteria" rows="3" aria-label="JSON-Erfolgskriterien">{"quality_min":0.8,"cost_max_usd":0.05,"latency_max_ms":15000}</textarea>
                 <button class="luczor-btn">Experiment speichern</button>
             </form>
         </div>
@@ -441,18 +532,34 @@
         </div>
     </section>
 
-    <section class="mt-8 luczor-card p-5"><h2 class="font-semibold text-white">Aktive Modellprofile (nur Admin)</h2><div class="mt-4 grid gap-3 lg:grid-cols-2">@foreach($modelProfiles as $profile)<div class="flex items-center justify-between rounded border border-slate-800 bg-slate-950/50 p-3 text-sm"><div><b class="text-cyan-100">{{ $profile->name }}</b><div class="font-mono text-xs text-slate-500">{{ $profile->model_id }} · {{ $profile->purpose }}</div></div><form method="POST" action="{{ route('dashboard.model-profiles.toggle', $profile) }}">@csrf<button class="luczor-btn-secondary">{{ $profile->active ? 'Deaktivieren' : 'Aktivieren' }}</button></form></div>@endforeach</div></section>
+                            </div>
+                        </details>
+
+                        <details class="admin-dashboard-tool-group" data-dashboard-action="agent-tools" @if($openAdminToolGroup === 'agents') open @endif>
+                            <summary>
+                                <span class="admin-dashboard-tool-group__copy">
+                                    <span>05 / Orchestrierung</span>
+                                    <strong>Agenten & aktiver Status</strong>
+                                    <small>Agent-Profile sowie aktive API- und Provider-Zugänge prüfen.</small>
+                                </span>
+                                <span class="admin-dashboard-tool-group__action">
+                                    <span class="is-closed">Öffnen</span>
+                                    <span class="is-open">Schließen</span>
+                                    @include('layouts.partials.icon', ['name' => 'chevron-down', 'class' => ''])
+                                </span>
+                            </summary>
+                            <div class="admin-dashboard-tool-group__body">
 
     <section class="mt-8 grid gap-6 xl:grid-cols-[1fr_1.2fr]">
         <div class="luczor-card p-5">
             <h2 class="font-semibold text-white">Agent-Profil</h2>
-            <form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.agent-profiles.store') }}">@csrf
-                <input class="luczor-input" name="key" placeholder="backend" required><input class="luczor-input" name="name" placeholder="Backend Agent" required>
-                <input class="luczor-input" name="type" placeholder="backend" required><select class="luczor-input" name="status"><option value="active">Aktiv</option><option value="draft">Entwurf</option><option value="disabled">Deaktiviert</option></select>
-                <input class="luczor-input md:col-span-2" name="prompt_template_key" value="luczor.system">
-                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="required_sources" rows="2">["graphify","github","cognee"]</textarea>
-                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="capabilities" rows="2">[]</textarea>
-                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="config" rows="2">{"parallel_safe":false}</textarea>
+            <form class="mt-4 grid gap-3 md:grid-cols-2" method="POST" action="{{ route('dashboard.agent-profiles.store') }}">@csrf<input type="hidden" name="_dashboard_tool_group" value="agents">
+                <input class="luczor-input" name="key" placeholder="backend" aria-label="Schlüssel des Agent-Profils" required><input class="luczor-input" name="name" placeholder="Backend Agent" aria-label="Name des Agent-Profils" required>
+                <input class="luczor-input" name="type" placeholder="backend" aria-label="Typ des Agent-Profils" required><select class="luczor-input" name="status" aria-label="Status des Agent-Profils"><option value="active">Aktiv</option><option value="draft">Entwurf</option><option value="disabled">Deaktiviert</option></select>
+                <input class="luczor-input md:col-span-2" name="prompt_template_key" value="luczor.system" aria-label="Schlüssel des Prompt-Templates">
+                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="required_sources" rows="2" aria-label="JSON-Liste benötigter Quellen">["graphify","github","cognee"]</textarea>
+                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="capabilities" rows="2" aria-label="JSON-Liste der Fähigkeiten">[]</textarea>
+                <textarea class="luczor-input font-mono text-xs md:col-span-2" name="config" rows="2" aria-label="JSON-Konfiguration des Agenten">{"parallel_safe":false}</textarea>
                 <button class="luczor-btn">Agent speichern</button>
             </form>
         </div>
@@ -472,6 +579,7 @@
                             </div>
                             <form method="POST" action="{{ route('dashboard.api-keys.toggle', $key) }}">
                                 @csrf
+                                <input type="hidden" name="_dashboard_tool_group" value="agents">
                                 <button class="luczor-btn-secondary" type="submit">{{ $key->active ? 'Deaktivieren' : 'Aktivieren' }}</button>
                             </form>
                         </div>
@@ -498,5 +606,12 @@
             </div>
         </div>
     </section>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </details>
+        </section>
     @endif
+    </div>
 </x-app-layout>

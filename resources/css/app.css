@@ -1,4 +1,5 @@
 @import './shell.css';
+@import './admin-dashboard.css';
 
 @tailwind base;
 @tailwind components;

@@ -127,3 +127,59 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-08-27T03:46:59Z | Codex -> all | status
 
 - Message: Started: OpenAI-unabhaengige lokale Cognee-Konfiguration fuer Plesk
+
+## 2026-08-27T04:06:00Z | Codex/root -> all | handoff
+
+- Task: Redis-Ausfall auf Plesk beheben und OpenAI-Abhaengigkeit der Memory-Pipeline klaeren.
+- Status: Redis completed; local Cognee provider in progress.
+- Live: Offizielles Redis 7.4.11-Image geladen; Container `luczor-redis` privat auf Host-Port 6379, automatischer Neustart, 256-MB-Limit und persistentes Verzeichnis `/var/lib/luczor/redis`.
+- Verified: `php artisan cache:clear` erfolgreich; echter Login-POST liefert normale Credential-Fehlermeldung statt HTTP 500; `optimize:clear` und `luczor:deployment-check --production --configuration-only` vollstaendig gruen.
+- Security: Kein Redis- oder anderer Secret-Wert in `.lmzdev` protokolliert. Redis ist nicht oeffentlich erreichbar. OpenAI wird fuer das Memory-System nicht benoetigt; Cognee soll LLM und Embeddings lokal beziehen.
+- Next: Plesk-Cognee-Compose auf lokale Ollama/FastEmbed-Provider umstellen, Runtime-Egress entfernen und Add/Cognify/Search/Forget unter Ressourcenmessung testen.
+
+## 2026-08-27T04:07:57Z | Codex -> all | status
+
+- Message: Started: Redis password hardening and vm.overcommit_memory repository checks
+
+## 2026-08-27T04:08:02Z | Claude Code -> all | status
+
+- Message: Started: Redis hardening and local Cognee graph memory runtime verification
+
+## 2026-08-27T04:20:50Z | Codex/redis_hardening_repo -> all | handoff
+
+- Task: Repositoryseitige Plesk-Redis-Passwort- und Linux-Host-Haertung.
+- Status: completed-local; live cutover remains with Codex/root.
+- Changed: `docker-compose.plesk-memory.yml`, `docker/redis/entrypoint.sh`, `RedisSecretConfigurator`, `RedisHostKernelInspector`, `AppServiceProvider`, Redis-Konfiguration/Deployment-Gate, `.env.example`, drei Dokumentationen und fokussierte Regressionstests.
+- Security: Redis 7.4.11 bleibt loopback-only und persistent; Passwort nur aus Secret-Datei, nicht im Prozessargument; Config-Cache validiert den Dateipfad, serialisiert den Secretwert nicht; voller Gate verlangt `vm.overcommit_memory=1`.
+- Verified: 357 Laravel-Tests / 2.367 Assertions; PHPStan; Pint; Compose-JSON-Port-/Bind-Mount-Pruefung; `docker compose config --quiet`; POSIX-Shellsyntax; realer Config-Cache-Scan ohne Secretfund.
+- Not run: kein lokaler Docker-Daemon, keine Live-Plesk-/Browsermutation und daher kein echter Container-/NOAUTH-/PONG-/Reboot-Sysctl-Smoke.
+- Next: `docs/redis-plesk.md` im Wartungsmodus ausfuehren, bestehenden direkten Container kontrolliert auf den Compose-Dienst umstellen, Laravel-`REDIS_PASSWORD_FILE` setzen und beide Deployment-Checks sowie Login/Horizon/Reboot testen.
+
+## 2026-08-27T04:25:22Z | Codex -> all | status
+
+- Message: Started: Admin-Dashboard neu strukturieren und visuell verfeinern
+
+## 2026-08-27T04:30:04Z | Codex/deployment_sequence -> all | status
+
+- Message: Started: lokale Cognee-Provider-Variante mit Ollama ohne externe Modell-APIs
+
+## 2026-08-27T04:41:16Z | Codex/deployment_sequence -> all | handoff
+
+- Task: Lokale, ressourcenschonende Cognee-Provider fuer den eigenstaendigen Plesk-Memory-Stack.
+- Status: completed-local; Image-Build und Live-Smoke bleiben operatorseitige Abnahme.
+- Changed: `docker-compose.plesk-memory.yml`, Cognee-Dockerfile/Entry-Point, lokale Ollama-Dokumentation sowie fokussierte Cognee-Tests; zwei bestehende Host-Port-Assertions wurden auf echte Compose-Port-Mappings praezisiert.
+- Runtime: Cognee nutzt fest Ollama `llama3.2:3b` und FastEmbed mit einem 384-dimensionalen multilingualen MiniLM. Cognee und Ollama haengen nur an internen Netzen; Ollama hat keinen Host-Port und Cloud-Funktionen sind abgeschaltet.
+- Bootstrap: Nur das opt-in Profil `model-bootstrap` darf einmalig das Ollama-Modell laden. FastEmbed wird beim Image-Build vorab geladen und im Runtime-Image offline verwendet.
+- Security: Keine externen Modell-API-Keys und keine hardcodierten Zugangsdaten im lokalen Plesk-Pfad; die bestehenden Datenbank- und Cognee-Service-Secrets bleiben dateibasiert.
+- Verified: 46 Cognee-/Memory-/Redis-Regressionstests mit 293 Assertions, Pint, beide Compose-Konfigurationen, aufgeloeste Netzwerkzuordnung, POSIX-Shellsyntax und `git diff --check` bestanden.
+- Not run: Kein Docker-Image-Build, kein Containerstart, keine Plesk-/Browsermutation und kein Add/Cognify/Search/Forget-Live-Smoke.
+
+## 2026-08-27T05:10:31Z | Codex/root -> all | handoff
+
+- Task: Admin-Dashboard der `admin_api_app` neu strukturieren und visuell verfeinern.
+- Status: completed; nicht committed.
+- Changed: neuer operativer Command-Center mit Systemstatus, vier KPIs, realem 14-Tage-Chart, Hinweisleiste, letzten Provider-Versuchen und sechs Modulzugaengen; bestehende Verwaltungsformulare in fuenf native Werkzeuggruppen gegliedert.
+- Compatibility: Alle vorhandenen Formaktionen, CSRF-Tokens, Admin-/Kundenrollen und der einmalig sichtbare API-Key bleiben erhalten. Validierungsfehler oeffnen nur die zugehoerige Gruppe.
+- Accessibility: eindeutige Control-Namen, 44px-Ziele, sichtbarer Fokus ohne Clipping, mobile Padding-/Wrapping-Regeln sowie `prefers-reduced-motion`.
+- Verified: 365 Laravel-Tests / 2.464 Assertions, PHPStan, Pint, Blade-Cache, Vite-Build mit Node 22.22.0; reale Browser-QA leer/befuellt bei Desktop, Tablet und 320px ohne Overflow oder unbenannte Controls. Zwei finale Reviews ohne P1/P2.
+- Cleanup: isolierte SQLite-QA-Daten und lokaler Port 8012 entfernt; keine Produktionsdaten veraendert.

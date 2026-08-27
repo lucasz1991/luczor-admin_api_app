@@ -79,6 +79,7 @@ class AdminDashboardData
                 'evaluations_24h' => EvaluationResult::query()->where('created_at', '>=', now()->subDay())->count(),
                 'audit_events_24h' => AuditEvent::query()->where('created_at', '>=', now()->subDay())->count(),
             ] : [],
+            'charts' => $isAdmin ? $this->dashboardCharts() : [],
             'telemetry' => $isAdmin ? $this->telemetrySummary() : [],
             'modelTelemetry' => $isAdmin ? $this->modelTelemetry() : collect(),
             'recentAttempts' => $isAdmin ? LlmAttempt::query()->with('run')->latest()->limit(30)->get() : collect(),
