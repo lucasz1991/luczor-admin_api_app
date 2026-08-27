@@ -34,6 +34,9 @@ class CogneeLocalProviderDeploymentTest extends TestCase
         $this->assertStringContainsString('read_only: true', $compose);
         $this->assertStringContainsString('set $cognee_upstream http://cognee:8000;', $gateway);
         $this->assertStringContainsString('resolver 127.0.0.11', $gateway);
+        $this->assertStringContainsString('fastcgi_temp_path /tmp/fastcgi_temp;', $gateway);
+        $this->assertStringContainsString('uwsgi_temp_path /tmp/uwsgi_temp;', $gateway);
+        $this->assertStringContainsString('scgi_temp_path /tmp/scgi_temp;', $gateway);
         $this->assertStringNotContainsString('proxy_pass $http_', $gateway);
     }
 
