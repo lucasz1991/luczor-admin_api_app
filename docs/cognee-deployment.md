@@ -88,11 +88,16 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
 
    ```bash
    docker compose -f docker-compose.plesk-memory.yml config --quiet
-   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps postgres
+   (umask 077; sh ./docker/init-secrets.sh)
+   docker compose -f docker-compose.plesk-memory.yml pull postgres ollama cognee-loopback
+   docker compose -f docker-compose.plesk-memory.yml build --pull cognee
+   docker compose -f docker-compose.plesk-memory.yml --profile model-bootstrap \
+     run --rm --no-deps ollama-model-bootstrap
+   docker compose -f docker-compose.plesk-memory.yml up -d --wait --no-deps postgres
    docker compose -f docker-compose.plesk-memory.yml run --rm --no-deps cognee-db-init
-   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps ollama
-   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps cognee
-   docker compose -f docker-compose.plesk-memory.yml up -d --no-deps cognee-loopback
+   docker compose -f docker-compose.plesk-memory.yml up -d --wait --no-deps ollama
+   docker compose -f docker-compose.plesk-memory.yml up -d --wait --no-deps cognee
+   docker compose -f docker-compose.plesk-memory.yml up -d --wait --no-deps cognee-loopback
    curl --fail --silent --show-error http://127.0.0.1:8010/openapi.json >/dev/null
    REDISCLI_AUTH="$(cat docker/secrets/redis_password)" \
      redis-cli -h 127.0.0.1 ping
@@ -106,7 +111,8 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    Redis-Dienst aus diesem Stack entfernt werden; niemals zwei Prozesse an Port 6379
    konkurrieren lassen.
 
-   Redis verwendet dabei den passwortgeschützten, persistenten und nicht als
+   Redis ist im Profil `redis-cutover` opt-in. Ein unqualifiziertes Compose-`up`
+   kann deshalb keinen zweiten Prozess an Port 6379 starten. Redis verwendet dabei den passwortgeschützten, persistenten und nicht als
    Prozessargument sichtbaren Startpfad aus `docs/redis-plesk.md`. Vor dem Start
    müssen dort insbesondere `vm.overcommit_memory=1`, die Laravel-
    `REDIS_PASSWORD_FILE`-Anbindung und die kontrollierte Übernahme des bestehenden

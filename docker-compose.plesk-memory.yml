@@ -8,6 +8,11 @@ x-luczor-logging: &luczor-logging
 
 services:
   redis:
+    # Opt-in only: production hosts normally keep the already cut over
+    # luczor-redis-auth container. An unqualified `docker compose up` must
+    # never start a competing Redis on the same loopback port.
+    profiles:
+      - redis-cutover
     image: redis:7.4.11-alpine
     entrypoint:
       - /bin/sh

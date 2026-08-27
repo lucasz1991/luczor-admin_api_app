@@ -39,6 +39,10 @@ class RedisPleskDeploymentTest extends TestCase
         $this->assertIsString($compose);
         $this->assertStringContainsString('image: redis:7.4.11-alpine', $compose);
         $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:6379', $compose);
+        $this->assertMatchesRegularExpression(
+            '/redis:\R\s+#.*?profiles:\R\s+- redis-cutover/s',
+            $compose,
+        );
         $this->assertStringContainsString('${LUCZOR_REDIS_DATA_DIR:-/var/lib/luczor/redis}:/data', $compose);
         $this->assertStringContainsString('/run/secrets/redis_password', $compose);
         $this->assertStringContainsString('read_only: true', $compose);
