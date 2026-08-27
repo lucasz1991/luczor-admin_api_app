@@ -43,4 +43,20 @@ class RedisPleskDeploymentTest extends TestCase
         $this->assertStringContainsString('NOAUTH Authentication required.', $runbook);
         $this->assertStringNotContainsString('REDIS_PASSWORD=replace-with', $runbook);
     }
+
+    public function test_file_backed_redis_secret_is_loaded_before_other_providers_boot(): void
+    {
+        $provider = file_get_contents(dirname(__DIR__, 2).'/app/Providers/AppServiceProvider.php');
+
+        $this->assertIsString($provider);
+        $register = strpos($provider, 'public function register(): void');
+        $apply = strpos($provider, 'RedisSecretConfigurator::class)->apply()');
+        $boot = strpos($provider, 'public function boot(): void');
+
+        $this->assertIsInt($register);
+        $this->assertIsInt($apply);
+        $this->assertIsInt($boot);
+        $this->assertGreaterThan($register, $apply);
+        $this->assertLessThan($boot, $apply);
+    }
 }

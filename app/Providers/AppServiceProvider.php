@@ -20,6 +20,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Horizon may resolve its Redis connection while providers boot. Load
+        // the file-backed credential during registration so every consumer
+        // sees the authenticated configuration before creating a connection.
+        $this->app->make(RedisSecretConfigurator::class)->apply();
+
         $this->app->singleton(CogneeClient::class, fn () => CogneeClient::fromConfig());
     }
 
@@ -28,8 +33,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->app->make(RedisSecretConfigurator::class)->apply();
-
         Schema::defaultStringLength(191);
 
         $queueLogContext = $this->app->make(QueueJobLogContext::class);
