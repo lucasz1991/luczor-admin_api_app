@@ -255,7 +255,7 @@ def main() -> None:
             "query": QUERY,
             "search_type": "CHUNKS",
             "top_k": 5,
-            "only_context": False,
+            "only_context": True,
         },
     )
     if not isinstance(search_result, list) or not search_result:

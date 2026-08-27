@@ -342,7 +342,10 @@ class CogneeClient
                 'query' => $query,
                 'search_type' => 'CHUNKS',
                 'top_k' => max(1, min(100, $topK)),
-                'only_context' => false,
+                // Luczor ranks provider hits itself and revalidates every hit
+                // against canonical SQL. Asking Cognee for a generated answer
+                // here would add an unnecessary LLM call to every recall.
+                'only_context' => true,
             ],
             ...$this->timeoutOptions($this->semanticQueryTimeout),
         ], true);

@@ -90,7 +90,7 @@ class CogneeClientTest extends TestCase
             'query' => 'query',
             'search_type' => 'CHUNKS',
             'top_k' => 9,
-            'only_context' => false,
+            'only_context' => true,
         ], json_decode((string) $request->getBody(), true, flags: JSON_THROW_ON_ERROR));
         $this->assertSame('Bearer internal-service-key', $request->getHeaderLine('Authorization'));
         $this->assertSame('internal-service-key', $request->getHeaderLine('X-Api-Key'));

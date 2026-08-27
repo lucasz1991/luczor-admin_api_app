@@ -35,8 +35,10 @@ Nicht geheime Werte stehen in `.env.docker`:
 - `COGNEE_IMPROVE_ENABLED=false` bleibt beim gepinnten Cognee 1.4 der sichere Standard.
   `COGNEE_IMPROVE_MIN_INTERVAL_SECONDS` ist zusätzlich mindestens 300 Sekunden und
   standardmäßig eine Stunde.
-- `COGNEE_SEMANTIC_QUERY_TIMEOUT=3` begrenzt die gesamte optionale Batch-Suche über alle
-  belegten Namespace-Aliase. Der Wert erbt bewusst nicht das längere Add-/Worker-Budget.
+- `COGNEE_SEMANTIC_QUERY_TIMEOUT=3` begrenzt standardmäßig die gesamte optionale
+  Batch-Suche über alle belegten Namespace-Aliase. Die Suche verwendet `CHUNKS` mit
+  `only_context=true`: Cognee liefert nur Retrieval-Kontext und ruft für Recall kein LLM auf.
+  Auf einem reinen CPU-Plesk-Host sind 15 Sekunden als Kaltstartreserve vorgesehen.
 - `LUCZOR_MEMORY_NAMESPACE_KEY` ist ein eigener, stabiler Secret-Wert mit mindestens
   32 Byte. Er darf weder aus `APP_KEY` abgeleitet noch zusammen mit diesem rotiert werden.
   Die Datasetnamen enthalten dadurch keine lesbaren Benutzer-, Tenant- oder Projekt-IDs.
@@ -149,7 +151,7 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    COGNEE_TIMEOUT=45
    COGNEE_CONTROL_TIMEOUT=8
    COGNEE_ACK_TIMEOUT=3
-   COGNEE_SEMANTIC_QUERY_TIMEOUT=3
+   COGNEE_SEMANTIC_QUERY_TIMEOUT=15
    COGNEE_IMPROVE_ENABLED=false
    ```
 
@@ -348,11 +350,13 @@ Readiness lehnt Konfigurationen ab, die diese Reihenfolge verletzen. Zusätzlich
 `COGNEE_CONTENT_LOCK_SECONDS` nur innerhalb dieses Gesamtbudgets anpassen.
 
 Recall bündelt alle autorisierten und in SQL tatsächlich belegten Dataset-Aliase in genau
-einer Cognee-Search-Anfrage. `COGNEE_SEMANTIC_QUERY_TIMEOUT` begrenzt diesen gesamten
-optionalen Aufruf standardmäßig auf drei Sekunden. Timeout, Netzwerkfehler oder eine
-fehlerhafte Providerantwort verwerfen sämtliche semantischen Ränge dieses Recalls; die
-bereits autorisierte SQL-Recency-/Lexical-Kandidatenmenge wird ohne weiteren Alias-Aufruf
-zurückgegeben.
+einer Cognee-Search-Anfrage. `CHUNKS` und `only_context=true` halten diesen Pfad rein
+retrieval-basiert; die Antwortformulierung bleibt beim von Luczor ausgewählten Modell.
+`COGNEE_SEMANTIC_QUERY_TIMEOUT` begrenzt den gesamten optionalen Aufruf standardmäßig auf
+drei Sekunden; für einen CPU-lokalen Plesk-Stack nutzt das obige Profil 15 Sekunden als
+Kaltstartreserve. Timeout, Netzwerkfehler oder eine fehlerhafte Providerantwort verwerfen
+sämtliche semantischen Ränge dieses Recalls; die bereits autorisierte SQL-Recency-/Lexical-
+Kandidatenmenge wird ohne weiteren Alias-Aufruf zurückgegeben.
 
 Ein explizit angefordertes und freigeschaltetes `improve` läuft ebenfalls über die Outbox. Es verwendet die
 Phasen `improve_launching` und `improve_polling`, eine stabile Idempotency-ID sowie die
