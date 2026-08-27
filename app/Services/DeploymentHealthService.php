@@ -16,6 +16,10 @@ class DeploymentHealthService
 {
     public const SCHEDULER_HEARTBEAT_KEY = 'luczor:operations:scheduler-heartbeat';
 
+    public function __construct(
+        private readonly RedisHostKernelInspector $redisKernel,
+    ) {}
+
     /** @return array<string, bool> */
     public function checks(
         bool $enforceProduction = false,
@@ -33,6 +37,8 @@ class DeploymentHealthService
                 'cors_origins_restricted' => $this->originsAreRestricted((array) config('cors.allowed_origins', [])),
                 'cache_uses_redis' => config('cache.default') === 'redis',
                 'queue_uses_redis' => config('queue.default') === 'redis',
+                'redis_auth_configured' => $this->redisAuthenticationIsConfigured(),
+                'redis_endpoint_private' => $this->redisEndpointIsPrivate(),
                 'horizon_handles_notification_queue' => $this->horizonHandlesNotificationQueue(),
                 'reverb_configured' => $this->reverbConfigured(),
                 'memory_namespace_key_configured' => $this->memoryNamespaceKeyIsSafe(),
@@ -48,6 +54,7 @@ class DeploymentHealthService
                 $checks['memory_ledger_identities_hardened'] = $this->memoryLedgerIdentitiesAreHardened();
                 $checks['migrations_current'] = $this->migrationsCurrent();
                 $checks['redis'] = $this->redisAvailable();
+                $checks['redis_host_overcommit_memory'] = $this->redisKernel->overcommitMemoryEnabled();
                 $checks['horizon'] = $this->horizonRunning();
                 $checks['scheduler'] = $this->schedulerRunning();
 
@@ -121,6 +128,51 @@ class DeploymentHealthService
             && ($dataTimeout + (3 * $controlTimeout) + (3 * $ackTimeout) + $overheadReserve) < $jobTimeout
             && $contentLockSeconds > $jobTimeout
             && $jobTimeout < $retryAfter;
+    }
+
+    private function redisAuthenticationIsConfigured(): bool
+    {
+        foreach (['default', 'cache'] as $name) {
+            $connection = (array) config("database.redis.$name", []);
+            $url = $connection['url'] ?? null;
+
+            if ($this->filled($url)) {
+                $parts = parse_url((string) $url);
+                $password = is_array($parts) ? ($parts['pass'] ?? null) : null;
+            } else {
+                $password = $connection['password'] ?? null;
+            }
+
+            if (! is_string($password)
+                || strlen($password) < 32
+                || ! $this->credentialIsConfigured($password)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function redisEndpointIsPrivate(): bool
+    {
+        foreach (['default', 'cache'] as $name) {
+            $connection = (array) config("database.redis.$name", []);
+            $url = $connection['url'] ?? null;
+
+            if ($this->filled($url)) {
+                $parts = parse_url((string) $url);
+                $host = is_array($parts) ? ($parts['host'] ?? null) : null;
+            } else {
+                $host = $connection['host'] ?? null;
+            }
+
+            if (! is_string($host)
+                || ! in_array(strtolower(trim($host, '[]')), ['localhost', '127.0.0.1', '::1'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function memoryNamespaceKeyIsSafe(): bool

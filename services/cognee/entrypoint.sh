@@ -44,8 +44,40 @@ require_positive_integer EMBEDDING_DIMENSIONS "${EMBEDDING_DIMENSIONS:-}"
 require_positive_integer LLM_MAX_COMPLETION_TOKENS "${LLM_MAX_COMPLETION_TOKENS:-}"
 
 export DB_PASSWORD="$(read_required_secret cognee_postgres_password)"
-export LLM_API_KEY="$(read_required_secret cognee_llm_api_key)"
-export EMBEDDING_API_KEY="$(read_required_secret cognee_embedding_api_key)"
+
+llm_provider="$(printf '%s' "$LLM_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+case "$llm_provider" in
+    ollama)
+        require_value LLM_ENDPOINT "${LLM_ENDPOINT:-}"
+        case "$LLM_ENDPOINT" in
+            */v1) ;;
+            *)
+                echo "Cognee requires an Ollama LLM_ENDPOINT ending in /v1." >&2
+                exit 1
+                ;;
+        esac
+        # Cognee's OpenAI-compatible Ollama client requires a non-empty value,
+        # but Ollama does not authenticate this local connection.
+        export LLM_API_KEY="${LLM_API_KEY:-$llm_provider}"
+        ;;
+    *)
+        export LLM_API_KEY="$(read_required_secret cognee_llm_api_key)"
+        ;;
+esac
+
+embedding_provider="$(printf '%s' "$EMBEDDING_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+case "$embedding_provider" in
+    fastembed)
+        unset EMBEDDING_API_KEY
+        ;;
+    ollama)
+        export EMBEDDING_API_KEY="${EMBEDDING_API_KEY:-$embedding_provider}"
+        ;;
+    *)
+        export EMBEDDING_API_KEY="$(read_required_secret cognee_embedding_api_key)"
+        ;;
+esac
+
 export FASTAPI_USERS_JWT_SECRET="$(read_required_secret cognee_jwt_secret)"
 export DEFAULT_USER_PASSWORD="$(read_required_secret cognee_default_password)"
 export FASTAPI_USERS_VERIFICATION_TOKEN_SECRET="$(read_required_secret cognee_verification_secret)"

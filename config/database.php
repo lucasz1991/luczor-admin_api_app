@@ -139,6 +139,11 @@ return [
 
         'client' => env('REDIS_CLIENT', 'phpredis'),
 
+        // When configured, AppServiceProvider reads this absolute path at
+        // runtime and injects the value after the cached config is loaded.
+        // Config-cache construction validates but does not inject the value.
+        'password_file' => env('REDIS_PASSWORD_FILE', ''),
+
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
             'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_database_'),

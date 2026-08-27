@@ -7,8 +7,20 @@ FROM cognee/cognee:1.4.0@sha256:d8931a59034a6c69f3cf4a81e1ba0b5ddc660691a600a771
 # without replacing the bundled Cognee version from PyPI.
 RUN /usr/local/bin/python -m pip install --no-cache-dir --target /app/.venv/lib/python3.12/site-packages \
     "asyncpg==0.31.0" \
+    "fastembed==0.8.0" \
+    "onnxruntime==1.23.2" \
     "pgvector==0.3.6" \
     "psycopg2-binary==2.9.12"
+
+# Cache the audited local embedding model while the image is built. Production
+# runs with the Hugging Face clients in offline mode and therefore never need
+# registry access for embeddings.
+ENV FASTEMBED_CACHE_PATH=/opt/luczor-fastembed-cache
+RUN /usr/local/bin/python -c "from fastembed import TextEmbedding; model = TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/opt/luczor-fastembed-cache'); next(model.embed(['Luczor Erinnerung']))"
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_DATASETS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1
 
 # Cognee's Alembic environment logs the full asyncpg URL by default, including
 # the password. Keep connection diagnostics without ever emitting a secret.

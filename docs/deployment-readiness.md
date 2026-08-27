@@ -12,8 +12,10 @@ php artisan luczor:deployment-check --production --configuration-only
 Geprüft werden deaktiviertes Debugging, HTTPS, Secure-Cookies, explizite CORS- und
 Reverb-Origins, Redis als Queue, die Horizon-Queue-Liste sowie vollständige
 Reverb-Credentials. Auch der Cache muss Redis verwenden, damit Scheduler-Heartbeat und
-verteilte Locks für Web- und Worker-Prozesse identisch sichtbar sind. Geheimnisse werden
-nicht ausgegeben.
+verteilte Locks für Web- und Worker-Prozesse identisch sichtbar sind. Für die lokale
+Produktionsinstanz werden außerdem ein mindestens 32 Byte langes Redis-Passwort und ein
+privater Loopback-Endpunkt verlangt. Geheimnisse werden nicht ausgegeben. Der bevorzugte
+dateibasierte Passwortpfad ist in `docs/redis-plesk.md` beschrieben.
 
 ## Vollständige Prüfung auf dem Zielserver
 
@@ -25,6 +27,7 @@ Zusätzlich geprüft werden:
 
 - Datenbankverbindung und ausstehende Migrationen,
 - Redis-Ping und ein laufender, nicht pausierter Horizon-Master,
+- der aktive Linux-Hostwert `vm.overcommit_memory=1`,
 - ein höchstens drei Minuten alter Scheduler-Heartbeat,
 - eine TCP-Verbindung zum internen Reverb-Listener.
 
@@ -41,6 +44,8 @@ Das ersetzt nicht den WebSocket-End-to-End-Test über den Reverse Proxy.
 
 Der Load-Balancer darf Traffic erst nach einem erfolgreichen Readiness-Check zuschalten.
 Die konkreten Plesk-/Reverb-Schritte stehen in `docs/push-notifications-plesk.md`.
+Die Redis-Bereitstellung, Host-Härtung und passwortgeschützte Abnahme stehen in
+`docs/redis-plesk.md`.
 
 ## Betriebs- und Desktop-Gesamtabnahme
 

@@ -24,11 +24,12 @@ class CogneePleskDeploymentTest extends TestCase
         $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:6379', $compose);
         $this->assertStringContainsString('127.0.0.1:${COGNEE_HOST_PORT:-8010}:8000', $compose);
         $this->assertStringContainsString('internal: true', $compose);
-        $this->assertStringContainsString('file: ./docker/secrets/cognee_llm_api_key', $compose);
+        $this->assertStringContainsString('LLM_PROVIDER: ollama', $compose);
+        $this->assertStringContainsString('EMBEDDING_PROVIDER: fastembed', $compose);
         $this->assertStringContainsString('cognee-db-init:', $compose);
         $this->assertStringContainsString('POSTGRES_ADMIN_USER:', $compose);
         $this->assertStringContainsString('GRAPH_DATABASE_PROVIDER: kuzu', $compose);
-        $this->assertStringNotContainsString('0.0.0.0:', $compose);
+        $this->assertStringNotContainsString('- "0.0.0.0:', $compose);
         $this->assertStringNotContainsString('graph-indexer:', $compose);
     }
 

@@ -11,6 +11,12 @@ Wenn Laravel wie bei Plesk direkt auf dem Host statt im Compose-Netz läuft, ver
 Bindung an `0.0.0.0`, eine öffentliche Subdomain oder die Laravel-URL selbst sind nicht
 zulässig.
 
+Der eigenstaendige Plesk-Memory-Stack `docker-compose.plesk-memory.yml` verwendet keine
+externen Modellprovider und keine Provider-Schluessel. Seine lokale Ollama-/FastEmbed-
+Inbetriebnahme steht in [`docs/cognee-local-ollama.md`](cognee-local-ollama.md). Die
+nachfolgenden variablen Provider- und Provider-Secret-Angaben gelten nur fuer den
+allgemeinen Compose-Stack mit `.env.docker`.
+
 Die HTTP-API verlangt zusätzlich Authentisierung. Laravel verwendet dafür einen eigenen,
 gehashten Cognee-Service-Key. Lokale Pfade, ausgehende URL-Abrufe und direkte
 Cypher-Abfragen bleiben deaktiviert.
@@ -91,6 +97,12 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    produktiver Host-Redis betrieben, muss dessen Betrieb bewusst übernommen und der
    Redis-Dienst aus diesem Stack entfernt werden; niemals zwei Prozesse an Port 6379
    konkurrieren lassen.
+
+   Redis verwendet dabei den passwortgeschützten, persistenten und nicht als
+   Prozessargument sichtbaren Startpfad aus `docs/redis-plesk.md`. Vor dem Start
+   müssen dort insbesondere `vm.overcommit_memory=1`, die Laravel-
+   `REDIS_PASSWORD_FILE`-Anbindung und die kontrollierte Übernahme des bestehenden
+   `/var/lib/luczor/redis`-Verzeichnisses abgeschlossen sein.
 
 2. Nach dem Healthcheck den Service-Key mit dem vorhandenen Provisioning-Skript erzeugen.
    Das Skript gibt den Key nicht aus und schreibt ihn nur in die lokale Secret-Datei:

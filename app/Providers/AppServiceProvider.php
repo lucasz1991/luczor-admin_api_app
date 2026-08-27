@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Cognee\CogneeClient;
 use App\Services\QueueJobLogContext;
+use App\Services\RedisSecretConfigurator;
 use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
@@ -27,6 +28,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->app->make(RedisSecretConfigurator::class)->apply();
+
         Schema::defaultStringLength(191);
 
         $queueLogContext = $this->app->make(QueueJobLogContext::class);

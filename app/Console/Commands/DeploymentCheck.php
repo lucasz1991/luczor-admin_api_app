@@ -12,7 +12,7 @@ class DeploymentCheck extends Command
         {--configuration-only : Skip database and process probes}
         {--skip-reverb-probe : Do not open a socket to the internal Reverb listener}';
 
-    protected $description = 'Verify Luczor queue, Horizon, scheduler, Reverb, migrations and security configuration';
+    protected $description = 'Verify Luczor Redis, host kernel, queue, Horizon, scheduler, Reverb, migrations and security configuration';
 
     public function handle(DeploymentHealthService $health): int
     {

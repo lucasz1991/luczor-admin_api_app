@@ -7,6 +7,7 @@ use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
 use App\Services\DeploymentHealthService;
 use App\Services\ProviderPolicyService;
+use App\Services\RedisHostKernelInspector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
@@ -59,6 +60,12 @@ class CapabilityRoutingTest extends TestCase
         Config::set('cors.allowed_origins', ['https://luczor.example.test', 'https://tauri.localhost']);
         Config::set('cache.default', 'redis');
         Config::set('queue.default', 'redis');
+        Config::set('database.redis.default.url', null);
+        Config::set('database.redis.default.host', '127.0.0.1');
+        Config::set('database.redis.default.password', str_repeat('r', 48));
+        Config::set('database.redis.cache.url', null);
+        Config::set('database.redis.cache.host', '127.0.0.1');
+        Config::set('database.redis.cache.password', str_repeat('r', 48));
         Config::set('luczor.notifications.queue', 'notifications');
         Config::set('horizon.defaults.supervisor-1.queue', ['notifications', 'default']);
         Config::set('broadcasting.default', 'reverb');
@@ -127,6 +134,12 @@ class CapabilityRoutingTest extends TestCase
         Config::set('cors.allowed_origins', ['*']);
         Config::set('cache.default', 'file');
         Config::set('queue.default', 'sync');
+        Config::set('database.redis.default.url', null);
+        Config::set('database.redis.default.host', 'redis.example.test');
+        Config::set('database.redis.default.password', 'change-me');
+        Config::set('database.redis.cache.url', null);
+        Config::set('database.redis.cache.host', 'redis.example.test');
+        Config::set('database.redis.cache.password', 'change-me');
         Config::set('luczor.notifications.queue', 'notifications');
         Config::set('horizon.defaults.supervisor-1.queue', ['default']);
         Config::set('broadcasting.default', 'reverb');
@@ -163,5 +176,25 @@ class CapabilityRoutingTest extends TestCase
             includeRuntime: false,
         );
         $this->assertFalse($unsafeBudget['cognee_projection_timeout_budget']);
+    }
+
+    public function test_production_runtime_gate_includes_the_host_redis_kernel_probe(): void
+    {
+        $kernel = new class extends RedisHostKernelInspector
+        {
+            public function overcommitMemoryEnabled(): bool
+            {
+                return true;
+            }
+        };
+
+        $checks = (new DeploymentHealthService($kernel))->checks(
+            enforceProduction: true,
+            includeRuntime: true,
+            probeReverbServer: false,
+        );
+
+        $this->assertArrayHasKey('redis_host_overcommit_memory', $checks);
+        $this->assertTrue($checks['redis_host_overcommit_memory']);
     }
 }
