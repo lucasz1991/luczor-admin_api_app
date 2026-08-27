@@ -53,6 +53,7 @@ class CogneeLocalProviderDeploymentTest extends TestCase
 
         $this->assertStringContainsString('"fastembed==0.8.0"', $dockerfile);
         $this->assertStringContainsString('"onnxruntime==1.23.2"', $dockerfile);
+        $this->assertStringContainsString('RUN /app/.venv/bin/python -c', $dockerfile);
         $this->assertStringContainsString("TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'", $dockerfile);
         $this->assertStringContainsString('HF_HUB_OFFLINE=1', $dockerfile);
     }

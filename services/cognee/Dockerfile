@@ -16,7 +16,7 @@ RUN /usr/local/bin/python -m pip install --no-cache-dir --target /app/.venv/lib/
 # runs with the Hugging Face clients in offline mode and therefore never need
 # registry access for embeddings.
 ENV FASTEMBED_CACHE_PATH=/opt/luczor-fastembed-cache
-RUN /usr/local/bin/python -c "from fastembed import TextEmbedding; model = TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/opt/luczor-fastembed-cache'); next(model.embed(['Luczor Erinnerung']))"
+RUN /app/.venv/bin/python -c "from fastembed import TextEmbedding; model = TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/opt/luczor-fastembed-cache'); next(model.embed(['Luczor Erinnerung']))"
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1 \
     HF_DATASETS_OFFLINE=1 \
