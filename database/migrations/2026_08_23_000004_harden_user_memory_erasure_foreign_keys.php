@@ -149,11 +149,28 @@ return new class extends Migration
     private function replaceUserForeignKey(string $tableName, string $onDelete): void
     {
         $driver = DB::connection()->getDriverName();
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            $guard = $this->guardConstraintName($tableName);
+            if (! $this->foreignKeyExists($driver, $tableName, $guard)) {
+                throw new RuntimeException(
+                    "Memory erasure guard is missing before replacing {$tableName}.user_id."
+                );
+            }
+
+            $constraint = $tableName.'_user_id_foreign';
+            if ($this->foreignKeyExists($driver, $tableName, $constraint)) {
+                DB::statement($this->mysqlUserForeignKeySql($tableName, $onDelete, 'drop'));
+            }
+            if (! $this->foreignKeyExists($driver, $tableName, $constraint)) {
+                DB::statement($this->mysqlUserForeignKeySql($tableName, $onDelete, 'add'));
+            }
+
+            return;
+        }
+
         $sql = $this->userForeignKeySql($driver, $tableName, $onDelete);
         if ($sql !== null) {
-            // MySQL auto-commits ALTER TABLE. DROP + ADD must therefore be one
-            // statement or a concurrent raw User delete gets an unguarded gap.
-            // PostgreSQL also takes one table lock for the atomic replacement.
+            // PostgreSQL takes one table lock for the atomic replacement.
             DB::statement($sql);
 
             return;
@@ -184,11 +201,6 @@ return new class extends Migration
         }
 
         $constraint = $tableName.'_user_id_foreign';
-        if (in_array($driver, ['mysql', 'mariadb'], true)) {
-            return "ALTER TABLE `{$tableName}` DROP FOREIGN KEY `{$constraint}`, "
-                ."ADD CONSTRAINT `{$constraint}` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) "
-                .'ON DELETE '.$actions[$onDelete];
-        }
         if ($driver === 'pgsql') {
             return "ALTER TABLE \"{$tableName}\" DROP CONSTRAINT \"{$constraint}\", "
                 ."ADD CONSTRAINT \"{$constraint}\" FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\") "
@@ -196,6 +208,31 @@ return new class extends Migration
         }
 
         return null;
+    }
+
+    private function mysqlUserForeignKeySql(
+        string $tableName,
+        string $onDelete,
+        string $operation,
+    ): string {
+        $allowedTables = ['memory_links', 'memory_projection_outbox', 'memory_write_events'];
+        $actions = [
+            'restrict' => 'RESTRICT',
+            'set null' => 'SET NULL',
+            'cascade' => 'CASCADE',
+        ];
+        if (! in_array($tableName, $allowedTables, true)
+            || ! isset($actions[$onDelete])
+            || ! in_array($operation, ['drop', 'add'], true)) {
+            throw new RuntimeException('Unsupported MySQL memory user foreign-key operation.');
+        }
+
+        $constraint = $tableName.'_user_id_foreign';
+
+        return $operation === 'drop'
+            ? "ALTER TABLE `{$tableName}` DROP FOREIGN KEY `{$constraint}`"
+            : "ALTER TABLE `{$tableName}` ADD CONSTRAINT `{$constraint}` "
+                ."FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE {$actions[$onDelete]}";
     }
 
     private function erasePreexistingOwnerlessUserMemory(): void

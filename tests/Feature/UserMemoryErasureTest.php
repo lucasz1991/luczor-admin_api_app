@@ -451,22 +451,35 @@ class UserMemoryErasureTest extends TestCase
         ]);
     }
 
-    public function test_hardening_migration_replaces_production_foreign_keys_in_one_statement(): void
+    public function test_hardening_migration_replaces_production_foreign_keys_with_guarded_driver_sql(): void
     {
         $migration = require database_path(
             'migrations/2026_08_23_000004_harden_user_memory_erasure_foreign_keys.php'
         );
         $sqlFor = new \ReflectionMethod($migration, 'userForeignKeySql');
+        $mysqlSqlFor = new \ReflectionMethod($migration, 'mysqlUserForeignKeySql');
 
         foreach (['memory_links', 'memory_projection_outbox', 'memory_write_events'] as $table) {
-            foreach (['mysql', 'mariadb', 'pgsql'] as $driver) {
-                $sql = $sqlFor->invoke($migration, $driver, $table, 'restrict');
-                $this->assertIsString($sql);
-                $this->assertSame(1, substr_count(strtoupper($sql), 'ALTER TABLE'));
-                $this->assertStringContainsString('DROP', strtoupper($sql));
-                $this->assertStringContainsString('ADD CONSTRAINT', strtoupper($sql));
-                $this->assertStringContainsString('ON DELETE RESTRICT', strtoupper($sql));
+            foreach (['mysql', 'mariadb'] as $driver) {
+                $this->assertNull($sqlFor->invoke($migration, $driver, $table, 'restrict'));
+
+                $drop = $mysqlSqlFor->invoke($migration, $table, 'restrict', 'drop');
+                $add = $mysqlSqlFor->invoke($migration, $table, 'restrict', 'add');
+                $this->assertSame(1, substr_count(strtoupper($drop), 'ALTER TABLE'));
+                $this->assertStringContainsString('DROP FOREIGN KEY', strtoupper($drop));
+                $this->assertStringNotContainsString('ADD CONSTRAINT', strtoupper($drop));
+                $this->assertSame(1, substr_count(strtoupper($add), 'ALTER TABLE'));
+                $this->assertStringContainsString('ADD CONSTRAINT', strtoupper($add));
+                $this->assertStringNotContainsString('DROP FOREIGN KEY', strtoupper($add));
+                $this->assertStringContainsString('ON DELETE RESTRICT', strtoupper($add));
             }
+
+            $postgres = $sqlFor->invoke($migration, 'pgsql', $table, 'restrict');
+            $this->assertIsString($postgres);
+            $this->assertSame(1, substr_count(strtoupper($postgres), 'ALTER TABLE'));
+            $this->assertStringContainsString('DROP', strtoupper($postgres));
+            $this->assertStringContainsString('ADD CONSTRAINT', strtoupper($postgres));
+            $this->assertStringContainsString('ON DELETE RESTRICT', strtoupper($postgres));
         }
 
         $this->assertNull($sqlFor->invoke($migration, 'sqlite', 'memory_links', 'restrict'));
