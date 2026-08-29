@@ -26,7 +26,6 @@ password="$(cat "$secret_file")"
 # performs these operations in the opposite order and then needs CAP_FOWNER.
 install -d "$runtime_directory"
 chmod 0700 "$runtime_directory"
-chown redis:redis "$runtime_directory"
 umask 0077
 {
   printf '%s\n' \
@@ -43,6 +42,7 @@ umask 0077
   printf 'requirepass %s\n' "$password"
 } > "$config_file"
 chown redis:redis "$config_file"
+chown redis:redis "$runtime_directory"
 
 # The official image normally performs this ownership repair before dropping
 # privileges. This wrapper keeps that behaviour while ensuring the password is
@@ -50,4 +50,4 @@ chown redis:redis "$config_file"
 find /data \! -user redis -exec chown redis:redis '{}' +
 
 unset password
-exec gosu redis redis-server "$config_file"
+exec /usr/bin/setpriv --reuid redis --regid redis --clear-groups redis-server "$config_file"

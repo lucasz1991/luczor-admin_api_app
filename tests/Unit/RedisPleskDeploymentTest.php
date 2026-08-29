@@ -63,7 +63,11 @@ class RedisPleskDeploymentTest extends TestCase
         $this->assertStringContainsString('chown redis:redis "$runtime_directory"', $entrypoint);
         $this->assertStringNotContainsString('install -d -m 0700 -o redis', $entrypoint);
         $this->assertStringContainsString("printf 'requirepass %s\\n' \"\$password\"", $entrypoint);
-        $this->assertStringContainsString('exec gosu redis redis-server "$config_file"', $entrypoint);
+        $this->assertStringContainsString(
+            'exec /usr/bin/setpriv --reuid redis --regid redis --clear-groups redis-server "$config_file"',
+            $entrypoint,
+        );
+        $this->assertStringNotContainsString('exec gosu ', $entrypoint);
         $this->assertStringNotContainsString('redis-server --requirepass', $entrypoint);
         $this->assertStringNotContainsString('echo "$password"', $entrypoint);
     }
