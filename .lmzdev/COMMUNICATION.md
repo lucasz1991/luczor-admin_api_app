@@ -196,5 +196,5 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Plesk: Bare-Repo-/Origin-/Manifest-gebundene Rechtekorrektur mit ACL-Rollback; kein `chown -R`, keine Änderung an `.env`, Runtime-Storage, `vendor`, Docker-Daten oder externen Secrets. Echter Plesk-Deploy erfolgreich.
 - Verified local: 377 Laravel-Tests / 2.583 Assertions, PHPStan, Pint, Shell-/PowerShell-Syntax, Compose-Auflösung für 7 Plesk- und 17 Workspace-Secrets; Review ohne P1/P2.
 - Verified live: Migrationen aktuell, beide Deployment-Gates grün, Redis/Horizon/Scheduler/Reverb grün, `luczor:cognee-check` grün, Memory-Smoke mit Remember/Cognify/semantic recall/SQL fallback/Forget/provider cleanup bestanden; vier Memory-Container gesund, keine Restarts/OOM.
-- Backups: root-only ACL-, `.env`- und PostgreSQL-Rollbacks unter `/var/backups/luczor`; keine Secret-Werte protokolliert.
+- Backups: root-only Docker-Secret-, ACL-, `.env`- und PostgreSQL-Rollbacks unter `/var/backups/luczor`; keine Secret-Werte protokolliert.
 - Remaining note: Cognee Improve bleibt bewusst deaktiviert; separater Redis-Stack kann später optional auf das repositoryseitige Secret-Mount-Profil vereinheitlicht werden.
