@@ -47,9 +47,14 @@ chmod 0400 "$config_file"
 chown redis:redis "$config_file"
 
 # The official image normally performs this ownership repair before dropping
-# privileges. This wrapper keeps that behaviour while ensuring the password is
-# never passed to redis-server as a process argument.
-find /data \! -user redis -exec chown redis:redis '{}' +
+# privileges. Once the bind-mount root belongs to Redis, a later container
+# restart deliberately skips the recursive walk: root has no DAC override in
+# this hardened container, while the Redis process can still access its data.
+redis_uid="$(id -u redis)"
+data_uid="$(stat -c '%u' /data)"
+if [ "$data_uid" != "$redis_uid" ]; then
+  find /data \! -user redis -exec chown redis:redis '{}' +
+fi
 
 unset password
 exec /usr/bin/setpriv --reuid redis --regid redis --clear-groups redis-server "$config_file"
