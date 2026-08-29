@@ -97,6 +97,10 @@ class AdminDashboardData
 
     public function forPage(string $page): array
     {
+        if ($page === 'archives') {
+            return $this->archivesPageData();
+        }
+
         return [
             'page' => $page,
             'operations' => ['users' => User::count(), 'devices_online' => Device::where('status', 'online')->count(), 'device_jobs_open' => DeviceJob::whereIn('status', ['approval_required', 'queued', 'running'])->count(), 'llm_runs_24h' => LlmRun::where('created_at', '>=', now()->subDay())->count(), 'evaluations_24h' => EvaluationResult::where('created_at', '>=', now()->subDay())->count(), 'audit_events_24h' => AuditEvent::where('created_at', '>=', now()->subDay())->count()],
@@ -133,6 +137,24 @@ class AdminDashboardData
             'workflowPreviewRun' => $page === 'workflows' && request()->filled('run')
                 ? WorkflowRun::with('definition')->find((int) request()->query('run'))
                 : null,
+        ];
+    }
+
+    private function archivesPageData(): array
+    {
+        $totalMemories = MemoryLink::count();
+
+        return [
+            'page' => 'archives',
+            'archiveCounts' => [
+                'projects' => LuczorProjectArchive::count(),
+                'messages' => LuczorMessageArchive::count(),
+                'memories' => LuczorMemoryArchive::count(),
+                'summaries' => LuczorSummaryArchive::count(),
+                'agent_events' => LuczorAgentEventArchive::count(),
+            ],
+            'memoryOverview' => $this->memoryOverview($totalMemories),
+            'memoryGraph' => $this->memoryGraph($totalMemories),
         ];
     }
 
@@ -233,53 +255,102 @@ class AdminDashboardData
         ];
     }
 
-    private function memoryGraph(): array
+    private function memoryGraph(?int $total = null): array
     {
         $memories = MemoryLink::query()
             ->orderByDesc('importance')
             ->orderByDesc('updated_at')
             ->limit(60)
-            ->get(['id', 'scope', 'type', 'project_id', 'project_ref_id', 'feature_key', 'importance', 'summary', 'dataset', 'updated_at']);
+            ->get([
+                'id', 'user_id', 'tenant_id', 'scope', 'type', 'project_id', 'project_ref_id', 'feature_key',
+                'importance', 'confidence', 'summary', 'dataset', 'status',
+                'projection_status', 'staleness',
+                'source_type', 'supersedes_id', 'cognee_memory_id', 'updated_at',
+            ]);
         $projects = Project::query()
             ->whereIn('id', $memories->pluck('project_ref_id')->filter()->unique())
             ->pluck('name', 'id');
+        $visibleIds = $memories->pluck('id');
+        $mappedMemories = $memories->map(fn (MemoryLink $m) => [
+            'id' => $m->id,
+            'scope' => $m->scope ?: 'global',
+            'type' => $m->type ?: 'note',
+            'project' => $m->project_ref_id
+                ? (string) ($projects[$m->project_ref_id] ?? 'Projekt #'.$m->project_ref_id)
+                : ($m->project_id ?: 'Ohne Projekt'),
+            'project_key' => $m->project_ref_id
+                ? 'ref:'.$m->project_ref_id
+                : 'legacy:'.hash('sha256', implode('|', [
+                    $m->tenant_id ?? '-',
+                    $m->user_id ?? '-',
+                    $m->project_id ?? '-',
+                ])),
+            'feature_key' => $m->feature_key,
+            'importance' => (float) $m->importance,
+            'confidence' => $m->getAttribute('confidence') === null ? null : (float) $m->getAttribute('confidence'),
+            'summary' => Str::limit((string) $m->summary, 220),
+            'dataset' => $m->dataset,
+            'status' => $m->status ?: 'active',
+            'projection_status' => $m->projection_status ?: 'unbekannt',
+            'staleness' => $m->staleness ?: 'unbekannt',
+            'source_type' => $m->source_type ?: 'unbekannt',
+            'supersedes_id' => $m->supersedes_id,
+            'cognee_projected' => filled($m->cognee_memory_id),
+            'updated_at' => $m->updated_at?->format('d.m.Y H:i'),
+        ])->values();
 
         return [
-            'total' => MemoryLink::count(),
-            'memories' => $memories->map(fn (MemoryLink $m) => [
-                'id' => $m->id,
-                'scope' => $m->scope,
-                'type' => $m->type ?: 'note',
-                'project' => $m->project_ref_id
-                    ? (string) ($projects[$m->project_ref_id] ?? 'Projekt #'.$m->project_ref_id)
-                    : ($m->project_id ?: 'Ohne Projekt'),
-                'feature_key' => $m->feature_key,
-                'importance' => (float) $m->importance,
-                'summary' => Str::limit((string) $m->summary, 220),
-                'dataset' => $m->dataset,
-                'updated_at' => $m->updated_at?->format('d.m.Y H:i'),
-            ])->values()->all(),
+            'total' => $total ?? MemoryLink::count(),
+            'visible' => $mappedMemories->count(),
+            'projects' => $mappedMemories->pluck('project_key')->unique()->count(),
+            'types' => $mappedMemories->pluck('type')->unique()->count(),
+            'version_edges' => $memories
+                ->filter(fn (MemoryLink $memory) => $memory->supersedes_id !== null && $visibleIds->contains($memory->supersedes_id))
+                ->count(),
+            'memories' => $mappedMemories->all(),
         ];
     }
 
-    private function memoryOverview(): array
+    private function memoryOverview(?int $total = null): array
     {
-        $mk = fn (array $counts) => (function ($counts) {
-            $max = max(1, ...(array_values($counts) ?: [1]));
-
-            return collect($counts)->map(fn ($v, $k) => ['label' => (string) $k, 'value' => (int) $v, 'pct' => (int) round($v / $max * 100)])->values()->all();
-        })($counts);
+        $total ??= MemoryLink::count();
+        $mk = fn (array $counts) => collect($counts)->map(fn ($value, $label) => [
+            'label' => (string) $label,
+            'value' => (int) $value,
+            'pct' => (int) round($value / max(1, $total) * 100),
+        ])->values()->all();
 
         $byScope = MemoryLink::query()->selectRaw('scope, count(*) c')->groupBy('scope')->pluck('c', 'scope')->all();
         $byType = MemoryLink::query()->selectRaw('type, count(*) c')->groupBy('type')->orderByDesc('c')->limit(8)->pluck('c', 'type')->all();
-        $byProject = MemoryLink::query()->whereNotNull('project_id')->selectRaw('project_id, count(*) c')
-            ->groupBy('project_id')->orderByDesc('c')->limit(8)->pluck('c', 'project_id')->all();
+        $byProject = MemoryLink::query()
+            ->where(fn ($query) => $query->whereNotNull('project_ref_id')->orWhereNotNull('project_id'))
+            ->selectRaw('project_ref_id, project_id, tenant_id, user_id, count(*) c')
+            ->groupBy('project_ref_id', 'project_id', 'tenant_id', 'user_id')
+            ->orderByDesc('c')
+            ->limit(8)
+            ->get();
+        $projectNames = Project::query()
+            ->whereIn('id', $byProject->pluck('project_ref_id')->filter()->unique())
+            ->pluck('name', 'id');
+        $byProjectRows = $byProject->map(function (MemoryLink $memory) use ($projectNames, $total) {
+            $projectRefId = $memory->getAttribute('project_ref_id');
+            $projectId = $memory->getAttribute('project_id');
+            $count = (int) $memory->getAttribute('c');
+
+            return [
+                'label' => $projectRefId
+                    ? (string) ($projectNames[$projectRefId] ?? 'Projekt #'.$projectRefId)
+                    : (string) ($projectId ?: 'Ohne Projekt'),
+                'value' => $count,
+                'pct' => (int) round($count / max(1, $total) * 100),
+            ];
+        })->all();
 
         return [
-            'total' => MemoryLink::count(),
+            'total' => $total,
             'by_scope' => $mk($byScope),
             'by_type' => $mk($byType),
-            'by_project' => $mk($byProject),
+            'by_project' => $byProjectRows,
         ];
     }
 

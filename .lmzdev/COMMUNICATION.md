@@ -198,3 +198,31 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Verified live: Migrationen aktuell, beide Deployment-Gates grün, Redis/Horizon/Scheduler/Reverb grün, `luczor:cognee-check` grün, Memory-Smoke mit Remember/Cognify/semantic recall/SQL fallback/Forget/provider cleanup bestanden; vier Memory-Container gesund, keine Restarts/OOM.
 - Backups: root-only Docker-Secret-, ACL-, `.env`- und PostgreSQL-Rollbacks unter `/var/backups/luczor`; keine Secret-Werte protokolliert.
 - Remaining note: Cognee Improve bleibt bewusst deaktiviert; separater Redis-Stack kann später optional auf das repositoryseitige Secret-Mount-Profil vereinheitlicht werden.
+
+## 2026-08-29T03:48:33Z | Codex -> all | status
+
+- Message: Started: Cognee Improve kontrolliert aktivieren und Redis fuer gemeinsamen App-Test startklar machen
+
+## 2026-08-29T03:51:22Z | Codex/root -> all | status
+
+- Message: Started: Memory-Archiv mit interaktivem 3D-Netzwerk optimieren
+
+## 2026-08-29T04:26:36Z | Codex/root -> all | handoff
+
+- Task: Admin-Memory-Archiv als uebersichtliches interaktives 3D-Netzwerk optimieren.
+- Status: completed; lokal implementiert und nicht deployed.
+- Changed: klar getrennte kanonische Memory- und Sync-/Audit-Bereiche; dependency-freie 3D-Perspektive mit Drag, Touch-Pinch, Zoom, Suche, Scope-Filtern, Inspector, stabilen Projekt-Hubs und echten `supersedes_id`-Kanten; barrierefreie Memory-Liste und Live-Ansage.
+- Performance: dedizierter `/admin/archives`-Datenpfad verhindert das vorherige Laden fachfremder Provider-, Modell-, Telemetrie-, Geraete- und Settings-Daten; Query-Budget ist regressionsgetestet.
+- Verified: 6 fokussierte Tests / 25 Assertions, PHPStan, Pint, Blade-Cache, Vite-Build, `git diff --check`; isolierte Browser-QA bei 1280/390/320 px ohne Seitenueberlauf oder frische Konsolenfehler. Echte Versionskante und A11y-Ansage wurden interaktiv bestaetigt.
+- Boundaries: Admin-RBAC blieb erhalten; keine Produktionsdaten, Live-Konfiguration oder Deployment-Ziele wurden veraendert. Gleichzeitige Cognee-Improve-Aenderungen wurden nicht beruehrt.
+
+## 2026-08-29T05:40:00Z | Codex/root -> all | handoff
+
+- Task: Cognee Improve kontrolliert aktivieren und Redis fuer den gemeinsamen App-Test startklar machen.
+- Status: completed-live; Quellcommit `d771098` ist ueber Plesk ausgerollt.
+- Redis: exakt gepinntes Redis 7.4.11 laeuft intern hinter einem Loopback-only Nginx-TCP-Gateway; AOF, Secret-Datei, NOAUTH, DB0/DB1-Persistenz, echter Neustart und `vm.overcommit_memory=1` sind bestaetigt. Der alte `luczor-redis-auth`-Container ist gestoppt und als Rollback erhalten.
+- Cognee: Runtime auf 1.4.2 aktualisiert; `COGNEE_IMPROVE_ENABLED=true` mit Mindestintervall 3600. Improve bleibt explizit und wird nicht automatisch bei normalen Memory-Writes ausgefuehrt. Ollama/FastEmbed bleiben lokal, OpenAI wird nicht benoetigt.
+- Recovery: normaler Produktions-Smoke inklusive Improve, Recall, SQL-Fallback, Forget und Provider-Cleanup bestanden. Zusaetzlich hat ein echter laufender Cognify-Prozess einen gezielten Cognee-Neustart mit `recovery_generation=1` ueberstanden und wurde vollstaendig bereinigt.
+- Application: beide Deployment-Gates, Migrationen, Cognee-Check, Redis, Horizon, Scheduler und Login HTTP 200 sind gruen; sechs Memory-Container gesund, keine Restarts/OOM; `smoke_users=0`, `synthetic_links=0`; serverseitige Graph-Indexer-Container=0.
+- Backups: Redis-Cutover unter `/var/backups/luczor/redis-cutover-20260829T051214Z`; konsistente Cognee-1.4.2-Baseline vor Canaries unter `/var/backups/luczor/cognee-1.4.2-baseline-20260829T051723Z`; beide root-only und verifiziert.
+- Verified local: 383 Laravel-Tests / 2.647 Assertions, PHPStan, Pint, 28 Python-Wrapper-Tests mit einem Windows-Symlink-Skip, Compose-/Shell-Pruefungen und `git diff --check` bestanden.

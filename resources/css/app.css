@@ -1,5 +1,6 @@
 @import './shell.css';
 @import './admin-dashboard.css';
+@import './admin-memory-network.css';
 
 @tailwind base;
 @tailwind components;

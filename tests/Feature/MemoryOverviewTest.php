@@ -27,7 +27,8 @@ class MemoryOverviewTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.page', 'archives'))
             ->assertOk()
-            ->assertSee('Erinnerungen · Scope')
+            ->assertSee('Kanonisches Memory im Überblick')
+            ->assertSee('Scopes')
             ->assertSee('project');
     }
 }

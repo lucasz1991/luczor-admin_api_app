@@ -79,3 +79,26 @@ Record durable decisions with date, context, decision, and consequences.
 - Der externe Secret-Root gehört `root:root` mit `0700`, seine Dateien `0600`. Plesk- und PHP-Systembenutzer erhalten keine pauschalen Leserechte; hostseitig benötigte Laravel-Key-Dateien bleiben getrennte, minimal berechtigte Kopien unter `storage/app/keys`.
 - Besitzrechte werden ausschließlich aus dem exakten Bare-Repository-Manifest abgeleitet. Domain- und Document-Root behalten die Plesk-`psaserv`-Ausnahme; getrackte Inhalte verwenden den Subscription-Benutzer und `psacln`. Rekursives `chown` über Runtime-Daten ist verboten.
 - Secret-Auslagerung ist wertgleich und nicht rotierend: Kopie, `cmp`-Prüfung, neuer Container-Mount, Backup, Health-/Produktpfad-Smoke und erst danach exaktes Entfernen der alten Checkout-Dateien.
+
+## 2026-08-29 | Das Memory-Archiv trennt kanonisches Netzwerk und Sync-Audit
+
+- `memory_links` bleibt die kanonische SQL-Quelle des sichtbaren 3D-Metadatenmodells. Projekt-, Typ- und Scope-Kanten werden als Kategorien gekennzeichnet; nur `supersedes_id` gilt als echte Memory-zu-Memory-Beziehung. Cognee-Semantik wird ohne autorisierte Graph-Projektion nicht erfunden.
+- `luczor_*_archives` bleibt ein separater Sync-/Audit-Datenbestand und wird mit eigenen Kennzahlen und Herkunftshinweis dargestellt. Abweichende Summen sind damit erwartbar und nicht mehr irrefuehrend vermischt.
+- Die 3D-Ansicht verwendet Canvas-Perspektivprojektion ohne neue Frontend-Abhaengigkeit. Eine durchsuchbare DOM-Liste, Live-Inspector-Ansagen, stabile Projektidentitaeten, Reduced-Motion-Vertrag, Touch-/Maussteuerung und ein hartes 60-Knoten-Sichtfenster gehoeren zum UI-Vertrag.
+
+## 2026-08-29 | Redis wird ueber ein internes Loopback-Gateway veroeffentlicht
+
+- Redis bleibt in einem internen Docker-Netz ohne Host-Port. Ein minimaler, read-only Nginx-Stream-Container veroeffentlicht den Dienst ausschliesslich auf `127.0.0.1:6379`, damit Redis selbst ohne Port-Publish und ohne erweiterte Netzwerk-Capabilities laufen kann.
+- Redis 7.4.11 ist auf einen exakten Image-Digest festgelegt. Passwort, Laufzeitkonfiguration und persistente Daten verwenden getrennte Rechtevertraege; ein bereits Redis-eigenes Datenverzeichnis wird beim Neustart nicht rekursiv erneut traversiert.
+- Ein Cutover gilt nur als erfolgreich, wenn AOF-Daten, DB0/DB1-Sentinels, anonyme Auth-Blockade, Laravel-Cache, Horizon, Scheduler, Deployment-Gates und ein echter Containerneustart bestanden sind. Der Altcontainer bleibt gestoppt als zeitlich begrenzter Rollback erhalten.
+
+## 2026-08-29 | Cognee Improve ist explizit, lokal und recovery-geprueft
+
+- Cognee 1.4.2 wird exakt per Image-Digest betrieben. Improve ist mit einem Mindestintervall von 3600 Sekunden freigeschaltet, aber nur ueber den Memory-Orchestrator und einen expliziten Improve-Aufruf; normale Writes loesen keinen Improve-Lauf aus.
+- Der Produktionspfad bleibt ohne OpenAI: Ollama liefert das lokale LLM, FastEmbed die lokalen Embeddings. Der Desktop-lokale Repository-Graph wird weder nach Cognee projiziert noch serverseitig gestartet.
+- Die Freigabe verlangt normalen Improve-Smoke, Recall, SQL-Fallback, Forget, Provider-Cleanup und echte Boot-Recovery-Evidenz. Ein geaenderter Runtime-Boot darf nur nichtterminale Operationen kontrolliert mit erhoehter `recovery_generation` wiederaufnehmen.
+
+## 2026-08-29 | Nur der Deployment-Heartbeat laeuft im Wartungsmodus
+
+- `luczor:scheduler-heartbeat` verwendet `evenInMaintenanceMode()`, damit das Production-Gate waehrend eines kontrollierten Deployments die Scheduler-Liveness pruefen kann.
+- Fachliche Workflow-, Memory- und Cleanup-Jobs bleiben im Wartungsmodus unterdrueckt; der Heartbeat erweitert keine Ausfuehrungsberechtigung fuer sie.

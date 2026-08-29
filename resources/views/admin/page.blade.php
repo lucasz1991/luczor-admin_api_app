@@ -212,19 +212,7 @@ function setChainStatus(list, message, state){
             <tbody>@forelse($agentEvents as $e)<tr class="border-t border-slate-800"><td class="py-2 text-cyan-100">{{ $e->event_type }}</td><td>{{ $e->tool ?? '—' }}</td><td class="{{ $e->outcome==='failed'?'text-rose-300':($e->outcome==='completed'?'text-emerald-300':'') }}">{{ $e->outcome ?? '—' }}</td><td>{{ $e->risk_level ?? '—' }}</td><td>{{ optional($e->created_at)->format('d.m. H:i:s') ?? '—' }}</td></tr>@empty<tr><td colspan="5" class="py-3 text-slate-500">Noch keine Ereignisse.</td></tr>@endforelse</tbody></table>
         </section>
     @elseif($page === 'archives')
-        <div class="grid gap-4 md:grid-cols-5">@foreach($archiveCounts as $key=>$count)<div class="luczor-card p-4"><small class="text-slate-500">{{ str_replace('_',' ',$key) }}</small><div class="mt-2 text-2xl text-cyan-100">{{ $count }}</div></div>@endforeach</div>
-        <div class="mt-6 grid gap-6 lg:grid-cols-3">
-            <section class="luczor-card p-5"><h2 class="font-semibold">Erinnerungen · Scope <span class="text-xs text-slate-500">({{ $memoryOverview['total'] ?? 0 }})</span></h2>
-                <div class="mt-3 space-y-2">@forelse(($memoryOverview['by_scope'] ?? []) as $r)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $r['label'] }}</span><span class="text-slate-500">{{ $r['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $r['pct'] }}%;background:rgba(34,211,238,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">Noch keine Erinnerungen.</p>@endforelse</div>
-            </section>
-            <section class="luczor-card p-5"><h2 class="font-semibold">Erinnerungen · Typ</h2>
-                <div class="mt-3 space-y-2">@forelse(($memoryOverview['by_type'] ?? []) as $r)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $r['label'] }}</span><span class="text-slate-500">{{ $r['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $r['pct'] }}%;background:rgba(52,211,153,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">—</p>@endforelse</div>
-            </section>
-            <section class="luczor-card p-5"><h2 class="font-semibold">Erinnerungen · Projekt</h2>
-                <div class="mt-3 space-y-2">@forelse(($memoryOverview['by_project'] ?? []) as $r)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $r['label'] }}</span><span class="text-slate-500">{{ $r['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $r['pct'] }}%;background:rgba(245,158,11,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">—</p>@endforelse</div>
-            </section>
-        </div>
-        @include('admin.memory-graph')
+        @include('admin.archives')
     @elseif($page === 'optimizer')
         <div class="grid gap-6 lg:grid-cols-2">
             <section class="luczor-card p-5"><h2 class="font-semibold">Prompt-Version veröffentlichen</h2>

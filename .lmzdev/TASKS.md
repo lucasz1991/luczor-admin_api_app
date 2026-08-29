@@ -17,6 +17,8 @@
 | Redis auf Plesk privat starten und Laravel/Login verifizieren | Codex/root | completed | 2026-08-27T04:06:00Z |
 | Cognee ohne OpenAI lokal ueber Ollama/FastEmbed bereitstellen | Codex/root | completed-live | 2026-08-29T03:34:00Z |
 | Lokale Ollama-Compose-Variante und Provider-Contract konfliktfrei implementieren | Codex/deployment_sequence | completed-live | 2026-08-29T03:34:00Z |
-| Redis-Passwort-, Secret-Datei- und Host-Kernel-Haertung repositoryseitig bereitstellen | Codex/redis_hardening_repo | completed-local-pending-live-cutover | 2026-08-27T04:19:45Z |
+| Redis-Passwort-, Secret-Datei- und Host-Kernel-Haertung repositoryseitig bereitstellen | Codex/redis_hardening_repo | completed-live | 2026-08-29T05:40:00Z |
 | Admin-Dashboard neu strukturieren und visuell verfeinern | Codex/root | completed | 2026-08-27T05:10:31Z |
 | Docker-Secrets aus dem Plesk-Deploybaum auslagern und Git-Deploymentrechte reparieren | Codex/root | completed | 2026-08-29T03:34:00Z |
+| Cognee Improve kontrolliert aktivieren und Redis-Secret-Stack fuer App-Test umstellen | Codex/root | completed-live | 2026-08-29T05:40:00Z |
+| Memory-Archiv mit interaktivem 3D-Netzwerk optimieren | Codex/root | completed | 2026-08-29T04:26:36Z |
