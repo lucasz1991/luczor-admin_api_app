@@ -150,6 +150,38 @@ def _safe_identity_summary(items: Any) -> list[dict[str, str]]:
     ]
 
 
+def _wait_for_pipeline(dataset_id: Any, run_id: Any, pipeline_name: str) -> str:
+    """Wait for one exact guarded background run and verify its identity."""
+
+    deadline = time.monotonic() + TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        query = urllib.parse.urlencode({"dataset_id": dataset_id})
+        _, status_payload = _json_request(
+            "GET", f"/api/v1/luczor/pipeline-runs/{run_id}?{query}"
+        )
+        if not isinstance(status_payload, dict):
+            raise RuntimeError(f"{pipeline_name} returned an invalid run status")
+        if str(status_payload.get("dataset_id")) != str(dataset_id):
+            raise RuntimeError(f"{pipeline_name} status belongs to a different dataset")
+        if str(status_payload.get("pipeline_run_id")) != str(run_id):
+            raise RuntimeError(f"{pipeline_name} status belongs to a different run")
+        if str(status_payload.get("pipeline_name")) != pipeline_name:
+            raise RuntimeError(
+                f"expected {pipeline_name}, got {status_payload.get('pipeline_name')!s}"
+            )
+
+        status = _pipeline_status(status_payload.get("status"))
+        if "completed" in status:
+            return status
+        if "failed" in status or "error" in status:
+            raise RuntimeError(f"{pipeline_name} failed with status {status}")
+        time.sleep(1)
+
+    raise RuntimeError(
+        f"{pipeline_name} did not complete within {TIMEOUT_SECONDS} seconds"
+    )
+
+
 def main() -> None:
     _wait_for_service(f"{BASE_URL}/openapi.json")
     _wait_for_service(f"{FAKE_URL}/health")
@@ -220,25 +252,44 @@ def main() -> None:
     run = launch.get(str(dataset_id)) if isinstance(launch, dict) else None
     if not isinstance(run, dict) and isinstance(launch, dict) and len(launch) == 1:
         run = next(iter(launch.values()))
-    run_id = run.get("pipeline_run_id") if isinstance(run, dict) else None
-    if not _is_uuid(run_id):
+    cognify_run_id = run.get("pipeline_run_id") if isinstance(run, dict) else None
+    if not _is_uuid(cognify_run_id):
         raise RuntimeError("background cognify did not return a pipeline run UUID")
 
-    deadline = time.monotonic() + TIMEOUT_SECONDS
-    final_status = ""
-    while time.monotonic() < deadline:
-        query = urllib.parse.urlencode({"dataset_id": dataset_id})
-        _, status_payload = _json_request(
-            "GET", f"/api/v1/luczor/pipeline-runs/{run_id}?{query}"
-        )
-        final_status = _pipeline_status(status_payload.get("status"))
-        if "completed" in final_status:
-            break
-        if "failed" in final_status or "error" in final_status:
-            raise RuntimeError(f"cognify failed with status {final_status}")
-        time.sleep(1)
-    else:
-        raise RuntimeError(f"cognify did not complete within {TIMEOUT_SECONDS} seconds")
+    cognify_status = _wait_for_pipeline(
+        dataset_id, cognify_run_id, "cognify_pipeline"
+    )
+
+    # Cognee 1.4 exposes Improve through Memify and returns a one-entry
+    # dataset map. Luczor's guard must flatten that upstream contract to one
+    # canonical exact-run response, identically on first call and replay.
+    improve_key = hashlib.sha256(
+        f"improve:{dataset_id}:{content_hash}".encode()
+    ).hexdigest()
+    improve_payload = {"dataset_name": DATASET, "run_in_background": True}
+    _, improve_launch = _json_request(
+        "POST",
+        "/api/v1/improve",
+        improve_payload,
+        extra_headers={"X-Luczor-Idempotency-Key": improve_key},
+    )
+    _, improve_replay = _json_request(
+        "POST",
+        "/api/v1/improve",
+        improve_payload,
+        extra_headers={"X-Luczor-Idempotency-Key": improve_key},
+    )
+    if improve_replay != improve_launch:
+        raise RuntimeError("guarded improve replay differs from its first acceptance")
+    if not isinstance(improve_launch, dict):
+        raise RuntimeError("guarded improve did not return a canonical object")
+    improve_run_id = improve_launch.get("pipeline_run_id")
+    improve_dataset_id = improve_launch.get("dataset_id")
+    if not _is_uuid(improve_run_id) or str(improve_dataset_id) != str(dataset_id):
+        raise RuntimeError("guarded improve returned invalid exact-run identifiers")
+    improve_status = _wait_for_pipeline(
+        dataset_id, improve_run_id, "memify_pipeline"
+    )
 
     status_query = urllib.parse.urlencode(
         [("dataset", dataset_id), ("pipeline", "add_pipeline"), ("pipeline", "cognify_pipeline")]
@@ -296,10 +347,19 @@ def main() -> None:
         json.dumps(
             {
                 "status": "passed",
-                "flow": ["add", "background_cognify", "status", "search", "forget"],
+                "flow": [
+                    "add",
+                    "background_cognify",
+                    "background_improve",
+                    "exact_status",
+                    "search",
+                    "forget",
+                ],
                 "dataset_id_valid": True,
                 "data_id_valid": True,
-                "pipeline_status": final_status,
+                "cognify_status": cognify_status,
+                "improve_status": improve_status,
+                "improve_replay_identical": True,
                 "provider_requests": fake_stats,
                 "forgotten_data_absent": True,
             },

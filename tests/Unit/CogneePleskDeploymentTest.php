@@ -6,6 +6,18 @@ use PHPUnit\Framework\TestCase;
 
 class CogneePleskDeploymentTest extends TestCase
 {
+    public function test_cognee_runtime_is_pinned_to_the_audited_1_4_2_manifest(): void
+    {
+        $dockerfile = file_get_contents(dirname(__DIR__, 2).'/services/cognee/Dockerfile');
+
+        $this->assertIsString($dockerfile);
+        $this->assertStringContainsString(
+            'FROM cognee/cognee:1.4.2@sha256:680cd87732430cf5e52b1ff58ae7ec2ed6ed71a9a32a9e77b8a0627f425cc4c3',
+            $dockerfile,
+        );
+        $this->assertStringNotContainsString('cognee/cognee:1.4.0', $dockerfile);
+    }
+
     public function test_plesk_override_publishes_cognee_only_on_loopback(): void
     {
         $override = file_get_contents(dirname(__DIR__, 2).'/../docker-compose.plesk-cognee.yml');

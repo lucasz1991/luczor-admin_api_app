@@ -65,6 +65,7 @@ class CogneeRuntimeGuardTest extends TestCase
         $this->assertStringNotContainsString('app.add_event_handler(', $wrapper);
         $this->assertStringContainsString('if any(row["state"] == "inflight" for row in rows):', $wrapper);
         $this->assertStringContainsString('cache_body = _guarded_cache_body(operation, response.status_code, body)', $wrapper);
+        $this->assertStringContainsString('response_body = cache_body if 200 <= response.status_code < 300 else body', $wrapper);
         $this->assertStringContainsString('Cognee returned an invalid guarded launch acceptance.', $wrapper);
         $this->assertStringContainsString('@app.get("/api/v1/luczor/data")', $wrapper);
         $this->assertStringContainsString('async with _exclusive_add_lookup():', $wrapper);

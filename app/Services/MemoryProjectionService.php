@@ -1065,7 +1065,13 @@ class MemoryProjectionService
     /** @param array<string,mixed> $run */
     private function isImproveRunForDataset(array $run, string $datasetId, string $runId): bool
     {
-        return strtolower((string) ($run['pipeline_name'] ?? '')) === 'improve_pipeline'
+        // Cognee 1.4 implements Improve through Memify and persists the exact
+        // run as `memify_pipeline`. Keep the later adapter name compatible,
+        // while dataset and run UUIDs remain mandatory exact-match guards.
+        return in_array(strtolower((string) ($run['pipeline_name'] ?? '')), [
+            'memify_pipeline',
+            'improve_pipeline',
+        ], true)
             && hash_equals(strtolower($datasetId), strtolower((string) ($run['dataset_id'] ?? '')))
             && hash_equals(strtolower($runId), strtolower((string) ($run['pipeline_run_id'] ?? '')));
     }

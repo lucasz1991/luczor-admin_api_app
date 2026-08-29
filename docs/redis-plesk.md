@@ -93,7 +93,7 @@ docker compose -f docker-compose.plesk-memory.yml --profile redis-cutover up -d 
 docker compose -f docker-compose.plesk-memory.yml ps redis
 ```
 
-Falls noch der separat in Plesk erstellte Container `luczor-redis` Port 6379
+Falls noch der separat in Plesk erstellte Container `luczor-redis-auth` Port 6379
 belegt, diesen kontrolliert stoppen und den Compose-Dienst erst danach starten.
 Das Host-Verzeichnis `/var/lib/luczor/redis` dabei nicht löschen.
 

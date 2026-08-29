@@ -2,7 +2,8 @@
 
 `docker-compose.cognee-e2e.yml` is a separate, disposable acceptance stack for
 the Cognee version pinned in `Dockerfile`. It exercises the same HTTP contract
-as `CogneeClient`: foreground Add, guarded background Cognify, exact pipeline
+as `CogneeClient`: foreground Add, guarded background Cognify, guarded
+background Improve/Memify with an identical idempotent replay, exact pipeline
 status, CHUNKS search, and item-level Forget.
 
 Run from PowerShell:
@@ -56,7 +57,7 @@ The PowerShell wrapper creates a unique Compose project and image name. Its
 `finally` block removes containers, the internal network, anonymous resources,
 and the locally built image. If Docker Desktop was stopped before the run, the
 wrapper starts it and stops it again after cleanup. A successful final line is
-a JSON object with `"status":"passed"` and the five checked flow stages.
+a JSON object with `"status":"passed"` and the six checked flow stages.
 
 Fast contracts without Docker:
 

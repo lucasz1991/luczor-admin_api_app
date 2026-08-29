@@ -31,9 +31,10 @@ final class MemoryProductionSmoke extends Command
 {
     protected $signature = 'luczor:memory-production-smoke
         {--force : Confirm the temporary production write and provider projection}
+        {--improve : Include one isolated real Cognee Improve/Memify run}
         {--timeout=1800 : Maximum seconds for projection, recall and cleanup}';
 
-    protected $description = 'Run a synthetic Remember-Cognify-Recall-Forget production acceptance test';
+    protected $description = 'Run a synthetic Remember-Cognify-Recall-Forget production acceptance test, optionally with Improve';
 
     private string $stage = 'preflight';
 
@@ -170,6 +171,38 @@ final class MemoryProductionSmoke extends Command
                 throw new RuntimeException('Semantic recall was not revalidated against canonical SQL.');
             }
 
+            if ($this->option('improve')) {
+                // This opt-in affects only the smoke command process. It lets an
+                // operator prove the real pinned Cognee contract before the
+                // persistent production feature flag is enabled for API users.
+                config(['luczor.cognee.improve_enabled' => true]);
+                $this->stage = 'improve_schedule';
+                $improve = $this->api($http, $plainToken, 'POST', '/api/v1/memory/improve', [
+                    'scope' => 'project',
+                    'project_id' => $projectId,
+                ]);
+                $this->requireStatus($improve, 200, 'Improve');
+                if (($improve['body']['scheduled'] ?? null) !== true) {
+                    throw new RuntimeException('Improve did not schedule the synthetic ready dataset.');
+                }
+
+                $this->stage = 'improve_projection';
+                $improveOutbox = MemoryProjectionOutbox::query()
+                    ->where('dataset', $dataset)
+                    ->where('action', 'improve')
+                    ->orderByDesc('id')
+                    ->firstOrFail();
+                $this->driveProjection($improveOutbox->id, $projections, $deadline);
+                $improveOutbox->refresh();
+                $improvePayload = $improveOutbox->payload ?? [];
+                if ($improveOutbox->status !== 'done'
+                    || ($improvePayload['phase'] ?? null) !== 'improve_polling'
+                    || ! $this->isUuid((string) ($improvePayload['pipeline_run_id'] ?? ''))
+                    || ! $this->isUuid((string) ($improvePayload['cognee_dataset_id'] ?? ''))) {
+                    throw new RuntimeException('Improve did not finish through one exact guarded background run.');
+                }
+            }
+
             $this->stage = 'dlp_sql_fallback';
             $fallback = $this->api($http, $plainToken, 'POST', '/api/v1/memory/recall', [
                 'query' => 'Erinnerungsmarker '.$suffix.' smoke@example.invalid',
@@ -269,9 +302,10 @@ final class MemoryProductionSmoke extends Command
             return self::FAILURE;
         }
 
-        $this->components->info(
-            'Memory production smoke passed: Remember, Cognify, semantic recall, SQL fallback, Forget and provider cleanup.'
-        );
+        $steps = $this->option('improve')
+            ? 'Remember, Cognify, Improve, semantic recall, SQL fallback, Forget and provider cleanup.'
+            : 'Remember, Cognify, semantic recall, SQL fallback, Forget and provider cleanup.';
+        $this->components->info('Memory production smoke passed: '.$steps);
 
         return self::SUCCESS;
     }

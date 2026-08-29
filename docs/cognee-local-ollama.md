@@ -123,6 +123,14 @@ php artisan luczor:memory-production-smoke --force --timeout=1800
 Dabei werden weder Repository-Code noch echte Benutzererinnerungen verwendet. Ein PASS
 wird erst ausgegeben, nachdem die Cognee-Data-ID nicht mehr auffindbar ist.
 
+Vor der dauerhaften Freischaltung von Cognee Improve wird derselbe isolierte Test
+einmal explizit mit dem realen Improve-/Memify-Pfad ausgeführt. `--improve`
+aktiviert Improve nur im Prozess dieses Kommandos und ändert die `.env` nicht:
+
+```bash
+php artisan luczor:memory-production-smoke --force --improve --timeout=1800
+```
+
 ## Technische Grundlagen
 
 - [Cognee: lokale LLM- und FastEmbed-Konfiguration](https://docs.cognee.ai/getting-started/llm-quickstart-skill)

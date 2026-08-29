@@ -3375,7 +3375,7 @@ class MemoryOrchestratorApiTest extends TestCase
                 $this->polls++;
 
                 return [
-                    'pipeline_name' => 'improve_pipeline',
+                    'pipeline_name' => 'memify_pipeline',
                     'pipeline_run_id' => $this->runIdValue,
                     'dataset_id' => $this->datasetIdValue,
                     'status' => $this->polls === 1

@@ -62,8 +62,14 @@ try {
     Invoke-Compose config --quiet
     $composeWasCreated = $true
     Invoke-Compose up --build --detach --wait cognee
-    Invoke-Compose run --rm --no-deps --entrypoint /app/.venv/bin/python e2e-runner `
-        -m unittest discover -s /opt/luczor-cognee-tests -p 'test_luczor_*.py' -v
+    Invoke-Compose -Arguments @(
+        'run', '--rm', '--no-deps',
+        '--entrypoint', '/app/.venv/bin/python',
+        'e2e-runner', '-m', 'unittest', 'discover',
+        '-s', '/opt/luczor-cognee-tests',
+        '-p', 'test_luczor_*.py',
+        '-v'
+    )
     Invoke-Compose run --rm --no-deps e2e-runner
 }
 catch {

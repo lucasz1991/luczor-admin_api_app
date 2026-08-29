@@ -146,14 +146,37 @@ def _guarded_cache_body(operation, status_code, body):
         return None
 
     if operation == "improve":
-        run_id = _uuid_string(payload.get("pipeline_run_id"))
-        dataset_id = _uuid_string(payload.get("dataset_id"))
+        # Cognee 1.4 returns background Improve (internally Memify) as
+        # ``{dataset_uuid: PipelineRunInfo}``, while later/adapter versions may
+        # already return the single PipelineRunInfo object. Normalize both
+        # contracts to one minimal, replay-safe response. Improve is launched
+        # for exactly one dataset, so multiple map entries are ambiguous and
+        # must remain fail-closed.
+        run = payload
+        if "pipeline_run_id" not in payload or "dataset_id" not in payload:
+            if len(payload) != 1:
+                return None
+            dataset_key, candidate = next(iter(payload.items()))
+            if not isinstance(candidate, dict):
+                return None
+            key_dataset_id = _uuid_string(dataset_key)
+            candidate_dataset_id = _uuid_string(candidate.get("dataset_id"))
+            if (
+                not key_dataset_id
+                or not candidate_dataset_id
+                or key_dataset_id != candidate_dataset_id
+            ):
+                return None
+            run = candidate
+
+        run_id = _uuid_string(run.get("pipeline_run_id"))
+        dataset_id = _uuid_string(run.get("dataset_id"))
         if not run_id or not dataset_id:
             return None
         safe = {
             "pipeline_run_id": run_id,
             "dataset_id": dataset_id,
-            "status": str(payload.get("status") or "PipelineRunStarted"),
+            "status": str(run.get("status") or "PipelineRunStarted"),
         }
         return json.dumps(safe, separators=(",", ":")).encode("utf-8")
 
@@ -714,7 +737,19 @@ async def luczor_runtime_guard(request, call_next):
             cache_body if cache_body is not None else body,
             "application/json" if cache_body is not None else content_type,
         )
-        return _response(response.status_code, body, content_type, INSTANCE_ID)
+        # A guarded success must return the same canonical body on the first
+        # request and every idempotent replay. In particular, Cognee 1.4's
+        # one-entry Improve map is flattened for Laravel's exact-run tracker.
+        response_body = cache_body if 200 <= response.status_code < 300 else body
+        response_content_type = (
+            "application/json" if 200 <= response.status_code < 300 else content_type
+        )
+        return _response(
+            response.status_code,
+            response_body,
+            response_content_type,
+            INSTANCE_ID,
+        )
     except Exception:
         # The request may already have started a process-local background task.
         # Keep the durable claim fail-closed: a retry gets 409 instead of

@@ -378,7 +378,9 @@ Kandidatenmenge wird ohne weiteren Alias-Aufruf zurückgegeben.
 
 Ein explizit angefordertes und freigeschaltetes `improve` läuft ebenfalls über die Outbox. Es verwendet die
 Phasen `improve_launching` und `improve_polling`, eine stabile Idempotency-ID sowie die
-exakte `improve_pipeline`-Run-ID. Upsert, Forget und Improve werden pro Dataset gemeinsam
+exakte `memify_pipeline`-Run-ID des gepinnten Cognee 1.4. Der Wrapper normalisiert dessen
+einzeilige Dataset-Map bereits beim ersten Start und bei jedem Replay identisch zu einer
+flachen, UUID-validierten Annahme. Upsert, Forget und Improve werden pro Dataset gemeinsam
 serialisiert; Improve persistiert den geschützten Turn atomar vor der Runtime-Probe und
 Forget prüft ihn nach dem Erwerb des Inhalts-Locks erneut. Ein belegter Inhalts-Lock wird
 nicht blockierend abgewartet: Die Outbox geht ohne Fehlversuch fünf Sekunden auf `pending`
@@ -393,6 +395,13 @@ den Launch fail-closed ab. Trägt ein ambiger Improve bereits einen Account-Eras
 wird er bei gleicher Boot-ID ausschließlich idempotent fortgesetzt; nach einer geänderten
 Boot-ID gilt die alte prozesslokale Task als beendet und der Turn wird ohne privaten Relaunch
 für Forget freigegeben.
+
+Das Produktionsimage ist exakt auf Cognee 1.4.2 gepinnt. Diese Version enthält den
+Upstream-[Sentinel-Fix](https://github.com/topoteretes/cognee/commit/21c83ec2bd0b0da987cb83e3e7d255009e470f77),
+durch den ein normales `/api/v1/improve` ohne eigene Tasks oder
+explizite Daten nicht mehr zuerst den vollständigen Graphen in den Python-Prozess
+projiziert. Der Fix macht Improve jedoch weder restartfest noch inkrementell und ersetzt
+deshalb keinen kontrollierten Canary- und Recovery-Test.
 
 Cognee 1.4 kann einen hängenden Improve-Lauf ohne wirksamen Upstream-Timeout halten, während
 `/health` weiterhin erfolgreich antwortet ([Issue #4309](https://github.com/topoteretes/cognee/issues/4309)).
@@ -468,7 +477,7 @@ erfolgreicher Prüfung die lokale Secret-Datei. Danach `api` und `horizon` neu e
 den vorherigen Key in Cognee widerrufen. Das Löschen des alten Keys geschieht absichtlich
 nicht automatisch, damit ein fehlgeschlagener Rollout rückrollbar bleibt.
 
-Die Konfiguration folgt der für dieses Projekt gepinnten Cognee-1.4.0-Konfiguration und den
+Die Konfiguration folgt der für dieses Projekt gepinnten Cognee-1.4.2-Konfiguration und den
 offiziellen Hinweisen zu
 [Security & Privacy](https://docs.cognee.ai/setup-configuration/security),
 [Self-hosted API-Authentisierung](https://docs.cognee.ai/api-reference/introduction),

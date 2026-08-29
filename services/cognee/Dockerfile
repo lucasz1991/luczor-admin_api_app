@@ -1,6 +1,6 @@
 # Pin both the audited release and its multi-architecture manifest. `main`
 # changes without notice and makes production rebuilds non-reproducible.
-FROM cognee/cognee:1.4.0@sha256:d8931a59034a6c69f3cf4a81e1ba0b5ddc660691a600a7711f6278aad26bb678 AS luczor-cognee-runtime
+FROM cognee/cognee:1.4.2@sha256:680cd87732430cf5e52b1ff58ae7ec2ed6ed71a9a32a9e77b8a0627f425cc4c3 AS luczor-cognee-runtime
 
 # The upstream image intentionally ships only local defaults. Its runtime venv
 # has no pip binary, so install the pinned PostgreSQL extras into that venv
@@ -27,8 +27,8 @@ RUN /app/.venv/bin/python -c "import ladybug; database = ladybug.Database('/tmp/
     && extension_file="$(find /root/.lbdb/extension -type f -path '*/json/libjson.lbug_extension' -print -quit)" \
     && test -n "$extension_file" \
     && case "$TARGETARCH" in \
-        amd64) expected_hash=8a5eb3c6c70cc86ea34aea777e9fc78687f69d1396055d878d2b9e0a79cb5114 ;; \
-        arm64) expected_hash=f5b825eef48100a99dc4867f7882cc0368d6c5b89b4e9c33b875a37af2cfcd22 ;; \
+        amd64) expected_hash=4261127eeb778b5d3e42511a16865b15be118619c528c493f91c91daa2eadd43 ;; \
+        arm64) expected_hash=f5fd5a421fd6fc52a731d1a6305d00ceb3a37a441c60d73d0a08cf89533cfbe7 ;; \
         *) echo "Unsupported Ladybug extension architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac \
     && printf '%s  %s\n' "$expected_hash" "$extension_file" | sha256sum -c - \
@@ -61,7 +61,7 @@ ENTRYPOINT ["/usr/local/bin/luczor-cognee-entrypoint"]
 # no provider credentials or production data are copied into the image.
 FROM luczor-cognee-runtime AS luczor-cognee-e2e
 COPY e2e /opt/luczor-cognee-e2e
-COPY test_luczor_identities.py test_luczor_upload_policy.py /opt/luczor-cognee-tests/
+COPY test_luczor_*.py /opt/luczor-cognee-tests/
 
 # Keep the default/final target production-identical for existing builds.
 FROM luczor-cognee-runtime AS luczor-cognee-production
