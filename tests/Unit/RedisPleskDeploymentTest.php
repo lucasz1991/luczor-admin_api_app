@@ -45,6 +45,8 @@ class RedisPleskDeploymentTest extends TestCase
         );
         $this->assertStringContainsString('${LUCZOR_REDIS_DATA_DIR:-/var/lib/luczor/redis}:/data', $compose);
         $this->assertStringContainsString('/run/secrets/redis_password', $compose);
+        $this->assertStringContainsString('/tmp:size=1m,mode=1777', $compose);
+        $this->assertStringNotContainsString('/run/luczor-redis:size=', $compose);
         $this->assertStringContainsString('read_only: true', $compose);
         $this->assertStringNotContainsString('- "0.0.0.0:', $compose);
         $this->assertStringNotContainsString('--requirepass', $compose);
@@ -56,6 +58,7 @@ class RedisPleskDeploymentTest extends TestCase
 
         $this->assertIsString($entrypoint);
         $this->assertStringContainsString("grep -Eq '^[A-Za-z0-9+/_=.-]{32,}$'", $entrypoint);
+        $this->assertStringContainsString('runtime_directory=/tmp/luczor-redis', $entrypoint);
         $this->assertStringContainsString("printf 'requirepass %s\\n' \"\$password\"", $entrypoint);
         $this->assertStringContainsString('exec gosu redis redis-server "$config_file"', $entrypoint);
         $this->assertStringNotContainsString('redis-server --requirepass', $entrypoint);

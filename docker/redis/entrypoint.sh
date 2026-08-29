@@ -2,7 +2,7 @@
 set -eu
 
 secret_file=/run/secrets/redis_password
-runtime_directory=/run/luczor-redis
+runtime_directory=/tmp/luczor-redis
 config_file="$runtime_directory/redis.conf"
 maxmemory="${LUCZOR_REDIS_MAXMEMORY:-192mb}"
 
