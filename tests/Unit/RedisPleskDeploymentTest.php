@@ -59,6 +59,9 @@ class RedisPleskDeploymentTest extends TestCase
         $this->assertIsString($entrypoint);
         $this->assertStringContainsString("grep -Eq '^[A-Za-z0-9+/_=.-]{32,}$'", $entrypoint);
         $this->assertStringContainsString('runtime_directory=/tmp/luczor-redis', $entrypoint);
+        $this->assertStringContainsString('chmod 0700 "$runtime_directory"', $entrypoint);
+        $this->assertStringContainsString('chown redis:redis "$runtime_directory"', $entrypoint);
+        $this->assertStringNotContainsString('install -d -m 0700 -o redis', $entrypoint);
         $this->assertStringContainsString("printf 'requirepass %s\\n' \"\$password\"", $entrypoint);
         $this->assertStringContainsString('exec gosu redis redis-server "$config_file"', $entrypoint);
         $this->assertStringNotContainsString('redis-server --requirepass', $entrypoint);

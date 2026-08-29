@@ -21,7 +21,12 @@ printf '%s' "$maxmemory" | LC_ALL=C grep -Eq '^[1-9][0-9]*(k|kb|m|mb|g|gb)$' \
 
 password="$(cat "$secret_file")"
 
-install -d -m 0700 -o redis -g redis "$runtime_directory"
+# With the reduced capability set, change the mode while root still owns the
+# directory and transfer ownership only afterwards. BusyBox `install -o`
+# performs these operations in the opposite order and then needs CAP_FOWNER.
+install -d "$runtime_directory"
+chmod 0700 "$runtime_directory"
+chown redis:redis "$runtime_directory"
 umask 0077
 {
   printf '%s\n' \
