@@ -79,7 +79,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - printf '*1\r\n$$4\r\nPING\r\n' | nc -w 2 127.0.0.1 8080 | grep -q NOAUTH
+        - "{ printf '*1\\r\\n$$4\\r\\nPING\\r\\n'; sleep 1; } | nc -w 2 127.0.0.1 8080 | grep -q NOAUTH"
       interval: 5s
       timeout: 3s
       retries: 20

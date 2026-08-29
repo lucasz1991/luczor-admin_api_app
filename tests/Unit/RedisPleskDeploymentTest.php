@@ -46,6 +46,7 @@ class RedisPleskDeploymentTest extends TestCase
         $this->assertStringContainsString('redis-loopback:', $compose);
         $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:8080', $compose);
         $this->assertStringContainsString('./docker/nginx/redis-loopback.conf:/etc/nginx/luczor-redis-loopback.conf:ro', $compose);
+        $this->assertStringContainsString('sleep 1; } | nc -w 2 127.0.0.1 8080 | grep -q NOAUTH', $compose);
         $this->assertMatchesRegularExpression(
             '/redis:\R\s+#.*?profiles:\R\s+- redis-cutover/s',
             $compose,
