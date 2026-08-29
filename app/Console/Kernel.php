@@ -20,7 +20,10 @@ class Kernel extends ConsoleKernel
                 now()->toISOString(),
                 now()->addMinutes(10)
             );
-        })->name('luczor:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
+        })->name('luczor:scheduler-heartbeat')
+            ->everyMinute()
+            ->withoutOverlapping()
+            ->evenInMaintenanceMode();
 
         $schedule->command('luczor:advance-workflows --limit=250')->everyMinute()->withoutOverlapping();
         $schedule->command('luczor:dispatch-memory-projections --limit=250')->everyMinute()->withoutOverlapping();
