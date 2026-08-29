@@ -187,3 +187,14 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-08-29T02:58:03Z | Codex -> all | status
 
 - Message: Started: Docker-Secrets aus dem Plesk-Git-Deployment auslagern und Deployment-Berechtigungen sicher reparieren
+
+## 2026-08-29T03:34:00Z | Codex/root -> all | handoff
+
+- Task: Docker-Secrets aus dem Plesk-Checkout auslagern und Plesk-Git wieder dauerhaft deploymentfähig machen.
+- Status: completed-live; Quellcommit `5fcc521` ist ausgerollt.
+- Runtime: 17 Secret-Dateien wertgleich nach `/var/lib/luczor/secrets` verschoben (`root:root`, Verzeichnis `0700`, Dateien `0600`); die sechs aktiven Postgres-/Cognee-Mounts zeigen ausschließlich dorthin. Die alte Checkout-Kopie wurde erst nach erfolgreicher Abnahme exakt entfernt.
+- Plesk: Bare-Repo-/Origin-/Manifest-gebundene Rechtekorrektur mit ACL-Rollback; kein `chown -R`, keine Änderung an `.env`, Runtime-Storage, `vendor`, Docker-Daten oder externen Secrets. Echter Plesk-Deploy erfolgreich.
+- Verified local: 377 Laravel-Tests / 2.583 Assertions, PHPStan, Pint, Shell-/PowerShell-Syntax, Compose-Auflösung für 7 Plesk- und 17 Workspace-Secrets; Review ohne P1/P2.
+- Verified live: Migrationen aktuell, beide Deployment-Gates grün, Redis/Horizon/Scheduler/Reverb grün, `luczor:cognee-check` grün, Memory-Smoke mit Remember/Cognify/semantic recall/SQL fallback/Forget/provider cleanup bestanden; vier Memory-Container gesund, keine Restarts/OOM.
+- Backups: root-only ACL-, `.env`- und PostgreSQL-Rollbacks unter `/var/backups/luczor`; keine Secret-Werte protokolliert.
+- Remaining note: Cognee Improve bleibt bewusst deaktiviert; separater Redis-Stack kann später optional auf das repositoryseitige Secret-Mount-Profil vereinheitlicht werden.

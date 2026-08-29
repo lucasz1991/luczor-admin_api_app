@@ -72,3 +72,10 @@ Record durable decisions with date, context, decision, and consequences.
 - Der erste Viewport zeigt reale Betriebsdaten und priorisierte Zugaenge; tiefe Verwaltungsformulare liegen weiterhin auf derselben autorisierten Dashboard-Route, aber in fuenf nativen, einzeln aufklappbaren Werkzeuggruppen.
 - Ein Validierungsfehler oeffnet nur die absendende Werkzeuggruppe. Der UI-only Marker `_dashboard_tool_group` wird strikt gegen bekannte Werte verglichen und von keiner Store-Aktion persistiert.
 - Die Darstellung bleibt framework-nativ mit Blade, Tailwind und einer eigenen flachen Dashboard-CSS-Schicht. Keine neue Frontend-Abhaengigkeit wurde eingefuehrt; reduzierte Bewegung, Tastaturfokus und mobile Touchziele sind Teil des Vertrags.
+
+## 2026-08-29 | Docker-Secrets und Git-Deployment besitzen getrennte Vertrauensbereiche
+
+- Produktion setzt `LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets`; der lokale Fallback `docker/secrets` ist vollständig ignoriert und niemals Teil eines Git-Deployments.
+- Der externe Secret-Root gehört `root:root` mit `0700`, seine Dateien `0600`. Plesk- und PHP-Systembenutzer erhalten keine pauschalen Leserechte; hostseitig benötigte Laravel-Key-Dateien bleiben getrennte, minimal berechtigte Kopien unter `storage/app/keys`.
+- Besitzrechte werden ausschließlich aus dem exakten Bare-Repository-Manifest abgeleitet. Domain- und Document-Root behalten die Plesk-`psaserv`-Ausnahme; getrackte Inhalte verwenden den Subscription-Benutzer und `psacln`. Rekursives `chown` über Runtime-Daten ist verboten.
+- Secret-Auslagerung ist wertgleich und nicht rotierend: Kopie, `cmp`-Prüfung, neuer Container-Mount, Backup, Health-/Produktpfad-Smoke und erst danach exaktes Entfernen der alten Checkout-Dateien.

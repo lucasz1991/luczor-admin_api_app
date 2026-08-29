@@ -18,6 +18,9 @@
 - Der Production-Gate prueft Redis-Authentisierung und privaten Endpunkt statisch sowie `vm.overcommit_memory=1` im echten Runtime-Lauf.
 - Der eigenstaendige Plesk-Memory-Stack ist repositoryseitig auf lokale Inferenz umgestellt: Cognee nutzt Ollama `llama3.2:3b` sowie ein vorab geladenes, 384-dimensionales mehrsprachiges FastEmbed-Modell. Beide Runtime-Dienste bleiben in internen Docker-Netzen; nur ein explizites Bootstrap-Profil darf das Ollama-Modell einmalig laden.
 - Das Admin-Dashboard trennt jetzt das operative Lagebild von der direkten Konfiguration: Systemstatus, vier Kernmetriken, 14-Tage-Verlauf, Hinweise, letzte Provider-Versuche und sechs Modulzugaenge stehen vor fuenf gezielt aufklappbaren Werkzeuggruppen. Bestehende Admin-Aktionen, Routen, Rollen- und Kundengrenzen bleiben erhalten.
+- Docker-Secret-Dateien liegen produktiv ausschließlich unter `/var/lib/luczor/secrets` als `root:root` mit Verzeichnis-Modus `0700` und Datei-Modus `0600`. Compose, Initialisierer und Cognee-Provisionierung teilen den konfigurierbaren `LUCZOR_DOCKER_SECRETS_DIR`-Vertrag; der Git-Checkout enthält kein Secret-Verzeichnis mehr.
+- Plesk-Git-Deployments verwenden wieder ausschließlich den Subscription-Systembenutzer. Die einmalige Reparatur war am Bare-Repository-Manifest gebunden, schloss `.env`, Runtime-Storage, `vendor`, Docker-Daten und externe Secrets aus und legte vor Änderungen ein ACL-Rollback ab.
+- Der lokale Plesk-Memory-Stack läuft live mit externen Secret-Mounts, lokalem Ollama/FastEmbed und ohne OpenAI-Zugangsdaten. Remember, Cognify, semantischer Recall, SQL-Fallback, Forget und Provider-Cleanup sind über den echten Produktionspfad bestanden.
 
 ## Verification
 
@@ -35,19 +38,13 @@
 - Redis-Haertung — vollstaendig 357 Tests / 2.367 Assertions, Compose-JSON/Loopback/Bind-Mount, POSIX-Shellsyntax, Config-Cache ohne Secretwert, PHPStan und Pint bestanden; der echte Container-Runtime-Smoke bleibt mangels lokalem Docker-Daemon offen.
 - Lokale Cognee-Provider — 46 fokussierte Tests / 293 Assertions, Pint, normale und Bootstrap-Compose-Aufloesung, interne Runtime-Netze ohne Ollama-Host-Port, POSIX-Shellsyntax und `git diff --check` bestanden.
 - Admin-Dashboard — 365 Laravel-Tests / 2.464 Assertions, PHPStan, Pint, Blade-Cache und Vite-Produktionbuild mit Node 22.22.0 bestanden. Browser-QA mit leeren und befuellten Daten bei 1280/1024/1023/390/320 px bestaetigte keine horizontale Ueberlaeufe, keine unbenannten Controls, gezieltes Fehler-Disclosure und keine offenen P1/P2-Befunde.
+- Externe Docker-Secrets/Plesk-Deploy — 377 Laravel-Tests / 2.583 Assertions, PHPStan, Pint, POSIX-/PowerShell-Syntax, beide Compose-Vertraege mit 7 beziehungsweise 17 extern aufgeloesten Secret-Dateien und unabhaengiger Review ohne P1/P2 bestanden.
+- Live Plesk — Commit `5fcc521` erfolgreich über die Plesk-Git-Integration ausgerollt; alle sechs aktiven Postgres-/Cognee-Mounts zeigen auf `/var/lib/luczor/secrets`, vier Memory-Container sind gesund, ohne Restart oder OOM; Datenbank-Rollback wurde vor dem Recreate erzeugt.
+- Live Anwendung — Migrationen aktuell; Configuration-only- und vollständiger Production-Gate vollständig grün; `luczor:cognee-check` sowie `luczor:memory-production-smoke --force --timeout=1800` bestanden und synthetische Provider-Daten bereinigt.
 
 ## Deployment blockers
 
-- No production migration or deployment was performed.
-- The local `.env.docker` is not deployable yet: die vollstaendig lokale Cognee/Ollama-Konfiguration und ihr Runtime-Smoke sind noch offen.
-- Provision two independent stable secrets for `LUCZOR_MEMORY_NAMESPACE_KEY` and `LUCZOR_MEMORY_LEDGER_KEY`; do not invent or rotate them during rollout.
-- Run migrations `2026_08_23_000001` through `000005` only in full maintenance mode with backup and the documented ownerless-Add preflight/recovery procedure.
-- Before retrying the failed production `000002`, deploy the repair, inspect `migrate:status`, `memory_links.write_fingerprint`, `SHOW CREATE TABLE memory_write_events` and its row count read-only; do not drop or mark the partial table manually.
-- Plesk `.env` verwendet `APP_ENV=production` und `APP_DEBUG=false`; `optimize:clear` und der Configuration-only-Gate laufen mit Redis vollstaendig erfolgreich.
-- Die kostenlose Plesk-Docker-Erweiterung 2.1.10-14898 ist installiert. Der vorhandene `railtime-media`/LiveKit-Stack wurde dabei kurz neu gestartet und ist wieder `Running`; er wurde nicht veraendert. Der SSH-Webterminal bleibt ueber unverschluesseltes Port 8880 unerreichbar.
-- Redis ist live; der eigenstaendige Cognee-Teil des Plesk-Memory-Stacks bleibt lokal vorbereitet. Cognee-PostgreSQL und lokale Inferenz muessen intern bleiben, der Repository-Graph-Indexer wird nicht serverseitig gestartet. Es wird kein OpenAI- oder anderer Cloud-Provider-Key verwendet.
-- Der laufende direkte Plesk-Redis ist noch nicht passwortgeschuetzt und der Host-Sysctl wurde noch nicht live bestaetigt. Vor erneut gruenem Gate muessen der kontrollierte Compose-Cutover, `REDIS_PASSWORD_FILE`, anonymer `NOAUTH`-/authentisierter `PONG`-Smoke und `vm.overcommit_memory=1` nach `docs/redis-plesk.md` erfolgen.
-- Docker Desktop was not running locally, so the real Cognee container, provider quality and Add/Cognify/Search/Forget product-path smoke remain production acceptance work.
-- Keep Cognee 1.4 Improve disabled until the documented live hang, timeout, restart, and Forget smoke test passes.
-- Das gepinnte Cognee-Image mit FastEmbed wurde lokal nicht gebaut und Ollama nicht gestartet. Vor Produktivfreigabe bleiben Image-Build, einmaliger Model-Bootstrap sowie Add/Cognify/Search/Forget inklusive Ressourcen- und Egress-Beobachtung erforderlich.
-- The desktop build warned that installed Node 22.11 is below the package requirement of 22.12 or newer.
+- Keine offenen Blocker für den aktuellen Plesk-Git-, Laravel-, Redis- oder lokalen Cognee-Memory-Betrieb.
+- Cognee 1.4 Improve bleibt bewusst deaktiviert, bis sein separater Hang-/Timeout-/Restart-/Forget-Test freigegeben und bestanden ist; das blockiert den normalen Memory-Pfad nicht.
+- Der eigenständige `luczor-redis-auth`-Stack ist weiterhin der laufende passwortgeschützte Loopback-Redis. Sein verifier-basierter Start enthält kein Klartextpasswort; ein späterer kontrollierter Wechsel auf das repositoryseitige `redis-cutover`-Profil bleibt optionale Vereinheitlichung, nicht Deployment-Voraussetzung.
+- Der Repository-Graph-Indexer bleibt absichtlich Desktop-lokal und wird auf Plesk weder gestartet noch mit Server-Secrets versorgt.
