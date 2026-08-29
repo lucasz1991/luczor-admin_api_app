@@ -21,11 +21,13 @@ printf '%s' "$maxmemory" | LC_ALL=C grep -Eq '^[1-9][0-9]*(k|kb|m|mb|g|gb)$' \
 
 password="$(cat "$secret_file")"
 
-# With the reduced capability set, change the mode while root still owns the
-# directory and transfer ownership only afterwards. BusyBox `install -o`
-# performs these operations in the opposite order and then needs CAP_FOWNER.
+# Keep the directory root-owned so the reduced-capability entrypoint can safely
+# recreate the generated config after a container restart. Redis receives only
+# group traversal on the directory and read access to the config file itself.
 install -d "$runtime_directory"
-chmod 0700 "$runtime_directory"
+chown root:redis "$runtime_directory"
+chmod 0710 "$runtime_directory"
+rm -f "$config_file"
 umask 0077
 {
   printf '%s\n' \
@@ -41,8 +43,8 @@ umask 0077
     'maxmemory-policy noeviction'
   printf 'requirepass %s\n' "$password"
 } > "$config_file"
+chmod 0400 "$config_file"
 chown redis:redis "$config_file"
-chown redis:redis "$runtime_directory"
 
 # The official image normally performs this ownership repair before dropping
 # privileges. This wrapper keeps that behaviour while ensuring the password is
