@@ -27,13 +27,16 @@ Linux-Hosts bewusst fehl. `--configuration-only` führt keinen Kernelzugriff aus
 ## Secret vorbereiten
 
 Vom Verzeichnis `admin_api_app` aus erzeugt der vorhandene Initialisierer fehlende
-Secret-Dateien ohne Ausgabe ihrer Werte:
+Secret-Dateien ohne Ausgabe ihrer Werte. Der Produktionspfad liegt außerhalb des
+Git-Deployments:
 
 ```bash
+export LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
+install -d -m 0700 -o root -g root "$LUCZOR_DOCKER_SECRETS_DIR"
 sh ./docker/init-secrets.sh
-test -s ./docker/secrets/redis_password
-test "$(wc -l < ./docker/secrets/redis_password)" -le 1
-chmod 0600 ./docker/secrets/redis_password
+test -s "$LUCZOR_DOCKER_SECRETS_DIR/redis_password"
+test "$(wc -l < "$LUCZOR_DOCKER_SECRETS_DIR/redis_password")" -le 1
+chmod 0600 "$LUCZOR_DOCKER_SECRETS_DIR/redis_password"
 ```
 
 Das erzeugte Passwort besteht aus mindestens 32 Base64-Zeichen. Es darf nicht in
@@ -49,7 +52,7 @@ key_dir="$app_root/storage/app/keys"
 key_owner="$(stat -c '%U' "$key_dir")"
 key_group="$(stat -c '%G' "$key_dir")"
 install -m 0600 -o "$key_owner" -g "$key_group" \
-  ./docker/secrets/redis_password \
+  "$LUCZOR_DOCKER_SECRETS_DIR/redis_password" \
   "$key_dir/redis_password"
 ```
 
@@ -63,6 +66,7 @@ REDIS_PORT=6379
 REDIS_URL=
 REDIS_PASSWORD=
 REDIS_PASSWORD_FILE=/var/www/vhosts/follow-flow.de/luczor.follow-flow.de/storage/app/keys/redis_password
+LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
 ```
 
 `REDIS_PASSWORD_FILE` und `REDIS_URL` sind absichtlich nicht kombinierbar. Ein
@@ -83,8 +87,9 @@ Verzeichnis `/var/lib/luczor/redis`. Ein abweichender absoluter Pfad wird nur
 bewusst über `LUCZOR_REDIS_DATA_DIR` gesetzt.
 
 ```bash
+export LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
 docker compose -f docker-compose.plesk-memory.yml config --quiet
-docker compose -f docker-compose.plesk-memory.yml up -d redis
+docker compose -f docker-compose.plesk-memory.yml --profile redis-cutover up -d redis
 docker compose -f docker-compose.plesk-memory.yml ps redis
 ```
 
@@ -102,7 +107,7 @@ unauthenticated_reply="$(redis-cli -h 127.0.0.1 -p 6379 ping 2>&1 || true)"
 test "$unauthenticated_reply" = 'NOAUTH Authentication required.' \
   || test "$unauthenticated_reply" = '(error) NOAUTH Authentication required.'
 
-REDISCLI_AUTH="$(cat ./docker/secrets/redis_password)" \
+REDISCLI_AUTH="$(cat "$LUCZOR_DOCKER_SECRETS_DIR/redis_password")" \
   redis-cli -h 127.0.0.1 -p 6379 ping | grep -qx PONG
 
 ss -ltn | grep -Eq '127\.0\.0\.1:6379[[:space:]]'

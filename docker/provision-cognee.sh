@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+umask 077
+
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 app_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 workspace_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
@@ -13,13 +15,26 @@ if [ -z "$compose_file" ]; then
         compose_file="$app_root/docker-compose.plesk-memory.yml"
     fi
 fi
-secret_directory="$script_dir/secrets"
+secret_directory=${3:-${LUCZOR_DOCKER_SECRETS_DIR:-"$script_dir/secrets"}}
+
+case "$secret_directory" in
+    /*) ;;
+    *) echo "The Cognee secret directory must be an absolute path." >&2; exit 1 ;;
+esac
+
+if [ -L "$secret_directory" ] || [ ! -d "$secret_directory" ]; then
+    echo "Cognee secret directory is missing or is a link: $secret_directory" >&2
+    exit 1
+fi
+chmod 700 "$secret_directory"
+export LUCZOR_DOCKER_SECRETS_DIR="$secret_directory"
+
 api_key_file="$secret_directory/cognee_api_key"
 default_password_file="$secret_directory/cognee_default_password"
 
 for required_file in "$compose_file" "$api_key_file" "$default_password_file"; do
-    if [ ! -f "$required_file" ]; then
-        echo "Required Cognee provisioning file is missing: $required_file" >&2
+    if [ -L "$required_file" ] || [ ! -f "$required_file" ]; then
+        echo "Required Cognee provisioning file is missing or unsafe: $required_file" >&2
         exit 1
     fi
 done
@@ -118,11 +133,16 @@ case "$marker" in
 esac
 
 temporary_file=$(mktemp "$secret_directory/.cognee_api_key.XXXXXX")
-trap 'rm -f "$temporary_file"' EXIT HUP INT TERM
-umask 077
+trap 'rm -f -- "$temporary_file"' EXIT HUP INT TERM
 printf '%s' "$api_key" > "$temporary_file"
 chmod 600 "$temporary_file"
+
+if [ -L "$api_key_file" ] || { [ -e "$api_key_file" ] && [ ! -f "$api_key_file" ]; }; then
+    echo "Cognee API-key target became unsafe. The existing secret was not changed." >&2
+    exit 1
+fi
 mv -f "$temporary_file" "$api_key_file"
+chmod 600 "$api_key_file"
 trap - EXIT HUP INT TERM
 
 echo "Cognee service API key was validated and stored. Restart Laravel/Horizon to load it."

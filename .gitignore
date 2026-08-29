@@ -30,6 +30,10 @@ Homestead.json
 .phpactor.json
 auth.json
 
+# Host/runtime secrets are never part of a Git deployment. Local development
+# may use this directory; production must point Compose at an external path.
+/docker/secrets/
+
 # Python sidecars
 __pycache__/
 *.py[cod]

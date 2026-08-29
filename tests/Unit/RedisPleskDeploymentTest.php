@@ -68,6 +68,7 @@ class RedisPleskDeploymentTest extends TestCase
 
         $this->assertIsString($runbook);
         $this->assertStringContainsString('vm.overcommit_memory = 1', $runbook);
+        $this->assertStringContainsString('LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets', $runbook);
         $this->assertStringContainsString('REDIS_PASSWORD_FILE=', $runbook);
         $this->assertStringContainsString('luczor:deployment-check --production', $runbook);
         $this->assertStringContainsString('NOAUTH Authentication required.', $runbook);

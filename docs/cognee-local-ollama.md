@@ -23,15 +23,21 @@ Der Stack in `docker-compose.plesk-memory.yml` verarbeitet LLM- und Embedding-An
   die Bridge selbst ist keine netzseitige Egress-Sperre.
 - Cognee benoetigt fuer seinen OpenAI-kompatiblen Ollama-Client formal einen nicht leeren API-Key-Wert. Der Entry-Point leitet diesen Kompatibilitaetswert aus dem lokalen Providernamen ab; es ist kein gespeicherter oder hardcodierter Zugangsschluessel und Ollama wertet ihn nicht zur Authentifizierung aus.
 
-Die Datenbank-, Cognee-Service- und Laravel-Geheimnisse bleiben Docker-Secrets. Sie duerfen nicht ins Repository oder in Compose-Umgebungsvariablen geschrieben werden.
+Die Datenbank-, Cognee-Service- und Laravel-Geheimnisse bleiben Docker-Secrets. Sie duerfen nicht ins Repository oder in Compose-Umgebungsvariablen geschrieben werden. Auf Produktionshosts liegen sie unter einem absoluten `LUCZOR_DOCKER_SECRETS_DIR` außerhalb des Deployments; der lokale Fallback `docker/secrets` ist nur für Entwicklung bestimmt.
 
 ## Erstinstallation
 
 Zuerst die normalen Docker-Secrets wie in `docs/cognee-deployment.md` beschrieben erzeugen:
 
 ```bash
-(umask 077; sh ./docker/init-secrets.sh)
+export LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
+install -d -m 0700 -o root -g root "$LUCZOR_DOCKER_SECRETS_DIR"
+sh ./docker/init-secrets.sh
 ```
+
+Auf Plesk muss `LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets` zusätzlich dauerhaft
+in der produktiven `.env` stehen. Der Shell-Export allein überlebt weder eine neue Sitzung
+noch einen Serverneustart.
 
 Die beiden Provider-Dateien `cognee_llm_api_key` und `cognee_embedding_api_key` sind fuer diesen lokalen Plesk-Stack nicht erforderlich.
 
@@ -85,6 +91,7 @@ Ein anderes Ollama-Modell wird mit `COGNEE_OLLAMA_LLM_MODEL` gewaehlt und anschl
 ## Pruefung vor dem Start
 
 ```bash
+export LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
 docker compose -f docker-compose.plesk-memory.yml config --quiet
 docker compose -f docker-compose.plesk-memory.yml --profile model-bootstrap config --quiet
 php artisan test --filter='Cognee(LocalProvider|Plesk)DeploymentTest'

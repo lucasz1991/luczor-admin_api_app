@@ -311,19 +311,19 @@ services:
 
 secrets:
   redis_password:
-    file: ./docker/secrets/redis_password
+    file: "${LUCZOR_DOCKER_SECRETS_DIR:-./docker/secrets}/redis_password"
   postgres_password:
-    file: ./docker/secrets/postgres_password
+    file: "${LUCZOR_DOCKER_SECRETS_DIR:-./docker/secrets}/postgres_password"
   cognee_postgres_password:
-    file: ./docker/secrets/cognee_postgres_password
+    file: "${LUCZOR_DOCKER_SECRETS_DIR:-./docker/secrets}/cognee_postgres_password"
   cognee_jwt_secret:
-    file: ./docker/secrets/cognee_jwt_secret
+    file: "${LUCZOR_DOCKER_SECRETS_DIR:-./docker/secrets}/cognee_jwt_secret"
   cognee_default_password:
-    file: ./docker/secrets/cognee_default_password
+    file: "${LUCZOR_DOCKER_SECRETS_DIR:-./docker/secrets}/cognee_default_password"
   cognee_verification_secret:
-    file: ./docker/secrets/cognee_verification_secret
+    file: "${LUCZOR_DOCKER_SECRETS_DIR:-./docker/secrets}/cognee_verification_secret"
   cognee_reset_secret:
-    file: ./docker/secrets/cognee_reset_secret
+    file: "${LUCZOR_DOCKER_SECRETS_DIR:-./docker/secrets}/cognee_reset_secret"
 
 volumes:
   cognee_postgres_data:

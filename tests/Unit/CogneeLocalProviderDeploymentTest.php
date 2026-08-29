@@ -19,8 +19,9 @@ class CogneeLocalProviderDeploymentTest extends TestCase
         $this->assertStringNotContainsString('LLM_PROVIDER: ${COGNEE_LLM_PROVIDER:-openai}', $compose);
         $this->assertStringNotContainsString('openai/text-embedding', $compose);
         $this->assertStringNotContainsString('- egress', $compose);
-        $this->assertStringNotContainsString('file: ./docker/secrets/cognee_llm_api_key', $compose);
-        $this->assertStringNotContainsString('file: ./docker/secrets/cognee_embedding_api_key', $compose);
+        $this->assertStringNotContainsString('file: ./docker/secrets/', $compose);
+        $this->assertStringNotContainsString('cognee_llm_api_key:', $compose);
+        $this->assertStringNotContainsString('cognee_embedding_api_key:', $compose);
     }
 
     public function test_cognee_stays_internal_behind_a_secret_free_loopback_gateway(): void

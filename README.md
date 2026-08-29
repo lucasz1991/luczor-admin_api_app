@@ -39,6 +39,14 @@ docker compose --env-file ..\.env.docker --profile bootstrap run --rm migrate
 docker compose --env-file ..\.env.docker up -d --build
 ```
 
+Für lokale Entwicklung verwendet der Initialisierer standardmäßig den vollständig
+ignorierten Ordner `docker/secrets`. In Produktion muss
+`LUCZOR_DOCKER_SECRETS_DIR` auf einen absoluten, nur für den Betreiber lesbaren
+Pfad außerhalb des Git-Checkouts zeigen, beispielsweise
+`/var/lib/luczor/secrets`. Compose, beide Initialisierer und die Cognee-
+Provisionierung verwenden dadurch garantiert dieselbe Quelle; Secret-Werte
+gehören weder in `.env` noch in das Repository.
+
 Der Bootstrap-Migrationslauf verändert die konfigurierte PostgreSQL-Datenbank. Vorher Ziel, Backup und Rollback prüfen. Die MySQL-zu-PostgreSQL-Übernahme erfolgt separat über den vorhandenen Migration Assistant und erst nach Prüfung seines Manifests.
 
 ## API
@@ -64,4 +72,7 @@ npm run build
 npm audit --omit=dev
 ```
 
-Deployment- und Notification-Hinweise stehen unter `docs/`. Der Workspace-übergreifende Einstieg liegt in `../README.md`.
+Deployment- und Notification-Hinweise stehen unter `docs/`. Für die Trennung von
+Plesk-Git-Quellen und Runtime-Dateien gilt zusätzlich
+[`docs/plesk-git-deployment.md`](docs/plesk-git-deployment.md). Der Workspace-
+übergreifende Einstieg liegt in `../README.md`.

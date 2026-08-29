@@ -59,8 +59,11 @@ Die HTTP-Healthcheck-Route prüft keine LLM- oder Embedding-Antwort. Deshalb ble
 echter `add`-/Hintergrund-`cognify`-Smoke-Test nach jeder Erstbereitstellung oder Provideränderung
 verpflichtend.
 
-Cognee-Provider-, Datenbank- und HTTP-Geheimnisse liegen ausschließlich als Dateien unter
-`admin_api_app/docker/secrets/`. Der ausschließlich von Laravel verwendete
+Cognee-Provider-, Datenbank- und HTTP-Geheimnisse liegen ausschließlich als Dateien im
+durch `LUCZOR_DOCKER_SECRETS_DIR` bezeichneten Host-Verzeichnis. In Produktion ist das
+ein absoluter, root-geschützter Pfad außerhalb des Git-Checkouts, standardmäßig
+`/var/lib/luczor/secrets`. Nur die lokale Entwicklung fällt ohne gesetzte Variable auf
+`admin_api_app/docker/secrets` zurück. Der ausschließlich von Laravel verwendete
 Memory-Namespace-Key liegt dagegen in dessen geschützter Deployment-Umgebung:
 
 | Secret-Datei | Besitzer/Zweck |
@@ -90,8 +93,10 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    Die lokalen Cognee-Dienste werden gezielt in Abhaengigkeitsreihenfolge gestartet:
 
    ```bash
+   export LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
+   install -d -m 0700 -o root -g root "$LUCZOR_DOCKER_SECRETS_DIR"
+   sh ./docker/init-secrets.sh
    docker compose -f docker-compose.plesk-memory.yml config --quiet
-   (umask 077; sh ./docker/init-secrets.sh)
    docker compose -f docker-compose.plesk-memory.yml pull postgres ollama cognee-loopback
    docker compose -f docker-compose.plesk-memory.yml build --pull cognee
    docker compose -f docker-compose.plesk-memory.yml --profile model-bootstrap \
@@ -102,8 +107,16 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    docker compose -f docker-compose.plesk-memory.yml up -d --wait --no-deps cognee
    docker compose -f docker-compose.plesk-memory.yml up -d --wait --no-deps cognee-loopback
    curl --fail --silent --show-error http://127.0.0.1:8010/openapi.json >/dev/null
-   REDISCLI_AUTH="$(cat docker/secrets/redis_password)" \
+   REDISCLI_AUTH="$(cat "$LUCZOR_DOCKER_SECRETS_DIR/redis_password")" \
      redis-cli -h 127.0.0.1 ping
+   ```
+
+   Der Export gilt nur für diese Shell. Zusätzlich muss derselbe nicht geheime Pfad
+   dauerhaft in der produktiven Laravel-`.env` stehen, damit jeder spätere Compose-
+   Aufruf nach Login, Neustart oder Plesk-Deployment dieselbe Secret-Quelle verwendet:
+
+   ```dotenv
+   LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
    ```
 
    `COGNEE_HOST_PORT` und `REDIS_HOST_PORT` dürfen die Loopback-Ports ändern. Die
@@ -126,9 +139,11 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
 
    ```bash
    app_root=/var/www/vhosts/follow-flow.de/luczor.follow-flow.de
+   export LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
    sh ./docker/provision-cognee.sh \
      "$app_root/.env.docker" \
-     "$app_root/docker-compose.plesk-memory.yml"
+     "$app_root/docker-compose.plesk-memory.yml" \
+     "$LUCZOR_DOCKER_SECRETS_DIR"
    ```
 
 3. Den Key ohne Ausgabe in Laravels geschützten Storage kopieren. Besitzer und Gruppe
@@ -139,7 +154,7 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    key_owner="$(stat -c '%U' "$app_root/storage/app/keys")"
    key_group="$(stat -c '%G' "$app_root/storage/app/keys")"
    install -m 600 -o "$key_owner" -g "$key_group" \
-     docker/secrets/cognee_api_key \
+     "$LUCZOR_DOCKER_SECRETS_DIR/cognee_api_key" \
      "$app_root/storage/app/keys/cognee_api_key"
    ```
 
@@ -277,9 +292,10 @@ Alle Befehle werden vom Workspace-Root ausgeführt.
    ./admin_api_app/docker/provision-cognee.ps1
    ```
 
-   Das Skript zeigt den Key nicht an. Es validiert ihn gegen Cognee und schreibt ihn nach
-   `admin_api_app/docker/secrets/cognee_api_key`. Bei einem Fehler bleibt ein vorhandenes
-   Secret unverändert.
+   Das Skript zeigt den Key nicht an. Es validiert ihn gegen Cognee und schreibt ihn in
+   `${LUCZOR_DOCKER_SECRETS_DIR}/cognee_api_key` beziehungsweise ohne gesetzte Variable
+   in den lokalen Entwicklungsordner. Bei einem Fehler bleibt ein vorhandenes Secret
+   unverändert.
 
 6. Laravel API, Horizon und Scheduler starten beziehungsweise neu erzeugen und die
    Readiness prüfen:

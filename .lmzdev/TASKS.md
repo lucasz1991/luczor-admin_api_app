@@ -19,3 +19,4 @@
 | Lokale Ollama-Compose-Variante und Provider-Contract konfliktfrei implementieren | Codex/deployment_sequence | completed-local-pending-image-and-live-smoke | 2026-08-27T04:41:16Z |
 | Redis-Passwort-, Secret-Datei- und Host-Kernel-Haertung repositoryseitig bereitstellen | Codex/redis_hardening_repo | completed-local-pending-live-cutover | 2026-08-27T04:19:45Z |
 | Admin-Dashboard neu strukturieren und visuell verfeinern | Codex/root | completed | 2026-08-27T05:10:31Z |
+| Docker-Secrets aus dem Plesk-Deploybaum auslagern und Git-Deploymentrechte reparieren | Codex/root | in-progress | 2026-08-29T02:58:03Z |

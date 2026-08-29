@@ -183,3 +183,7 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Accessibility: eindeutige Control-Namen, 44px-Ziele, sichtbarer Fokus ohne Clipping, mobile Padding-/Wrapping-Regeln sowie `prefers-reduced-motion`.
 - Verified: 365 Laravel-Tests / 2.464 Assertions, PHPStan, Pint, Blade-Cache, Vite-Build mit Node 22.22.0; reale Browser-QA leer/befuellt bei Desktop, Tablet und 320px ohne Overflow oder unbenannte Controls. Zwei finale Reviews ohne P1/P2.
 - Cleanup: isolierte SQLite-QA-Daten und lokaler Port 8012 entfernt; keine Produktionsdaten veraendert.
+
+## 2026-08-29T02:58:03Z | Codex -> all | status
+
+- Message: Started: Docker-Secrets aus dem Plesk-Git-Deployment auslagern und Deployment-Berechtigungen sicher reparieren
