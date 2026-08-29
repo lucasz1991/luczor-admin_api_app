@@ -13,14 +13,12 @@ services:
     # never start a competing Redis on the same loopback port.
     profiles:
       - redis-cutover
-    image: redis:7.4.11-alpine
+    image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     entrypoint:
       - /bin/sh
       - /usr/local/bin/luczor-redis-entrypoint
     environment:
       LUCZOR_REDIS_MAXMEMORY: ${LUCZOR_REDIS_MAXMEMORY:-192mb}
-    ports:
-      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     secrets:
       - redis_password
     volumes:
@@ -55,6 +53,51 @@ services:
     cpus: ${LUCZOR_REDIS_CPU_LIMIT:-0.75}
     read_only: true
     stop_grace_period: 30s
+
+  # Docker 29 does not publish a host port for a container attached only to
+  # an internal network. Keep Redis isolated and expose it through the same
+  # fixed-upstream, secret-free loopback pattern used for Cognee below.
+  redis-loopback:
+    profiles:
+      - redis-cutover
+    image: nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    user: "101:101"
+    entrypoint:
+      - nginx
+    command:
+      - -c
+      - /etc/nginx/luczor-redis-loopback.conf
+      - -g
+      - daemon off;
+    volumes:
+      - ./docker/nginx/redis-loopback.conf:/etc/nginx/luczor-redis-loopback.conf:ro
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - printf '*1\r\n$$4\r\nPING\r\n' | nc -w 2 127.0.0.1 8080 | grep -q NOAUTH
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - cache
+      - loopback-publish
+    logging: *luczor-logging
+    pids_limit: 32
+    mem_limit: ${LUCZOR_REDIS_LOOPBACK_MEMORY_LIMIT:-32m}
+    cpus: ${LUCZOR_REDIS_LOOPBACK_CPU_LIMIT:-0.10}
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
 
   postgres:
     image: pgvector/pgvector:pg16

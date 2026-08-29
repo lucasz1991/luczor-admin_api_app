@@ -3,7 +3,10 @@
 Luczor verwendet auf dem Plesk-Host einen ausschließlich an `127.0.0.1`
 gebundenen Redis. Die Compose-Konfiguration speichert AOF-Daten dauerhaft unter
 `/var/lib/luczor/redis`, startet Redis als unprivilegierten Benutzer und liest das
-Passwort aus einem Docker-Secret. Der Passwortwert wird nicht als
+Passwort aus einem Docker-Secret. Das Redis-Image ist zusätzlich über seinen
+geprüften Manifest-Digest unveränderlich gepinnt. Redis selbst bleibt
+ausschließlich im internen Compose-Netz. Ein geheimnisfreier nginx-TCP-Gateway veröffentlicht nur den festen
+Upstream auf dem Host-Loopback. Der Passwortwert wird nicht als
 `redis-server`-Prozessargument übergeben.
 
 ## Voraussetzungen und Kernel-Härtung
@@ -89,8 +92,10 @@ bewusst über `LUCZOR_REDIS_DATA_DIR` gesetzt.
 ```bash
 export LUCZOR_DOCKER_SECRETS_DIR=/var/lib/luczor/secrets
 docker compose -f docker-compose.plesk-memory.yml config --quiet
-docker compose -f docker-compose.plesk-memory.yml --profile redis-cutover up -d redis
-docker compose -f docker-compose.plesk-memory.yml ps redis
+docker compose -f docker-compose.plesk-memory.yml --profile redis-cutover \
+  up -d --wait redis redis-loopback
+docker compose -f docker-compose.plesk-memory.yml --profile redis-cutover \
+  ps redis redis-loopback
 ```
 
 Falls noch der separat in Plesk erstellte Container `luczor-redis-auth` Port 6379

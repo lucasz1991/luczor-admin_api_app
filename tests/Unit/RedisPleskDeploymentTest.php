@@ -35,12 +35,27 @@ class RedisPleskDeploymentTest extends TestCase
     public function test_compose_keeps_authenticated_redis_private_and_persistent(): void
     {
         $compose = file_get_contents(dirname(__DIR__, 2).'/docker-compose.plesk-memory.yml');
+        $gateway = file_get_contents(dirname(__DIR__, 2).'/docker/nginx/redis-loopback.conf');
 
         $this->assertIsString($compose);
-        $this->assertStringContainsString('image: redis:7.4.11-alpine', $compose);
-        $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:6379', $compose);
+        $this->assertIsString($gateway);
+        $this->assertStringContainsString(
+            'image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf',
+            $compose,
+        );
+        $this->assertStringContainsString('redis-loopback:', $compose);
+        $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:8080', $compose);
+        $this->assertStringContainsString('./docker/nginx/redis-loopback.conf:/etc/nginx/luczor-redis-loopback.conf:ro', $compose);
         $this->assertMatchesRegularExpression(
             '/redis:\R\s+#.*?profiles:\R\s+- redis-cutover/s',
+            $compose,
+        );
+        $this->assertMatchesRegularExpression(
+            '/redis:\R.*?networks:\R\s+- cache\R.*?redis-loopback:/s',
+            $compose,
+        );
+        $this->assertMatchesRegularExpression(
+            '/redis-loopback:\R.*?networks:\R\s+- cache\R\s+- loopback-publish/s',
             $compose,
         );
         $this->assertStringContainsString('${LUCZOR_REDIS_DATA_DIR:-/var/lib/luczor/redis}:/data', $compose);
@@ -50,6 +65,9 @@ class RedisPleskDeploymentTest extends TestCase
         $this->assertStringContainsString('read_only: true', $compose);
         $this->assertStringNotContainsString('- "0.0.0.0:', $compose);
         $this->assertStringNotContainsString('--requirepass', $compose);
+        $this->assertStringContainsString('server redis:6379;', $gateway);
+        $this->assertStringContainsString('listen 8080;', $gateway);
+        $this->assertStringNotContainsString('resolver ', $gateway);
     }
 
     public function test_entrypoint_never_passes_the_password_as_a_process_argument(): void

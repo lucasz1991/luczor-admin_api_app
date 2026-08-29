@@ -33,7 +33,8 @@ class CogneePleskDeploymentTest extends TestCase
 
         $this->assertIsString($compose);
         $this->assertStringContainsString('context: ./services/cognee', $compose);
-        $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:6379', $compose);
+        $this->assertStringContainsString('redis-loopback:', $compose);
+        $this->assertStringContainsString('127.0.0.1:${REDIS_HOST_PORT:-6379}:8080', $compose);
         $this->assertStringContainsString('cognee-loopback:', $compose);
         $this->assertStringContainsString('127.0.0.1:${COGNEE_HOST_PORT:-8010}:8080', $compose);
         $this->assertStringContainsString('./docker/nginx/cognee-loopback.conf:/etc/nginx/luczor-loopback.conf:ro', $compose);

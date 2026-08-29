@@ -120,9 +120,10 @@ zur Desktop-App und ist absichtlich kein Bestandteil dieses Server-Stacks.
    ```
 
    `COGNEE_HOST_PORT` und `REDIS_HOST_PORT` dürfen die Loopback-Ports ändern. Die
-   Compose-Datei bindet unabhängig davon immer nur an `127.0.0.1`. Cognee selbst bleibt
-   in internen Netzen; nur der geheimnisfreie nginx-Gateway besitzt die fuer Docker
-   notwendige Publish-Bridge und leitet fest an Cognee weiter. Wird bereits ein
+   Compose-Datei bindet unabhängig davon immer nur an `127.0.0.1`. Cognee und Redis
+   selbst bleiben in internen Netzen; nur ihre geheimnisfreien nginx-Gateways besitzen
+   die fuer Docker notwendige Publish-Bridge und leiten an jeweils einen festen Upstream
+   weiter. Wird bereits ein
    produktiver Host-Redis betrieben, muss dessen Betrieb bewusst übernommen und der
    Redis-Dienst aus diesem Stack entfernt werden; niemals zwei Prozesse an Port 6379
    konkurrieren lassen.

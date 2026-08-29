@@ -64,8 +64,9 @@ docker compose -f docker-compose.plesk-memory.yml up -d --wait --no-deps cognee-
 
 Redis besitzt zusaetzlich das Profil `redis-cutover`. Dadurch startet ein
 unqualifiziertes `docker compose up` keinen zweiten Redis. Der explizite Befehl
-`docker compose --profile redis-cutover up -d redis` ist ausschliesslich fuer einen
-geplanten Erst-Cutover vorgesehen.
+`docker compose --profile redis-cutover up -d redis redis-loopback` ist
+ausschliesslich fuer einen geplanten Erst-Cutover vorgesehen. Redis selbst bleibt
+im internen Netz; nur der feste, geheimnisfreie TCP-Gateway bindet an Host-Loopback.
 
 Ohne erfolgreich geladenes Modell bleibt der Ollama-Healthcheck absichtlich fehlerhaft und Cognee startet nicht.
 
