@@ -12,11 +12,13 @@ use App\Models\NetworkPolicy;
 use App\Models\PromptTemplate;
 use App\Models\ProviderCredential;
 use App\Models\ProviderPriceSnapshot;
+use App\Services\Llm\ProviderWireFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ModelConfigurationController extends AdminController
 {
@@ -25,11 +27,18 @@ class ModelConfigurationController extends AdminController
         $this->ensureAdmin($request);
 
         $data = $request->validate([
-            'provider' => ['required', 'string', 'max:80'],
+            'provider' => ['required', Rule::in(['openrouter', 'openai', 'anthropic'])],
             'label' => ['required', 'string', 'max:120'],
             'api_key' => ['required', 'string'],
-            'base_url' => ['nullable', 'url', 'max:255'],
+            'base_url' => ['nullable', 'url', 'starts_with:https://', 'max:255'],
+            'request_format' => ['nullable', Rule::in(['chat_completions', 'responses', 'messages'])],
         ]);
+        $data['request_format'] = $data['request_format'] ?? ProviderWireFormat::defaultFor($data['provider']);
+        if (! in_array($data['request_format'], ProviderWireFormat::allowedFor($data['provider']), true)) {
+            throw ValidationException::withMessages([
+                'request_format' => 'The request format is not compatible with the selected provider.',
+            ]);
+        }
 
         ProviderCredential::create($data + ['active' => true]);
 
@@ -50,12 +59,14 @@ class ModelConfigurationController extends AdminController
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'provider' => ['required', 'string', 'max:80'],
+            'provider' => ['required', Rule::in(['openrouter', 'openai', 'anthropic'])],
+            'provider_credential_id' => ['required', 'integer', 'exists:provider_credentials,id'],
             'model_id' => ['required', 'string', 'max:180'],
             'temperature' => ['required', 'numeric', 'min:0', 'max:2'],
             'max_tokens' => ['required', 'integer', 'min:1', 'max:200000'],
             'purpose' => ['nullable', 'string', 'max:120'],
         ]);
+        $this->ensureCredentialMatchesProfile($data);
 
         $data['slug'] = Str::slug($data['name']);
         $data['active'] = true;
@@ -77,10 +88,12 @@ class ModelConfigurationController extends AdminController
     {
         $this->ensureAdmin($request);
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'], 'provider' => ['required', 'string', 'max:80'],
+            'name' => ['required', 'string', 'max:120'], 'provider' => ['required', Rule::in(['openrouter', 'openai', 'anthropic'])],
+            'provider_credential_id' => ['required', 'integer', 'exists:provider_credentials,id'],
             'model_id' => ['required', 'string', 'max:180'], 'temperature' => ['required', 'numeric', 'min:0', 'max:2'],
             'max_tokens' => ['required', 'integer', 'min:1', 'max:200000'], 'purpose' => ['nullable', 'string', 'max:120'],
         ]);
+        $this->ensureCredentialMatchesProfile($data);
         $modelProfile->update($data + ['slug' => Str::slug($data['name'])]);
 
         return Redirect::route('admin.page', 'models')->with('status', 'Model profile updated.');
@@ -150,7 +163,13 @@ class ModelConfigurationController extends AdminController
             'max_attempts' => ['required', 'integer', 'min:1', 'max:10'], 'backoff_ms' => ['required', 'integer', 'min:0', 'max:60000'],
             'max_cost_usd' => ['nullable', 'numeric', 'min:0'], 'max_input_tokens' => ['nullable', 'integer', 'min:1'], 'max_output_tokens' => ['nullable', 'integer', 'min:1'],
         ]);
-        NetworkPolicy::updateOrCreate(['key' => $data['key']], $data + ['status' => 'active']);
+        $existingConfig = NetworkPolicy::query()->where('key', $data['key'])->value('config');
+        $config = is_array($existingConfig) ? $existingConfig : [];
+        $config['retry_statuses'] ??= [0, 408, 409, 425, 429, 500, 502, 503, 504, 529];
+        NetworkPolicy::updateOrCreate(['key' => $data['key']], $data + [
+            'status' => 'active',
+            'config' => $config,
+        ]);
 
         return Redirect::route('dashboard')->with('status', 'Network policy saved.');
     }
@@ -298,6 +317,21 @@ class ModelConfigurationController extends AdminController
         });
 
         return Redirect::route('admin.page', 'models')->with('status', 'Modell-Reihenfolge gespeichert.');
+    }
+
+    /** @param array<string,mixed> $data */
+    private function ensureCredentialMatchesProfile(array $data): void
+    {
+        $credential = ProviderCredential::query()->find($data['provider_credential_id']);
+        if (! $credential
+            || ! $credential->active
+            || $credential->provider !== $data['provider']
+            || ! is_string($credential->request_format)
+            || ! in_array($credential->request_format, ProviderWireFormat::allowedFor($data['provider']), true)) {
+            throw ValidationException::withMessages([
+                'provider_credential_id' => 'Choose an active credential with the same provider and a supported request format.',
+            ]);
+        }
     }
 
     public function toggleModelUseCaseEntry(Request $request, ModelUseCaseEntry $modelUseCaseEntry)

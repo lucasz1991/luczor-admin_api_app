@@ -2,14 +2,15 @@
 
 namespace App\Services\Proxy;
 
+use App\Data\ProviderRoutingDecision;
 use App\Data\Proxy\PreparedProxyRequest;
 use App\Data\Proxy\ProxyDispatchResult;
 use App\Data\Proxy\ProxyResponseLimits;
 use App\Models\LlmRun;
 use App\Models\ModelProfile;
 use App\Models\NetworkPolicy;
-use App\Models\ProviderCredential;
 use App\Services\Llm\ProviderDriverRegistry;
+use App\Services\Llm\ProviderWireFormat;
 use App\Services\LlmTelemetryService;
 use App\Services\NetworkOptimizer;
 use App\Services\ProviderHttpClientFactory;
@@ -27,30 +28,53 @@ final class ProxyProviderGateway
         private BoundedBodyReader $bodyReader,
     ) {}
 
-    /** @param array<int,ModelProfile> $profiles */
     public function dispatch(
-        array $profiles,
+        ProviderRoutingDecision $routing,
         PreparedProxyRequest $prepared,
         LlmRun $run,
-        NetworkPolicy $networkPolicy,
-        int|float|null $maxCostUsd,
         ProxyResponseLimits $limits,
     ): ProxyDispatchResult {
+        $profiles = $routing->profiles;
+        $networkPolicy = $routing->networkPolicy;
         $client = $this->httpClients->make($networkPolicy);
         $terminalReadFailure = null;
+        $committedCostUsd = 0.0;
 
         foreach ($profiles as $index => $profile) {
             $attemptNo = $index + 1;
-            if ($attemptNo > (int) $networkPolicy->max_attempts) {
+            if ($attemptNo > $routing->maxAttempts) {
                 break;
             }
 
-            $credential = $this->credentialFor($profile);
-            if (! $credential?->api_key) {
-                continue;
+            $credential = $profile->credential?->fresh();
+            if (! $credential || ! ProviderWireFormat::isCompatible($profile, $credential)) {
+                return $this->policyFailure($run, 'routing_credential_incompatible', 503);
             }
 
-            $providerName = $credential->provider ?: 'openrouter';
+            $remainingProfiles = array_slice(
+                $profiles,
+                $index,
+                $routing->maxAttempts - $index,
+            );
+            $reservation = $this->providerPolicy->currentCostReservation(
+                $remainingProfiles,
+                $prepared->payload,
+                $networkPolicy,
+                count($remainingProfiles),
+            );
+            if ($reservation === null) {
+                return $this->policyFailure($run, 'routing_price_unavailable', 503);
+            }
+            $projectedCostUsd = $committedCostUsd + $reservation['total'];
+            if ($routing->maxCostUsd !== null && $projectedCostUsd > $routing->maxCostUsd) {
+                return $this->policyFailure($run, 'routing_budget_exceeded', 422);
+            }
+            $estimatedCost = $reservation['by_profile_id'][$profile->id] ?? null;
+            if ($estimatedCost === null) {
+                return $this->policyFailure($run, 'routing_price_unavailable', 503);
+            }
+
+            $providerName = $profile->provider;
             $driver = $this->drivers->for($providerName, $credential);
             $baseUrl = rtrim($credential->base_url ?: $driver->defaultBaseUrl(), '/');
             $providerPayload = $prepared->payload;
@@ -63,22 +87,17 @@ final class ProxyProviderGateway
                 'admin_order' => $attemptNo,
                 'candidate_count' => count($profiles),
                 'network_policy' => $networkPolicy->key,
+                'routing_policy_version' => $routing->policyVersion,
+                'routing_reason' => $routing->reasonCode,
+                'selection_source' => $routing->selectionSource,
+                'effective_max_attempts' => $routing->maxAttempts,
+                'estimated_cost_usd' => $estimatedCost,
+                'projected_cumulative_cost_usd' => $projectedCostUsd,
             ]);
             $startedAt = microtime(true);
-
-            $estimatedCost = $this->providerPolicy
-                ->estimatedCost($profile, $providerPayload, (int) $providerPayload['max_tokens']);
-            if ($maxCostUsd !== null && $estimatedCost !== null && $estimatedCost > $maxCostUsd) {
-                $this->telemetry->failAttempt(
-                    $attempt,
-                    'cost_budget',
-                    'Estimated request cost exceeds the effective budget.',
-                    0,
-                    0,
-                );
-
-                continue;
-            }
+            // Reserve a sent attempt even when the transport later fails: the
+            // provider may still have processed and billed the request.
+            $committedCostUsd += $estimatedCost;
 
             try {
                 $upstream = $client->request('POST', $driver->endpoint($baseUrl), [
@@ -93,10 +112,10 @@ final class ProxyProviderGateway
                 $this->telemetry->failAttempt(
                     $attempt,
                     class_basename($exception),
-                    $exception->getMessage(),
+                    'Provider request failed before a response was received.',
                     $this->elapsedMs($startedAt),
                 );
-                if ($this->networkOptimizer->shouldRetry(0, $attemptNo, count($profiles), $networkPolicy)) {
+                if ($this->networkOptimizer->shouldRetry(0, $attemptNo, $routing->maxAttempts, $networkPolicy)) {
                     $this->networkOptimizer->backoff($networkPolicy, $attemptNo);
 
                     continue;
@@ -111,7 +130,7 @@ final class ProxyProviderGateway
 
             $status = $upstream->getStatusCode();
             $connectMs = $this->elapsedMs($startedAt);
-            if ($this->networkOptimizer->shouldRetry($status, $attemptNo, count($profiles), $networkPolicy)) {
+            if ($this->networkOptimizer->shouldRetry($status, $attemptNo, $routing->maxAttempts, $networkPolicy)) {
                 $errorBody = $this->bodyReader->read($upstream->getBody(), $limits->bodyBytes);
                 if ($errorBody->limitExceeded || $errorBody->readFailed) {
                     $code = $errorBody->limitExceeded
@@ -135,13 +154,49 @@ final class ProxyProviderGateway
                     $this->telemetry->finishAttempt($attempt, $status, $this->elapsedMs($startedAt), [], [
                         'generation_id' => $upstream->getHeaderLine('X-Generation-Id') ?: null,
                         'error_type' => 'upstream_http',
-                        'error_message' => $errorBody->contents,
+                        'error_message' => 'Provider returned a retriable HTTP status.',
                         'response_hash' => $errorBody->sha256,
                     ]);
                 }
                 $this->networkOptimizer->backoff($networkPolicy, $attemptNo);
 
                 continue;
+            }
+
+            if ($status < 200) {
+                $upstream->getBody()->close();
+                $attempt = $this->telemetry->finishAttempt($attempt, $status, $this->elapsedMs($startedAt), [], [
+                    'generation_id' => $upstream->getHeaderLine('X-Generation-Id') ?: null,
+                    'connect_ms' => $connectMs,
+                    'error_type' => 'provider_informational_status_rejected',
+                    'error_message' => 'Provider returned a non-final informational HTTP status.',
+                ]);
+                $this->telemetry->finishRun($run, $attempt);
+
+                return ProxyDispatchResult::failure(response()->json([
+                    'message' => 'Provider returned an invalid final HTTP status.',
+                    'code' => 'provider_informational_status_rejected',
+                    'provider_status' => $status,
+                    'request_id' => $run->request_id,
+                ], 502));
+            }
+
+            if ($status >= 300 && $status < 400) {
+                $upstream->getBody()->close();
+                $attempt = $this->telemetry->finishAttempt($attempt, $status, $this->elapsedMs($startedAt), [], [
+                    'generation_id' => $upstream->getHeaderLine('X-Generation-Id') ?: null,
+                    'connect_ms' => $connectMs,
+                    'error_type' => 'provider_redirect_rejected',
+                    'error_message' => 'Provider redirects are disabled and this status is not retriable by policy.',
+                ]);
+                $this->telemetry->finishRun($run, $attempt);
+
+                return ProxyDispatchResult::failure(response()->json([
+                    'message' => 'Provider redirect was rejected by the active network policy.',
+                    'code' => 'provider_redirect_rejected',
+                    'provider_status' => $status,
+                    'request_id' => $run->request_id,
+                ], 502));
             }
 
             return ProxyDispatchResult::winner(
@@ -180,25 +235,31 @@ final class ProxyProviderGateway
 
         return ProxyDispatchResult::failure(response()->json([
             'message' => 'No provider candidate completed.',
+            'code' => 'routing_candidates_exhausted',
             'request_id' => $run->request_id,
         ], 503));
     }
 
-    private function credentialFor(ModelProfile $profile): ?ProviderCredential
+    private function policyFailure(LlmRun $run, string $reasonCode, int $httpStatus): ProxyDispatchResult
     {
-        return ($profile->provider_credential_id
-            ? ProviderCredential::find($profile->provider_credential_id)
-            : null)
-            ?: ProviderCredential::query()
-                ->where('provider', $profile->provider)
-                ->where('active', true)
-                ->latest()
-                ->first()
-            ?: ProviderCredential::query()
-                ->where('provider', 'openrouter')
-                ->where('active', true)
-                ->latest()
-                ->first();
+        $lastAttempt = $run->attempts()->orderByDesc('attempt_no')->first();
+        if ($lastAttempt) {
+            $this->telemetry->finishRun($run, $lastAttempt);
+        }
+        $attemptCount = $run->attempts()->count();
+        $run->update([
+            'status' => 'policy_rejected',
+            'success' => false,
+            'routing_reason_code' => $reasonCode,
+            'attempt_count' => $attemptCount,
+            'retry_count' => max(0, $attemptCount - 1),
+        ]);
+
+        return ProxyDispatchResult::failure(response()->json([
+            'message' => 'External routing is unavailable under the active policy.',
+            'code' => $reasonCode,
+            'request_id' => $run->request_id,
+        ], $httpStatus));
     }
 
     /** @param array<string,mixed> $payload */

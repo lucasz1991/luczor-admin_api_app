@@ -349,6 +349,11 @@
                     <input class="luczor-input" name="provider" placeholder="openrouter, elevenlabs, ..." aria-label="Provider-Kennung" required>
                     <input class="luczor-input" name="label" placeholder="Label" aria-label="Anzeigename des Provider-Credentials" required>
                 </div>
+                <select class="luczor-input" name="request_format" aria-label="Provider-Anfrageformat" required>
+                    <option value="chat_completions">Chat Completions</option>
+                    <option value="responses">OpenAI Responses</option>
+                    <option value="messages">Anthropic Messages</option>
+                </select>
                 <input class="luczor-input" name="api_key" placeholder="API Key wird verschluesselt gespeichert" aria-label="Provider API-Schlüssel" required>
                 <input class="luczor-input" name="base_url" placeholder="Base URL optional" aria-label="Optionale Provider-Basis-URL">
                 <button class="luczor-btn" type="submit">Credential speichern</button>
@@ -402,6 +407,12 @@
                     <input class="luczor-input" name="provider" placeholder="Provider" aria-label="Provider des Modellprofils" required>
                     <input class="luczor-input" name="model_id" placeholder="Model ID" aria-label="Modell-ID" required>
                 </div>
+                <select class="luczor-input" name="provider_credential_id" aria-label="Explizites Provider-Credential" required>
+                    <option value="">Provider-Credential auswählen</option>
+                    @foreach ($providers->where('active', true) as $credential)
+                        <option value="{{ $credential->id }}">{{ $credential->provider }} · {{ $credential->label }}</option>
+                    @endforeach
+                </select>
                 <div class="grid gap-3 md:grid-cols-3">
                     <input class="luczor-input" name="temperature" type="number" min="0" max="2" step="0.01" value="0.20" aria-label="Temperatur" required>
                     <input class="luczor-input" name="max_tokens" type="number" min="1" value="1200" aria-label="Maximale Ausgabe-Tokens" required>

@@ -4,10 +4,10 @@ namespace App\Services\Proxy;
 
 use App\Data\Proxy\ProxyChatInput;
 use App\Data\Proxy\ProxyResponseLimits;
+use App\Exceptions\RoutingPolicyException;
 use App\Http\Requests\Api\V1\ProxyChatRequest;
 use App\Services\ApiActor;
 use App\Services\LlmTelemetryService;
-use App\Services\NetworkOptimizer;
 use App\Services\ProviderPolicyService;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -17,7 +17,6 @@ final class ProxyChatService
         private ApiActor $actor,
         private ProxyPromptBuilder $promptBuilder,
         private ProviderPolicyService $providerPolicy,
-        private NetworkOptimizer $networkOptimizer,
         private LlmTelemetryService $telemetry,
         private ProxyProviderGateway $providerGateway,
         private ProxyResponseFactory $responseFactory,
@@ -33,58 +32,86 @@ final class ProxyChatService
         $meta['client_id'] = $this->actor->deviceId($request, $input->clientId);
         $meta['project_ref_id'] = $this->actor->project($request, $input->projectId)?->id;
         $prepared = $this->promptBuilder->prepare($input, $meta);
-        $networkPolicy = $this->networkOptimizer->policy('proxy.openrouter.default');
-        $profiles = $this->providerPolicy->candidates(null, $prepared->taskType, $prepared->requiredCapabilities);
         $run = $this->telemetry->startRun(
             $prepared->meta,
             $prepared->taskType,
             $prepared->payload,
-            $this->providerPolicy->selectionSource(),
+            'policy_pending',
         );
 
-        $maxInputTokens = $this->tightestNumber(
-            $networkPolicy->max_input_tokens,
-            $prepared->useCase?->max_input_tokens,
-        );
-        $maxCostUsd = $this->tightestNumber(
-            $networkPolicy->max_cost_usd,
-            $prepared->useCase?->max_cost_usd,
-        );
+        try {
+            $routing = $this->providerPolicy->resolve(
+                $prepared->taskType,
+                $prepared->requiredCapabilities,
+                $prepared->payload,
+            );
+        } catch (RoutingPolicyException $exception) {
+            $run->update([
+                'status' => 'policy_rejected',
+                'success' => false,
+                'selected_by' => 'policy_fail_closed',
+                'routing_reason_code' => $exception->reasonCode,
+            ]);
+
+            return response()->json([
+                'message' => 'External routing is unavailable under the active policy.',
+                'code' => $exception->reasonCode,
+                'request_id' => $run->request_id,
+            ], $exception->httpStatus)
+                ->header('X-Luczor-Request-Id', $run->request_id)
+                ->header('X-Luczor-Routing-Class', 'external')
+                ->header('X-Luczor-Routing-Reason', $exception->reasonCode);
+        }
+
+        $firstProfile = $routing->profiles[0];
+        $run->update([
+            'selected_by' => $routing->selectionSource,
+            'network_policy_id' => $routing->networkPolicy->key,
+            'routing_policy_version' => $routing->policyVersion,
+            'routing_reason_code' => $routing->reasonCode,
+            'estimated_cost_usd' => $routing->estimatedCost($firstProfile),
+        ]);
+
         $estimatedInputTokens = $this->providerPolicy->estimatedInputTokens($prepared->payload);
-        if ($maxInputTokens && $estimatedInputTokens > $maxInputTokens) {
+        if ($routing->maxInputTokens !== null && $estimatedInputTokens > $routing->maxInputTokens) {
             $run->update([
                 'status' => 'budget_rejected',
                 'success' => false,
                 'input_tokens' => $estimatedInputTokens,
+                'routing_reason_code' => 'routing_input_budget_exceeded',
             ]);
 
             return response()->json([
                 'message' => 'Context exceeds the server input-token budget.',
+                'code' => 'routing_input_budget_exceeded',
                 'request_id' => $run->request_id,
-            ], 422);
+            ], 422)->withHeaders($routing->headers($firstProfile))
+                ->header('X-Luczor-Request-Id', $run->request_id);
         }
 
         $limits = ProxyResponseLimits::fromConfig();
         $dispatch = $this->providerGateway->dispatch(
-            $profiles,
+            $routing,
             $prepared,
             $run,
-            $networkPolicy,
-            $maxCostUsd,
             $limits,
         );
         if ($dispatch->failureResponse) {
+            $dispatch->failureResponse->headers->add($routing->headers());
+            $dispatch->failureResponse->headers->set('X-Luczor-Request-Id', $run->request_id);
+
             return $dispatch->failureResponse;
         }
 
-        return $this->responseFactory->make($prepared, $dispatch, $run, $limits);
-    }
+        if ($dispatch->profile) {
+            $dispatchedEstimate = $dispatch->attempt?->routing_meta['estimated_cost_usd'] ?? null;
+            $run->update([
+                'estimated_cost_usd' => is_numeric($dispatchedEstimate)
+                    ? (float) $dispatchedEstimate
+                    : $routing->estimatedCost($dispatch->profile),
+            ]);
+        }
 
-    private function tightestNumber(mixed $first, mixed $second): ?float
-    {
-        $first = is_numeric($first) && (float) $first !== 0.0 ? (float) $first : null;
-        $second = is_numeric($second) && (float) $second !== 0.0 ? (float) $second : null;
-
-        return $first !== null && $second !== null ? min($first, $second) : ($first ?? $second);
+        return $this->responseFactory->make($prepared, $dispatch, $run, $limits, $routing);
     }
 }

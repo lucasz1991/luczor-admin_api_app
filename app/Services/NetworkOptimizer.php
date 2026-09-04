@@ -2,33 +2,61 @@
 
 namespace App\Services;
 
+use App\Exceptions\RoutingPolicyException;
 use App\Models\NetworkPolicy;
 
 class NetworkOptimizer
 {
     public function policy(?string $key = null): NetworkPolicy
     {
-        return NetworkPolicy::query()
+        if (! is_string($key) || trim($key) === '') {
+            throw new RoutingPolicyException('routing_network_policy_unavailable');
+        }
+
+        $policy = NetworkPolicy::query()
             ->where('status', 'active')
-            ->when($key, fn ($q) => $q->where('key', $key))
-            ->first()
-            ?? new NetworkPolicy([
-                'key' => 'proxy.openrouter.default',
-                'name' => 'OpenRouter Default',
-                'connect_timeout_ms' => config('luczor.proxy.connect_timeout') * 1000,
-                'request_timeout_ms' => config('luczor.proxy.timeout') * 1000,
-                'max_attempts' => 3,
-                'backoff_ms' => 250,
-                'max_input_tokens' => config('luczor.proxy.max_input_tokens', 24000),
-                'max_output_tokens' => config('luczor.proxy.max_output_tokens'),
-            ]);
+            ->where('key', $key)
+            ->first();
+        if (! $policy
+            || (int) $policy->connect_timeout_ms < 1
+            || (int) $policy->request_timeout_ms < 1
+            || (int) $policy->max_attempts < 1) {
+            throw new RoutingPolicyException('routing_network_policy_unavailable');
+        }
+
+        return $policy;
     }
 
     public function shouldRetry(int $status, int $attempt, int $availableCandidates, NetworkPolicy $policy): bool
     {
-        // 529 is Anthropic's "overloaded" status — retriable like 503.
         return $attempt < min($availableCandidates, (int) $policy->max_attempts)
-            && in_array($status, [0, 408, 409, 425, 429, 500, 502, 503, 504, 529], true);
+            && in_array($status, $this->retryStatuses($policy), true);
+    }
+
+    /** @return array<int,int> */
+    public function retryStatuses(NetworkPolicy $policy): array
+    {
+        $configured = is_array($policy->config) ? ($policy->config['retry_statuses'] ?? null) : null;
+        if (! is_array($configured) || ! array_is_list($configured) || $configured === []) {
+            throw new RoutingPolicyException('routing_network_policy_retry_statuses_invalid');
+        }
+
+        $statuses = [];
+        foreach ($configured as $status) {
+            if (! is_int($status) || ! $this->safeRetryStatus($status)) {
+                throw new RoutingPolicyException('routing_network_policy_retry_statuses_invalid');
+            }
+            $statuses[] = $status;
+        }
+
+        return array_values(array_unique($statuses));
+    }
+
+    private function safeRetryStatus(int $status): bool
+    {
+        return $status === 0
+            || in_array($status, [408, 409, 425, 429], true)
+            || ($status >= 500 && $status <= 599);
     }
 
     public function backoff(NetworkPolicy $policy, int $attempt): void

@@ -5,11 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\ModelProfile;
 use App\Models\Setting;
+use App\Services\LocalModelManifestService;
 use Illuminate\Http\Request;
 
 class BootstrapController extends Controller
 {
-    public function bootstrap(Request $request)
+    public function bootstrap(Request $request, LocalModelManifestService $localModels)
     {
         $apiKey = $request->attributes->get('apiKey');
 
@@ -26,8 +27,8 @@ class BootstrapController extends Controller
             ],
             'runtime_settings' => $this->runtimeSettingsPayload(),
             'realtime' => $this->realtimePayload(),
-            // Model/provider selection is an admin-only server concern.
-            'routing' => ['managed_by' => 'server', 'client_model_selection' => false],
+            'local_model_manifest' => $localModels->discovery(),
+            'routing' => $this->routingPayload(),
         ]);
     }
 
@@ -47,7 +48,7 @@ class BootstrapController extends Controller
     {
         return response()->json([
             'data' => $this->runtimeSettingsPayload(),
-            'routing' => ['managed_by' => 'server', 'client_model_selection' => false],
+            'routing' => $this->routingPayload(),
         ]);
     }
 
@@ -65,6 +66,21 @@ class BootstrapController extends Controller
             'registration_enabled' => (bool) config('luczor.allow_registration'),
             // Server-managed client defaults, editable in the admin dashboard.
             'settings' => Setting::asMap(),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function routingPayload(): array
+    {
+        return [
+            // Legacy fields describe external provider selection only.
+            'managed_by' => 'server',
+            'client_model_selection' => false,
+            'legacy_scope' => 'external_provider',
+            'external_routing_managed_by' => 'server',
+            'external_client_model_selection' => false,
+            'local_routing_managed_by' => 'desktop_signed_policy',
+            'local_model_manifest_required' => true,
         ];
     }
 

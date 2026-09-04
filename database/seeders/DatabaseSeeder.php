@@ -78,7 +78,16 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($useCases as $useCase) {
-            $case = ModelUseCase::updateOrCreate(['slug' => $useCase['slug']], $useCase + ['active' => true]);
+            $routing = in_array($useCase['slug'], ['stt', 'tts'], true) ? [] : [
+                'policy_version' => 1,
+                'routing_strategy' => 'manual',
+                'max_attempts' => 3,
+                'network_policy_key' => 'proxy.openrouter.default',
+            ];
+            $case = ModelUseCase::updateOrCreate(
+                ['slug' => $useCase['slug']],
+                $useCase + $routing + ['active' => true],
+            );
             foreach (($fallbacks[$useCase['slug']] ?? ['chat-fast']) as $idx => $profileSlug) {
                 $profile = ModelProfile::where('slug', $profileSlug)->first();
                 if (! $profile) {
@@ -145,7 +154,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'OpenRouter Default', 'status' => 'active', 'connect_timeout_ms' => 10000,
                 'request_timeout_ms' => 90000, 'max_attempts' => 3, 'backoff_ms' => 250,
                 'max_input_tokens' => 24000, 'max_output_tokens' => 8192,
-                'config' => ['retry_statuses' => [408, 429, 500, 502, 503, 504]]]
+                'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]]]
         );
 
         foreach ([

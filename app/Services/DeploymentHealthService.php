@@ -44,6 +44,7 @@ class DeploymentHealthService
                 'memory_namespace_key_configured' => $this->memoryNamespaceKeyIsSafe(),
                 'memory_ledger_key_configured' => $this->memoryLedgerKeyIsSafe(),
                 'cognee_projection_timeout_budget' => $this->cogneeProjectionTimeoutBudgetIsSafe(),
+                'local_model_manifest_signing_configured' => $this->localModelManifestSigningIsSafe(),
             ];
         }
 
@@ -190,6 +191,23 @@ class DeploymentHealthService
         return strlen($key) >= 32
             && $this->credentialIsConfigured($key)
             && ($namespaceKey === '' || ! hash_equals($namespaceKey, $key));
+    }
+
+    private function localModelManifestSigningIsSafe(): bool
+    {
+        try {
+            $envelope = app(LocalModelManifestService::class)->envelope(true);
+
+            return ($envelope['algorithm'] ?? null) === 'RSA-SHA256'
+                && is_string($envelope['key_id'] ?? null)
+                && $envelope['key_id'] !== ''
+                && is_string($envelope['payload_sha256'] ?? null)
+                && strlen($envelope['payload_sha256']) === 64
+                && is_string($envelope['signature'] ?? null)
+                && $envelope['signature'] !== '';
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     private function memoryLedgerIdentitiesAreHardened(): bool

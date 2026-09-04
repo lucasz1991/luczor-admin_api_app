@@ -50,6 +50,44 @@ class DockerSecretDeploymentTest extends TestCase
         $this->assertStringContainsString('SetEnvironmentVariable("LUCZOR_DOCKER_SECRETS_DIR"', $powershellProvisioner);
     }
 
+    public function test_secret_initializers_create_a_dedicated_atomic_rsa_3072_local_model_signing_key(): void
+    {
+        $shell = $this->readProjectFile('docker/init-secrets.sh');
+        $powershell = $this->readProjectFile('docker/init-secrets.ps1');
+
+        $this->assertStringContainsString(
+            'local_model_signing_key="$dir/luczor_local_model_signing_private_key"',
+            $shell,
+        );
+        $this->assertStringContainsString(
+            'mktemp "$dir/.luczor_local_model_signing_private_key.XXXXXX"',
+            $shell,
+        );
+        $this->assertStringContainsString('openssl genrsa -out "$temporary_file" 3072', $shell);
+        $this->assertStringContainsString(
+            'install_new_secret luczor_local_model_signing_private_key "$temporary_file"',
+            $shell,
+        );
+        $this->assertStringContainsString('[ "$local_model_key_bits" -lt 3072 ]', $shell);
+        $this->assertStringContainsString('LUCZOR_LOCAL_MODEL_EXPECTED_PUBLIC_KEY_SHA256=', $shell);
+
+        $this->assertStringContainsString(
+            'Join-Path $SecretDirectory "luczor_local_model_signing_private_key"',
+            $powershell,
+        );
+        $this->assertStringContainsString(
+            'Assert-SafeSecretFile $localModelSigningKey',
+            $powershell,
+        );
+        $this->assertStringContainsString("''private_key_bits'' => 3072", $powershell);
+        $this->assertStringContainsString(
+            '[IO.File]::Move($temporaryLocalModelSigningKey, $localModelSigningKey)',
+            $powershell,
+        );
+        $this->assertStringContainsString("(\$details[''bits''] ?? 0) < 3072", $powershell);
+        $this->assertStringContainsString('LUCZOR_LOCAL_MODEL_EXPECTED_PUBLIC_KEY_SHA256=', $powershell);
+    }
+
     public function test_examples_and_runbooks_require_an_external_production_directory(): void
     {
         $example = $this->readProjectFile('.env.example');

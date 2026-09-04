@@ -90,7 +90,8 @@ final readonly class ProxyChatInput
             'context_id' => $this->contextId,
             'prompt_template_id' => null,
             'context_strategy_id' => 'context.memory_code_budgeted',
-            'network_policy_id' => 'proxy.openrouter.default',
+            // Filled only after the server resolves the exact use-case policy.
+            'network_policy_id' => null,
             'repo_id' => $this->repoId,
             'branch' => $this->branch,
             'commit_sha' => $this->commitSha,

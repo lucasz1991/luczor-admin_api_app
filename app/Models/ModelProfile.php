@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ModelProfile extends Model
 {
@@ -35,12 +37,14 @@ class ModelProfile extends Model
         'capabilities' => 'array',
     ];
 
-    public function fallbackEntries()
+    /** @return HasMany<ModelUseCaseEntry, $this> */
+    public function fallbackEntries(): HasMany
     {
         return $this->hasMany(ModelUseCaseEntry::class);
     }
 
-    public function credential()
+    /** @return BelongsTo<ProviderCredential, $this> */
+    public function credential(): BelongsTo
     {
         return $this->belongsTo(ProviderCredential::class, 'provider_credential_id');
     }

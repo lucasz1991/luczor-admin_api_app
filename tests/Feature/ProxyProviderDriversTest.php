@@ -9,6 +9,7 @@ use App\Models\ModelUseCase;
 use App\Models\ModelUseCaseEntry;
 use App\Models\NetworkPolicy;
 use App\Models\ProviderCredential;
+use App\Models\ProviderPriceSnapshot;
 use App\Models\User;
 use App\Services\ProviderHttpClientFactory;
 use GuzzleHttp\ClientInterface;
@@ -25,7 +26,7 @@ class ProxyProviderDriversTest extends TestCase
     public function test_anthropic_profile_speaks_the_messages_wire_and_returns_canonical_json(): void
     {
         [$user, $token] = $this->deviceToken();
-        $credential = ProviderCredential::create(['provider' => 'anthropic', 'label' => 'Claude', 'api_key' => 'anthropic-secret', 'active' => true]);
+        $credential = ProviderCredential::create(['provider' => 'anthropic', 'label' => 'Claude', 'api_key' => 'anthropic-secret', 'request_format' => 'messages', 'active' => true]);
         $this->useCaseWith([$this->profile('anthropic', 'claude-sonnet-5', $credential->id)]);
         $this->policy(['max_attempts' => 1]);
 
@@ -69,7 +70,7 @@ class ProxyProviderDriversTest extends TestCase
     public function test_openai_profile_speaks_the_responses_wire(): void
     {
         [, $token] = $this->deviceToken();
-        $credential = ProviderCredential::create(['provider' => 'openai', 'label' => 'OpenAI', 'api_key' => 'openai-secret', 'active' => true]);
+        $credential = ProviderCredential::create(['provider' => 'openai', 'label' => 'OpenAI', 'api_key' => 'openai-secret', 'request_format' => 'responses', 'active' => true]);
         $this->useCaseWith([$this->profile('openai', 'gpt-5', $credential->id)]);
         $this->policy(['max_attempts' => 1]);
 
@@ -102,8 +103,8 @@ class ProxyProviderDriversTest extends TestCase
     public function test_mixed_provider_chain_falls_back_from_anthropic_to_openrouter(): void
     {
         [$user, $token] = $this->deviceToken();
-        $anthropic = ProviderCredential::create(['provider' => 'anthropic', 'label' => 'Claude', 'api_key' => 'anthropic-secret', 'active' => true]);
-        $openrouter = ProviderCredential::create(['provider' => 'openrouter', 'label' => 'OR', 'api_key' => 'openrouter-secret', 'active' => true]);
+        $anthropic = ProviderCredential::create(['provider' => 'anthropic', 'label' => 'Claude', 'api_key' => 'anthropic-secret', 'request_format' => 'messages', 'active' => true]);
+        $openrouter = ProviderCredential::create(['provider' => 'openrouter', 'label' => 'OR', 'api_key' => 'openrouter-secret', 'request_format' => 'chat_completions', 'active' => true]);
         $this->useCaseWith([
             $this->profile('anthropic', 'claude-sonnet-5', $anthropic->id),
             $this->profile('openrouter', 'meta/llama', $openrouter->id),
@@ -144,7 +145,7 @@ class ProxyProviderDriversTest extends TestCase
     public function test_anthropic_stream_is_translated_into_canonical_frames(): void
     {
         [$user, $token] = $this->deviceToken();
-        $credential = ProviderCredential::create(['provider' => 'anthropic', 'label' => 'Claude', 'api_key' => 'anthropic-secret', 'active' => true]);
+        $credential = ProviderCredential::create(['provider' => 'anthropic', 'label' => 'Claude', 'api_key' => 'anthropic-secret', 'request_format' => 'messages', 'active' => true]);
         $this->useCaseWith([$this->profile('anthropic', 'claude-sonnet-5', $credential->id)]);
         $this->policy(['max_attempts' => 1]);
 
@@ -184,17 +185,28 @@ class ProxyProviderDriversTest extends TestCase
 
     private function profile(string $provider, string $modelId, int $credentialId): ModelProfile
     {
-        return ModelProfile::create([
+        $profile = ModelProfile::create([
             'name' => $provider.' '.$modelId, 'slug' => str_replace('/', '-', $provider.'-'.$modelId),
             'provider' => $provider, 'model_id' => $modelId, 'purpose' => 'chat',
             'temperature' => 0.1, 'max_tokens' => 100, 'provider_credential_id' => $credentialId,
         ]);
+        ProviderPriceSnapshot::create([
+            'provider_id' => $provider,
+            'model_id' => $modelId,
+            'currency' => 'USD',
+            'input_per_million' => 1,
+            'output_per_million' => 2,
+            'source' => 'test',
+            'valid_from' => now()->subMinute(),
+        ]);
+
+        return $profile;
     }
 
     /** @param array<int,ModelProfile> $profiles */
     private function useCaseWith(array $profiles): void
     {
-        $useCase = ModelUseCase::create(['name' => 'Chat', 'slug' => 'chat', 'active' => true]);
+        $useCase = ModelUseCase::create(['name' => 'Chat', 'slug' => 'chat', 'active' => true, 'network_policy_key' => 'proxy.openrouter.default', 'max_attempts' => 2]);
         foreach ($profiles as $index => $profile) {
             ModelUseCaseEntry::create(['model_use_case_id' => $useCase->id, 'model_profile_id' => $profile->id, 'sort_order' => $index + 1, 'active' => true]);
         }
@@ -206,6 +218,7 @@ class ProxyProviderDriversTest extends TestCase
             'key' => 'proxy.openrouter.default', 'name' => 'Default', 'status' => 'active',
             'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
             'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 50,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ], $overrides));
     }
 

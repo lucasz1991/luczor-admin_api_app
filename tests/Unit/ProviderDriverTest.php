@@ -17,11 +17,14 @@ class ProviderDriverTest extends TestCase
     {
         $registry = new ProviderDriverRegistry;
 
-        $this->assertInstanceOf(AnthropicMessagesDriver::class, $registry->for('anthropic'));
-        $this->assertInstanceOf(OpenAiResponsesDriver::class, $registry->for('openai'));
-        $this->assertInstanceOf(OpenAiCompatDriver::class, $registry->for('openrouter'));
+        $anthropic = new ProviderCredential(['provider' => 'anthropic', 'request_format' => 'messages']);
+        $openai = new ProviderCredential(['provider' => 'openai', 'request_format' => 'responses']);
+        $openrouter = new ProviderCredential(['provider' => 'openrouter', 'request_format' => 'chat_completions']);
+        $this->assertInstanceOf(AnthropicMessagesDriver::class, $registry->for('anthropic', $anthropic));
+        $this->assertInstanceOf(OpenAiResponsesDriver::class, $registry->for('openai', $openai));
+        $this->assertInstanceOf(OpenAiCompatDriver::class, $registry->for('openrouter', $openrouter));
 
-        $compat = new ProviderCredential(['provider' => 'openai', 'meta' => ['wire' => 'chat_completions']]);
+        $compat = new ProviderCredential(['provider' => 'openai', 'request_format' => 'chat_completions', 'meta' => ['wire' => 'responses']]);
         $this->assertInstanceOf(OpenAiCompatDriver::class, $registry->for('openai', $compat));
     }
 

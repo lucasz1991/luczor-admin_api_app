@@ -11,11 +11,11 @@ class LlmRun extends Model
         'request_id',
         'user_id', 'client_id', 'project_id', 'project_ref_id', 'workflow_id', 'task_id', 'session_id',
         'task_type', 'feature_key', 'context_id',
-        'model_id', 'selected_by', 'provider_id', 'prompt_template_id', 'context_strategy_id',
+        'model_id', 'selected_by', 'routing_policy_version', 'routing_reason_code', 'provider_id', 'prompt_template_id', 'context_strategy_id',
         'network_policy_id', 'repo_id', 'branch', 'commit_sha',
         'status', 'finish_reason', 'request_hash', 'response_hash', 'success', 'latency_ms',
         'ttft_ms', 'tokens_per_second', 'input_tokens', 'output_tokens', 'cost_total',
-        'provider_cost', 'calculated_cost', 'cost_source', 'quality_score', 'test_passed',
+        'provider_cost', 'calculated_cost', 'estimated_cost_usd', 'cost_source', 'quality_score', 'test_passed',
         'tool_call_count', 'retry_count', 'attempt_count',
     ];
 
@@ -25,6 +25,7 @@ class LlmRun extends Model
         'quality_score' => 'float',
         'provider_cost' => 'float',
         'calculated_cost' => 'float',
+        'estimated_cost_usd' => 'float',
         'tokens_per_second' => 'float',
         'test_passed' => 'boolean',
     ];

@@ -2,6 +2,7 @@
 
 namespace App\Services\Proxy;
 
+use App\Data\ProviderRoutingDecision;
 use App\Data\Proxy\PreparedProxyRequest;
 use App\Data\Proxy\ProxyDispatchResult;
 use App\Data\Proxy\ProxyResponseLimits;
@@ -28,6 +29,7 @@ final class ProxyResponseFactory
         ProxyDispatchResult $dispatch,
         LlmRun $run,
         ProxyResponseLimits $limits,
+        ProviderRoutingDecision $routing,
     ): Response {
         $upstream = $dispatch->upstream;
         $attempt = $dispatch->attempt;
@@ -46,7 +48,11 @@ final class ProxyResponseFactory
             'X-Luczor-Model-Id' => $profile->model_id,
             'X-Luczor-Provider' => $credential->provider ?: 'openrouter',
             'X-Luczor-Review-Enabled' => $prepared->useCase?->review_enabled ? '1' : '0',
-        ];
+        ] + $routing->headers($profile);
+        $currentEstimate = $attempt->routing_meta['estimated_cost_usd'] ?? null;
+        if (is_numeric($currentEstimate)) {
+            $headers['X-Luczor-Estimated-Cost-Usd'] = number_format((float) $currentEstimate, 8, '.', '');
+        }
 
         if ($upstream->getStatusCode() >= 400 || ! (bool) ($prepared->payload['stream'] ?? false)) {
             return $this->jsonResponse(
@@ -121,6 +127,21 @@ final class ProxyResponseFactory
             ], 502)->withHeaders($headers)->header('X-Luczor-Request-Id', $run->request_id);
         }
 
+        if ($status >= 400) {
+            $upstream->getBody()->close();
+
+            return $this->gatewayFailureJson(
+                attempt: $attempt,
+                run: $run,
+                providerStatus: $status,
+                startedAt: $startedAt,
+                connectMs: $connectMs,
+                headers: $headers,
+                code: 'provider_request_failed',
+                message: 'Provider rejected the request.',
+            );
+        }
+
         $declaredLength = $this->declaredLength($upstream);
         if ($declaredLength !== null && $declaredLength > $limits->bodyBytes) {
             $upstream->getBody()->close();
@@ -146,7 +167,7 @@ final class ProxyResponseFactory
         }
 
         $json = json_decode($read->contents, true) ?: [];
-        $normalize = $status < 400 && ! $driver->passthrough();
+        $normalize = ! $driver->passthrough();
         $canonical = $normalize ? $driver->normalizeResponse($json) : $json;
         $usage = is_array($canonical['usage'] ?? null) ? $canonical['usage'] : [];
         $attempt = $this->telemetry->finishAttempt($attempt, $status, $this->elapsedMs($startedAt), $usage, [

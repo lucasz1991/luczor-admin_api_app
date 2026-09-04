@@ -15,6 +15,7 @@ class ModelUseCase extends Model
         'slug',
         'description',
         'active',
+        'policy_version',
         'routing_strategy',
         'max_attempts',
         'max_input_tokens',
@@ -27,8 +28,10 @@ class ModelUseCase extends Model
 
     protected $casts = [
         'active' => 'boolean',
+        'policy_version' => 'integer',
         'max_attempts' => 'integer',
         'max_input_tokens' => 'integer',
+        'max_cost_usd' => 'float',
         'review_enabled' => 'boolean',
     ];
 

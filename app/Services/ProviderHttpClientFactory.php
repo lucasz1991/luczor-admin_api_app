@@ -14,6 +14,8 @@ class ProviderHttpClientFactory
         return new Client([
             'connect_timeout' => max(1, (int) $policy->connect_timeout_ms / 1000),
             'timeout' => max(1, (int) $policy->request_timeout_ms / 1000),
+            'allow_redirects' => false,
+            'verify' => true,
         ]);
     }
 }

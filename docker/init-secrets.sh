@@ -116,5 +116,34 @@ else
   chmod 600 "$job_key"
 fi
 
+local_model_signing_key="$dir/luczor_local_model_signing_private_key"
+assert_safe_secret_file "$local_model_signing_key"
+if [ ! -f "$local_model_signing_key" ]; then
+  temporary_file=$(mktemp "$dir/.luczor_local_model_signing_private_key.XXXXXX")
+  openssl genrsa -out "$temporary_file" 3072 2>/dev/null
+  chmod 600 "$temporary_file"
+  install_new_secret luczor_local_model_signing_private_key "$temporary_file"
+  rm -f -- "$temporary_file"
+  temporary_file=
+else
+  chmod 600 "$local_model_signing_key"
+fi
+
+local_model_key_bits=$(openssl pkey -in "$local_model_signing_key" -text -noout 2>/dev/null \
+  | sed -n 's/.*Private-Key: (\([0-9][0-9]*\) bit.*/\1/p' \
+  | head -n 1)
+if [ -z "$local_model_key_bits" ] || [ "$local_model_key_bits" -lt 3072 ]; then
+  echo "Local-model signing key must be a valid RSA key with at least 3072 bits." >&2
+  exit 1
+fi
+local_model_public_key_sha256=$(openssl pkey -in "$local_model_signing_key" -pubout 2>/dev/null \
+  | openssl dgst -sha256 \
+  | sed 's/^.*= //')
+if ! printf '%s' "$local_model_public_key_sha256" | grep -Eq '^[a-f0-9]{64}$'; then
+  echo "Unable to derive the local-model public-key SHA-256 pin." >&2
+  exit 1
+fi
+
 trap - EXIT HUP INT TERM
 printf '%s\n' "Secrets are ready in $dir. Optional external integrations remain disabled until their own keys are configured."
+printf '%s\n' "Set LUCZOR_LOCAL_MODEL_EXPECTED_PUBLIC_KEY_SHA256=$local_model_public_key_sha256 for the API release and pin the matching public key in Desktop."

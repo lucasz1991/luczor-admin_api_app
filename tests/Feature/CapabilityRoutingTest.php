@@ -30,7 +30,7 @@ class CapabilityRoutingTest extends TestCase
         $ids = collect($svc->candidates(null, 'vision.describe', ['vision']))->pluck('slug')->all();
 
         $this->assertContains('v', $ids);     // has vision
-        $this->assertContains('u', $ids);     // unknown caps kept
+        $this->assertNotContains('u', $ids);  // unknown capabilities fail closed
         $this->assertNotContains('t', $ids);  // declares caps but lacks vision
     }
 
@@ -86,11 +86,32 @@ class CapabilityRoutingTest extends TestCase
             'luczor.example.test',
             'tauri.localhost',
         ]);
+        $externalPrivateKey = tempnam(sys_get_temp_dir(), 'luczor-local-model-key-');
+        $this->assertIsString($externalPrivateKey);
+        $this->assertTrue(copy(
+            base_path('tests/Fixtures/local-model-manifest-test-private.pem'),
+            $externalPrivateKey,
+        ));
+        $publicKey = openssl_pkey_get_public((string) file_get_contents(
+            base_path('tests/Fixtures/local-model-manifest-test-public.pem'),
+        ));
+        $this->assertNotFalse($publicKey);
+        $publicDetails = openssl_pkey_get_details($publicKey);
+        $this->assertIsArray($publicDetails);
 
-        $this->artisan('luczor:deployment-check', [
-            '--production' => true,
-            '--configuration-only' => true,
-        ])->assertSuccessful();
+        try {
+            Config::set('local_models.signing.key_id', 'deployment-test-key');
+            Config::set('local_models.signing.private_key', '');
+            Config::set('local_models.signing.private_key_file', $externalPrivateKey);
+            Config::set('local_models.signing.expected_public_key_sha256', hash('sha256', $publicDetails['key']));
+
+            $this->artisan('luczor:deployment-check', [
+                '--production' => true,
+                '--configuration-only' => true,
+            ])->assertSuccessful();
+        } finally {
+            @unlink($externalPrivateKey);
+        }
     }
 
     public function test_local_origin_defaults_are_explicit_and_never_wildcarded(): void

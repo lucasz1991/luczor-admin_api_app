@@ -11,6 +11,7 @@ use App\Models\ModelUseCaseEntry;
 use App\Models\NetworkPolicy;
 use App\Models\Persona;
 use App\Models\ProviderCredential;
+use App\Models\ProviderPriceSnapshot;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\ProviderHttpClientFactory;
@@ -44,6 +45,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'backoff_ms' => 0,
             'max_input_tokens' => 1,
             'max_output_tokens' => 20,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
 
         $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', [
@@ -74,6 +76,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'key' => 'proxy.openrouter.default', 'name' => 'Default', 'status' => 'active',
             'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
             'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 50,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
 
         $http = Mockery::mock(ClientInterface::class);
@@ -133,6 +136,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'key' => 'proxy.openrouter.default', 'name' => 'Fallback', 'status' => 'active',
             'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
             'max_attempts' => 2, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 100,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
 
         $http = Mockery::mock(ClientInterface::class);
@@ -170,6 +174,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'key' => 'proxy.openrouter.default', 'name' => 'Auth failure', 'status' => 'active',
             'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
             'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 100,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
 
         $http = Mockery::mock(ClientInterface::class);
@@ -200,6 +205,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'key' => 'proxy.openrouter.default', 'name' => 'Stream', 'status' => 'active',
             'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
             'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 100,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
         $sse = "data: {\"id\":\"stream-1\",\"choices\":[{\"delta\":{\"content\":\"Hallo\"},\"finish_reason\":null}]}\n\n"
             ."data: {\"id\":\"stream-1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":3,\"cost\":0.000123}}\n\n"
@@ -554,6 +560,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'key' => 'proxy.openrouter.default', 'name' => 'Default', 'status' => 'active',
             'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
             'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000, 'max_output_tokens' => 50,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
         Persona::create(['slug' => 'knapp', 'name' => 'Knapp', 'prompt' => 'PERSONA: antworte knapp.', 'active' => true]);
         Setting::putValue('active_persona', 'knapp', ['group' => 'client', 'type' => 'string']);
@@ -592,6 +599,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'key' => 'proxy.openrouter.default', 'name' => 'Lenient', 'status' => 'active',
             'connect_timeout_ms' => 1000, 'request_timeout_ms' => 1000,
             'max_attempts' => 1, 'backoff_ms' => 0, 'max_input_tokens' => 1000000, 'max_output_tokens' => 50,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
 
         // The global policy would allow this, but the use-case budget rejects it.
@@ -606,9 +614,21 @@ class ProxyRoutingPolicyTest extends TestCase
 
     private function chatProfiles(): array
     {
-        $primary = ModelProfile::create(['name' => 'Admin Primary', 'slug' => 'admin-primary', 'provider' => 'openrouter', 'model_id' => 'admin/primary', 'purpose' => 'chat', 'temperature' => 0.1, 'max_tokens' => 100]);
-        $fallback = ModelProfile::create(['name' => 'Admin Fallback', 'slug' => 'admin-fallback', 'provider' => 'openrouter', 'model_id' => 'admin/fallback', 'purpose' => 'chat', 'temperature' => 0.1, 'max_tokens' => 100]);
-        $useCase = ModelUseCase::create(['name' => 'Chat', 'slug' => 'chat', 'active' => true]);
+        $credentialId = ProviderCredential::query()->where('provider', 'openrouter')->where('active', true)->value('id');
+        $primary = ModelProfile::create(['name' => 'Admin Primary', 'slug' => 'admin-primary', 'provider' => 'openrouter', 'provider_credential_id' => $credentialId, 'model_id' => 'admin/primary', 'purpose' => 'chat', 'temperature' => 0.1, 'max_tokens' => 100]);
+        $fallback = ModelProfile::create(['name' => 'Admin Fallback', 'slug' => 'admin-fallback', 'provider' => 'openrouter', 'provider_credential_id' => $credentialId, 'model_id' => 'admin/fallback', 'purpose' => 'chat', 'temperature' => 0.1, 'max_tokens' => 100]);
+        foreach ([$primary, $fallback] as $profile) {
+            ProviderPriceSnapshot::create([
+                'provider_id' => $profile->provider,
+                'model_id' => $profile->model_id,
+                'currency' => 'USD',
+                'input_per_million' => 1,
+                'output_per_million' => 2,
+                'source' => 'test',
+                'valid_from' => now()->subMinute(),
+            ]);
+        }
+        $useCase = ModelUseCase::create(['name' => 'Chat', 'slug' => 'chat', 'active' => true, 'network_policy_key' => 'proxy.openrouter.default', 'max_attempts' => 2]);
         ModelUseCaseEntry::create(['model_use_case_id' => $useCase->id, 'model_profile_id' => $primary->id, 'sort_order' => 1, 'active' => true]);
         ModelUseCaseEntry::create(['model_use_case_id' => $useCase->id, 'model_profile_id' => $fallback->id, 'sort_order' => 2, 'active' => true]);
 
@@ -617,7 +637,7 @@ class ProxyRoutingPolicyTest extends TestCase
 
     private function openRouterCredential(): void
     {
-        ProviderCredential::create(['provider' => 'openrouter', 'label' => 'Test', 'api_key' => 'test-secret', 'active' => true]);
+        ProviderCredential::create(['provider' => 'openrouter', 'label' => 'Test', 'api_key' => 'test-secret', 'request_format' => 'chat_completions', 'active' => true]);
     }
 
     private function defaultNetworkPolicy(int $maxAttempts = 1): NetworkPolicy
@@ -632,6 +652,7 @@ class ProxyRoutingPolicyTest extends TestCase
             'backoff_ms' => 0,
             'max_input_tokens' => 1000,
             'max_output_tokens' => 100,
+            'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]],
         ]);
     }
 

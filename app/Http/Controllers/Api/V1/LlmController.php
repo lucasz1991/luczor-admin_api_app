@@ -16,8 +16,8 @@ use Illuminate\Http\Request;
 
 class LlmController extends Controller
 {
-    /** Choose the best model for a task type (exploit ~90%, explore ~10%). */
-    public function route(Request $request, ModelRanker $ranker, ApiActor $actor, ProviderPolicyService $policy)
+    /** Preview the currently eligible external route without dispatching it. */
+    public function route(Request $request, ModelRanker $ranker, ProviderPolicyService $policy)
     {
         abort_unless($request->user()?->isAdmin(), 403);
         $data = $request->validate([
@@ -25,15 +25,23 @@ class LlmController extends Controller
         ]);
         $taskType = $data['task_type'] ?? 'chat.general';
 
-        $userId = $actor->userId($request);
         $ranker->recompute($taskType);
-        $profile = $policy->candidates(null, $taskType)[0] ?? null;
+        $decision = $policy->resolve($taskType, [], [
+            'messages' => [['role' => 'user', 'content' => '']],
+        ]);
+        $profile = $decision->profiles[0];
 
         return response()->json([
             'task_type' => $taskType,
-            'model_id' => $profile ? $profile->model_id : '@preset/luczor',
-            'provider' => $profile ? $profile->provider : 'openrouter',
-            'source' => 'admin_policy_and_metrics',
+            'model_id' => $profile->model_id,
+            'provider' => $profile->provider,
+            'source' => $decision->selectionSource,
+            'routing_reason' => $decision->reasonCode,
+            'routing_policy_version' => $decision->policyVersion,
+            'network_policy_key' => $decision->networkPolicy->key,
+            'executable' => false,
+            'preview_only' => true,
+            'provider_request_dispatched' => false,
         ]);
     }
 

@@ -1,5 +1,7 @@
 .git
-.env
+.env*
 node_modules
 storage/logs
+storage/app/keys
+tests
 docker/secrets

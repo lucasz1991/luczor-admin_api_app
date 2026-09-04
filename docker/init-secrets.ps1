@@ -147,4 +147,41 @@ if (-not (Test-Path -LiteralPath $jobKey -PathType Leaf)) {
 }
 Set-SecretFileMode $jobKey
 
+$localModelSigningKey = Join-Path $SecretDirectory "luczor_local_model_signing_private_key"
+Assert-SafeSecretFile $localModelSigningKey
+if (-not (Test-Path -LiteralPath $localModelSigningKey -PathType Leaf)) {
+    $temporaryLocalModelSigningKey = Join-Path $SecretDirectory (".luczor_local_model_signing_private_key." + [Guid]::NewGuid().ToString("N"))
+    try {
+        $php = Get-Command php -ErrorAction Stop
+        $phpCode = '$key = openssl_pkey_new([''private_key_bits'' => 3072, ''private_key_type'' => OPENSSL_KEYTYPE_RSA]); if (!$key || !openssl_pkey_export($key, $pem)) { fwrite(STDERR, ''RSA key generation failed''); exit(1); } file_put_contents($argv[1], $pem);'
+        & $php.Source -r $phpCode $temporaryLocalModelSigningKey
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to create the local-model catalog RSA signing key."
+        }
+        Set-SecretFileMode $temporaryLocalModelSigningKey
+        try {
+            [IO.File]::Move($temporaryLocalModelSigningKey, $localModelSigningKey)
+            Write-Host "Created luczor_local_model_signing_private_key"
+        } catch [IO.IOException] {
+            Assert-SafeSecretFile $localModelSigningKey
+            if (-not (Test-Path -LiteralPath $localModelSigningKey -PathType Leaf)) {
+                throw
+            }
+        }
+    } finally {
+        if (Test-Path -LiteralPath $temporaryLocalModelSigningKey -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryLocalModelSigningKey -Force
+        }
+    }
+}
+Set-SecretFileMode $localModelSigningKey
+
+$php = Get-Command php -ErrorAction Stop
+$fingerprintCode = '$key = openssl_pkey_get_private(file_get_contents($argv[1])); $details = $key ? openssl_pkey_get_details($key) : false; if (!is_array($details) || ($details[''type''] ?? null) !== OPENSSL_KEYTYPE_RSA || ($details[''bits''] ?? 0) < 3072 || !is_string($details[''key''] ?? null)) { fwrite(STDERR, ''Invalid local-model RSA signing key''); exit(1); } fwrite(STDOUT, hash(''sha256'', $details[''key'']));'
+$localModelPublicKeySha256 = (& $php.Source -r $fingerprintCode $localModelSigningKey)
+if ($LASTEXITCODE -ne 0 -or $localModelPublicKeySha256 -notmatch '^[a-f0-9]{64}$') {
+    throw "Unable to validate the local-model signing key and derive its public-key SHA-256 pin."
+}
+
 Write-Host "Secrets are ready in $SecretDirectory. Fill openrouter_key, github_client_secret, cognee_llm_api_key, and cognee_embedding_api_key before enabling those integrations."
+Write-Host "Set LUCZOR_LOCAL_MODEL_EXPECTED_PUBLIC_KEY_SHA256=$localModelPublicKeySha256 for the API release and pin the matching public key in Desktop."

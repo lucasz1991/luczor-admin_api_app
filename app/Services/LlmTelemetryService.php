@@ -22,7 +22,7 @@ class LlmTelemetryService
             'request_id' => (string) Str::uuid(),
             'task_type' => $taskType,
             'model_id' => 'pending',
-            'provider_id' => 'openrouter',
+            'provider_id' => 'pending',
             'selected_by' => $selectedBy,
             'status' => 'running',
             'success' => false,

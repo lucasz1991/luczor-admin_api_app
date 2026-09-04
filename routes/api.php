@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\DeviceJobController;
 use App\Http\Controllers\Api\V1\GithubController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\LlmController;
+use App\Http\Controllers\Api\V1\LocalModelManifestController;
 use App\Http\Controllers\Api\V1\McpController;
 use App\Http\Controllers\Api\V1\MemoryController;
 use App\Http\Controllers\Api\V1\NotificationPreferenceController;
@@ -53,6 +54,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/bootstrap', [BootstrapController::class, 'bootstrap'])->name('api.v1.bootstrap');
         Route::get('/model-profiles', [BootstrapController::class, 'modelProfiles'])->name('api.v1.model-profiles');
         Route::get('/runtime-settings', [BootstrapController::class, 'runtimeSettings'])->name('api.v1.runtime-settings');
+        Route::get('/local-model/manifest', LocalModelManifestController::class)->name('api.v1.local-model.manifest');
         Route::get('/voice/manifest', VoiceManifestController::class)->name('api.v1.voice.manifest');
     });
 
