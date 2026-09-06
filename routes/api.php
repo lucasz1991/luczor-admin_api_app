@@ -192,6 +192,8 @@ Route::prefix('v1')->group(function () {
             ->middleware(ThrottleAuthenticatedSpeech::class)->name('api.v1.voice.tts');
         Route::get('/voice/tts/status', [VoiceTtsController::class, 'status'])
             ->middleware(ThrottleAuthenticatedSpeech::class.':voice-tts-status')->name('api.v1.voice.tts.status');
+        Route::get('/voice/voices', [VoiceTtsController::class, 'voices'])
+            ->middleware(ThrottleAuthenticatedSpeech::class.':voice-tts-status')->name('api.v1.voice.voices');
     });
 
     // Memory (Cognee behind Laravel + memory_links System-of-Record)

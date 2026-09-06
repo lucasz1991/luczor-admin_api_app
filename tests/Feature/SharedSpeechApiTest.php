@@ -36,6 +36,44 @@ class SharedSpeechApiTest extends TestCase
         $this->withHeader('X-Api-Key', $this->key(['settings.read']))
             ->postJson('/api/v1/voice/tts', ['text' => 'Hallo.'])->assertForbidden();
         $this->getJson('/api/v1/voice/tts/status')->assertForbidden();
+        $this->getJson('/api/v1/voice/voices')->assertForbidden();
+    }
+
+    public function test_v2_catalog_exposes_only_public_voice_fields_for_the_luczor_client(): void
+    {
+        $transport = Mockery::mock(SharedSpeechTransport::class);
+        $transport->shouldReceive('send')->once()->withArgs(fn (...$args) => $args[2] === 'luczor' && $args[4] === null && $args[8] === '/v2/voices')
+            ->andReturn($this->upstream(200, json_encode(['voices' => [
+                ['id' => 'piper', 'name' => 'Piper Standard'],
+                ['id' => 'benni', 'name' => 'Benni', 'reference_path' => '/private/voice.wav', 'clients' => ['luczor']],
+            ]]), 'application/json'));
+        $this->app->instance(SharedSpeechTransport::class, $transport);
+        $response = $this->withHeader('X-Api-Key', $this->key())->getJson('/api/v1/voice/voices')->assertOk();
+        $response->assertExactJson(['voices' => [
+            ['id' => 'piper', 'name' => 'Piper Standard', 'provider' => 'piper', 'language' => 'de'],
+            ['id' => 'benni', 'name' => 'Benni', 'provider' => 'pocket', 'language' => 'de'],
+        ]]);
+        $this->assertStringNotContainsString('/private/', $response->getContent());
+    }
+
+    public function test_selected_voice_uses_v2_wav_without_switching_legacy_requests(): void
+    {
+        $transport = Mockery::mock(SharedSpeechTransport::class);
+        $transport->shouldReceive('send')->once()->withArgs(fn (...$args) => $args[4] === ['text' => 'Hallo.', 'speed' => 1.0, 'voice_id' => 'benni', 'format' => 'wav'] && $args[8] === '/v2/speech')
+            ->andReturn($this->upstream(200, $this->wav(), 'audio/wav'));
+        $this->app->instance(SharedSpeechTransport::class, $transport);
+        $this->withHeader('X-Api-Key', $this->key())->postJson('/api/v1/voice/tts', ['text' => 'Hallo.', 'voice_id' => 'benni'])
+            ->assertOk()->assertHeader('Content-Type', 'audio/wav');
+    }
+
+    public function test_missing_voice_fails_without_fallback_or_exposing_upstream_details(): void
+    {
+        $transport = Mockery::mock(SharedSpeechTransport::class);
+        $transport->shouldReceive('send')->once()->andReturn($this->upstream(404, 'private-service-token /private/reference', 'application/json'));
+        $this->app->instance(SharedSpeechTransport::class, $transport);
+        $response = $this->withHeader('X-Api-Key', $this->key())->postJson('/api/v1/voice/tts', ['text' => 'Hallo.', 'voice_id' => 'missing'])
+            ->assertUnprocessable()->assertJsonPath('error.code', 'tts_voice_unavailable');
+        $this->assertStringNotContainsString('private-service-token', $response->getContent());
     }
 
     public function test_speech_uses_only_server_credentials_and_exact_shared_contract(): void
@@ -79,7 +117,17 @@ class SharedSpeechApiTest extends TestCase
             [['text' => 'Hallo', 'speed' => 2.01]], [['text' => 'Hallo', 'speed' => null]],
             [['text' => 'Hallo', 'url' => 'https://attacker.invalid']],
             [['text' => 'Hallo', 'token' => self::TOKEN]],
+            [['text' => 'Hallo', 'voice_id' => '../secret']], [['text' => 'Hallo', 'voice_id' => ['benni']]],
+            [['text' => 'Hallo', 'voice_id' => null]], [['text' => 'Hallo', 'voice_id' => str_repeat('a', 65)]],
         ];
+    }
+
+    public function test_v2_speed_must_be_applied_at_playback(): void
+    {
+        $transport = Mockery::mock(SharedSpeechTransport::class);
+        $transport->shouldNotReceive('send');
+        $this->app->instance(SharedSpeechTransport::class, $transport);
+        $this->withHeader('X-Api-Key', $this->key())->postJson('/api/v1/voice/tts', ['text' => 'Hallo.', 'voice_id' => 'benni', 'speed' => 1.5])->assertUnprocessable();
     }
 
     #[DataProvider('invalidConfiguration')]

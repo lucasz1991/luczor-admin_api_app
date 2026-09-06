@@ -12,14 +12,24 @@ class SharedSpeechService
 
     public function __construct(private readonly SharedSpeechTransport $transport) {}
 
-    public function synthesize(string $text, float $speed = 1.0): string
+    public function synthesize(string $text, float $speed = 1.0, ?string $voiceId = null): string
     {
         if (trim($text) === '' || mb_strlen($text) > self::MAX_TEXT_CHARACTERS || ! is_finite($speed) || $speed < 0.5 || $speed > 2.0) {
             throw new SharedSpeechException('tts_invalid_input', 422, 'Ungültiger Vorlesetext oder ungültige Sprechgeschwindigkeit.');
         }
 
-        $response = $this->request(['text' => $text, 'speed' => $speed]);
-        $this->assertSuccess($response);
+        if ($voiceId !== null && preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/D', $voiceId) !== 1) {
+            throw new SharedSpeechException('tts_invalid_input', 422, 'Ungültige Stimmen-ID.');
+        }
+        // V2 Pocket voices use unit generation speed; the desktop applies playbackRate.
+        $v2 = $voiceId !== null && $voiceId !== 'piper';
+        if ($v2 && $speed !== 1.0) {
+            throw new SharedSpeechException('tts_invalid_input', 422, 'V2-Stimmen benötigen speed=1; das Tempo wird bei der Wiedergabe eingestellt.');
+        }
+        $response = $v2
+            ? $this->request(['text' => $text, 'speed' => 1.0, 'voice_id' => $voiceId, 'format' => 'wav'], '/v2/speech')
+            : $this->request(['text' => $text, 'speed' => $speed]);
+        $this->assertSuccess($response, $v2);
         $audio = $response['body'];
         if (! in_array($response['content_type'], ['audio/wav', 'audio/x-wav', 'audio/wave'], true)
             || strlen($audio) < 44 || strlen($audio) > self::MAX_AUDIO_BYTES
@@ -28,6 +38,32 @@ class SharedSpeechService
         }
 
         return $audio;
+    }
+
+    /** @return array{voices: list<array{id: string, name: string, provider: string, language: string}>} */
+    public function voices(): array
+    {
+        $response = $this->request(null, '/v2/voices');
+        $this->assertSuccess($response, true);
+        $data = json_decode($response['body'], true);
+        if ($response['content_type'] !== 'application/json' || ! is_array($data)
+            || ! is_array($data['voices'] ?? null) || ! array_is_list($data['voices']) || count($data['voices']) > 100) {
+            throw new SharedSpeechException('tts_invalid_catalog', 502, 'Der Sprachdienst hat keinen gültigen Stimmenkatalog geliefert.');
+        }
+        $voices = [];
+        foreach ($data['voices'] as $voice) {
+            if (! is_array($voice) || ! is_string($voice['id'] ?? null)
+                || preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/D', $voice['id']) !== 1
+                || ! is_string($voice['name'] ?? null) || trim($voice['name']) === '' || mb_strlen($voice['name']) > 120) {
+                throw new SharedSpeechException('tts_invalid_catalog', 502, 'Der Sprachdienst hat keinen gültigen Stimmenkatalog geliefert.');
+            }
+            // The upstream applies its Luczor-client allowlist. Never forward reference paths or metadata.
+            $voices[] = ['id' => $voice['id'], 'name' => $voice['name'],
+                'provider' => $voice['id'] === 'piper' ? 'piper' : 'pocket',
+                'language' => 'de'];
+        }
+
+        return ['voices' => $voices];
     }
 
     /** @return array{configured: bool, ready: bool, status: string, language: string, max_text_chars: int, max_audio_bytes: int} */
@@ -87,10 +123,10 @@ class SharedSpeechService
     }
 
     /**
-     * @param  array{text: string, speed: float}|null  $payload
+     * @param  array<string, mixed>|null  $payload
      * @return array{status: int, body: string, content_type: string, retry_after: ?int}
      */
-    private function request(?array $payload): array
+    private function request(?array $payload, ?string $path = null): array
     {
         $config = $this->configuration();
 
@@ -100,14 +136,18 @@ class SharedSpeechService
             $payload === null ? max(1, min(10, (int) config('shared_speech.status_timeout_seconds', 5)))
                 : max(1, min(150, (int) config('shared_speech.timeout_seconds', 150))),
             $payload === null ? 64 * 1024 : self::MAX_AUDIO_BYTES,
+            ...($path === null ? [] : [$path]),
         );
     }
 
     /** @param array{status: int, body: string, content_type: string, retry_after: ?int} $response */
-    private function assertSuccess(array $response): void
+    private function assertSuccess(array $response, bool $voiceRequest = false): void
     {
         if ($response['status'] === 200) {
             return;
+        }
+        if ($voiceRequest && in_array($response['status'], [404, 422], true)) {
+            throw new SharedSpeechException('tts_voice_unavailable', 422, 'Die gewählte Stimme ist nicht verfügbar oder nicht für Luczor freigegeben. Bitte den Stimmenkatalog aktualisieren.');
         }
         if (in_array($response['status'], [408, 504], true)) {
             throw new SharedSpeechException('tts_timeout', 504, 'Der Server-Sprachdienst hat nicht rechtzeitig geantwortet.');

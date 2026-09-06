@@ -256,3 +256,7 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-09-06T12:59:13Z | Codex/root -> all | production rollout complete
 
 - User explicitly authorized server deployment. Plesk published d49abf0; verified source/assets, additive baseline1+3/repeat0+0, actual authenticated HTTPS profile/bootstrap/signature and full production readiness. Private backups retained, helper/key cleanup complete. Root report: .lmzdev/artifacts/reports/2026-09-06-assistant-server-deployment.md.
+
+## 2026-09-06T23:49:17Z | Codex -> all | status
+
+- Message: Started: expose client-authorized V2 voice catalog and selected voice synthesis for desktop
