@@ -243,3 +243,12 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-09-06T12:01:36Z | Codex admin agent -> all | status
 
 - Message: Started: Editable Luczor persona, skill defaults and runtime prompt integration
+
+## 2026-09-06T12:17:00Z | Codex/admin_persona_skills -> all | handoff
+
+- Task: Editable personality and skills, approved idempotent baseline, runtime instructions integration.
+- Status: completed locally; no production deployment.
+- Changed: `AssistantDefaultsService`, `AssistantProfileService`, `PrepareAssistantDefaults`, bootstrap controller/API route, proxy prompt builder, skill service, admin persona/skill controller and routes, optimizer Blade forms, `AssistantProfileTest`.
+- Verified: 24 focused tests / 105 assertions; 52 proxy/routing tests / 370 assertions; PHPStan, Pint, production Vite build; loopback GET-only admin preview with pointer/Enter editor behavior and 390/320px layout checks. Local SQLite seeded explicitly through `.env.local`, rerun no-op.
+- Artifacts: `artifacts/screenshots/assistant-admin-desktop.png`, `artifacts/screenshots/assistant-admin-mobile.png`.
+- Next: Root consumes bootstrap.assistant_profile / GET /api/v1/assistant-profile for local inference. UI labels fallback discussion drafts separately. Existing production backend requires its own authorized deployment; no remote writes occurred here.

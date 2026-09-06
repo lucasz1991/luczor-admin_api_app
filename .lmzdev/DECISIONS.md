@@ -108,3 +108,9 @@ Record durable decisions with date, context, decision, and consequences.
 - Der Bootstrap-Helfer ist kein Seeder und darf weder Produktionsumgebungen noch nicht-lokale Datenbanken beruehren. Laufzeitumgebung, konfigurierte Standardverbindung und tatsaechlicher PDO-Treiber muessen den lokalen SQLite-Vertrag bestaetigen.
 - Die dedizierte Identitaet bleibt tenantlos, aktiv und auf einen acht Stunden gueltigen Device/API-Key mit exakt `settings.read` begrenzt. Ein Namens-/Rollen-/Tenant-Konflikt auf der reservierten Testadresse blockiert statt eine vorhandene Identitaet umzudeuten.
 - Der Klartext-Token erscheint weder in Console noch Logs oder Repositorydateien. Nur eine explizite absolute Zieldatei ausserhalb des Checkouts darf ihn aufnehmen; Bestandsdateien werden nur erneuert, wenn sie bereits dem exakten Tokenformat entsprechen.
+
+## 2026-09-06 | Assistant baseline preservation and prompt authority
+
+- Baseline preparation creates only missing fixed-slug records. Existing custom text, owner, inactive skills and any explicit active_persona setting (including an empty selection) win. A baseline persona is selected only for an entirely pristine catalog with no selection setting.
+- Global baseline skills are direct registry instructions and do not create tenant memory or Cognee projections. Runtime discovery is read-only; workflow execution remains explicit.
+- Edits use stable record IDs so renaming never duplicates a skill or changes its global/user scope. Server proxy and desktop local inference share the actor-scoped profile contract. Hidden reasoning is not requested or fabricated; approved personality requests short observable progress and verifiable reasons.

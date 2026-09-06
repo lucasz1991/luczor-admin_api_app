@@ -23,3 +23,4 @@
 | Cognee Improve kontrolliert aktivieren und Redis-Secret-Stack fuer App-Test umstellen | Codex/root | completed-live | 2026-08-29T05:40:00Z |
 | Memory-Archiv mit interaktivem 3D-Netzwerk optimieren | Codex/root | completed | 2026-08-29T04:26:36Z |
 | Isolierten lokalen Modell-Smoke-Bootstrap als fail-closed Artisan-Command samt Feature-Test umsetzen | Codex/root/local_test_bootstrap_command | completed | 2026-09-05T21:38:32Z |
+| Editable persona, baseline skills and actor-scoped runtime profile | Codex/admin_persona_skills | completed-local | 2026-09-06T12:17:00Z |

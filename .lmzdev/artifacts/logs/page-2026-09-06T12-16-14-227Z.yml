@@ -1,0 +1,179 @@
+- generic [ref=f2e1]:
+  - link "Zum Inhalt springen" [ref=f2e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=f2e3]:
+    - banner [ref=f2e4]:
+      - link "Luczor Dashboard" [ref=f2e6] [cursor=pointer]:
+        - /url: http://127.0.0.1:8769/dashboard
+        - generic [aria-hidden] [ref=f2e7]: LZ
+        - generic:
+          - generic: Luczor
+          - generic: Admin Control Plane
+      - button "Navigation öffnen oder schließen" [ref=f2e272] [cursor=pointer]
+      - generic [ref=f2e12]:
+        - link "Server Settings" [ref=f2e13] [cursor=pointer]:
+          - /url: http://127.0.0.1:8769/admin/settings
+        - button "Profilmenü öffnen" [ref=f2e18] [cursor=pointer]:
+          - generic [ref=f2e19]: LV
+    - main [ref=f2e102]:
+      - generic [ref=f2e103]:
+        - generic [ref=f2e104]:
+          - generic [ref=f2e106]:
+            - generic [ref=f2e107]: Admin / optimizer
+            - heading "Prompt, Kontext & Policy" [level=1] [ref=f2e108]
+          - generic [ref=f2e109]:
+            - heading "Persönlichkeit und Skills gemeinsam ausarbeiten" [level=2] [ref=f2e110]
+            - paragraph [ref=f2e111]: Der Grundentwurf spricht Deutsch, ist klar und freundlich und unterstützt Laravel, Livewire, Alpine.js, Tailwind CSS sowie lokale Diagnose. Alle Texte sind hier einsehbar und bearbeitbar. Aktive Prompt-Skills gelten für den jeweiligen Nutzer und globale Skills für alle; Workflows starten ausschließlich auf Anforderung.
+            - generic [ref=f2e112]:
+              - button "Grundentwurf ergänzen" [ref=f2e113] [cursor=pointer]
+              - paragraph [ref=f2e114]: Ergänzt nur fehlende Einträge. Vorhandene Texte, deaktivierte Skills und eine bestehende Persönlichkeitsauswahl bleiben erhalten.
+          - generic [ref=f2e115]:
+            - generic [ref=f2e116]:
+              - heading "Prompt-Version veröffentlichen" [level=2] [ref=f2e117]
+              - paragraph [ref=f2e118]: "Server-Prompt: luczor.system → Persönlichkeit → aktive Prompt-Skills → Use-Case → Rollen-Regeln → Verlauf. Die Desktop-App lädt Persönlichkeit und Skills auch für lokale Antworten."
+              - generic [ref=f2e119]:
+                - textbox "Key (z. B. luczor.role.coder)" [ref=f2e120]
+                - generic [ref=f2e121]:
+                  - textbox "Rolle (chat|coder|planner|analyst|all)" [ref=f2e122]
+                  - textbox "Task-Type (optional)" [ref=f2e123]
+                  - spinbutton "Priorität" [ref=f2e124]: "100"
+                - textbox "Prompt-Text / Regel" [ref=f2e125]
+                - button "Veröffentlichen (neue Version)" [ref=f2e126] [cursor=pointer]
+            - generic [ref=f2e127]:
+              - heading "Prompt-Vorlagen" [level=2] [ref=f2e128]
+              - table [ref=f2e129]:
+                - rowgroup [ref=f2e130]:
+                  - row [ref=f2e131]:
+                    - columnheader "Key" [ref=f2e132]
+                    - columnheader "v" [ref=f2e133]
+                    - columnheader "Rolle" [ref=f2e134]
+                    - columnheader "Prio" [ref=f2e135]
+                    - columnheader "Status" [ref=f2e136]
+                - rowgroup
+          - generic [ref=f2e137]:
+            - generic [ref=f2e138]:
+              - heading "KI-Persönlichkeit anlegen" [level=2] [ref=f2e139]
+              - paragraph [ref=f2e140]: Wird direkt nach dem System-Prompt injiziert (globale Persönlichkeit).
+              - generic [ref=f2e141]:
+                - textbox "Name (z. B. Sachlich-Knapp)" [ref=f2e142]
+                - textbox "Persönlichkeits-Prompt / Tonalität" [ref=f2e143]
+                - button "Speichern" [ref=f2e144] [cursor=pointer]
+            - generic [ref=f2e145]:
+              - generic [ref=f2e146]:
+                - heading "Persönlichkeiten" [level=2] [ref=f2e147]
+                - button "Keine aktiv" [ref=f2e149] [cursor=pointer]
+              - generic [ref=f2e151]:
+                - generic [ref=f2e153]:
+                  - text: Luczor – klar und freundlichaktiv
+                  - generic [ref=f2e154]: luczor-klar-freundlich
+                - group [ref=f2e155]:
+                  - generic "Text ansehen und bearbeiten" [ref=f2e156] [cursor=pointer]
+                  - generic [ref=f2e256]:
+                    - generic [ref=f2e257]:
+                      - text: Name
+                      - textbox "Name" [ref=f2e258]: Luczor – klar und freundlich
+                    - generic [ref=f2e259]:
+                      - text: Persönlichkeit und Tonalität
+                      - textbox "Persönlichkeit und Tonalität" [ref=f2e260]: Du bist Luczor, ein deutschsprachiger Assistent. Sprich den Nutzer mit „du“ an, klar, freundlich und direkt. Nenne zuerst das Ergebnis oder den nächsten sinnvollen Schritt und erkläre technische Details verständlich. Halte einfache Antworten kurz; arbeite komplexe Aufgaben sorgfältig aus. Frage nur nach, wenn eine fehlende Angabe die Arbeit wesentlich verändert. Deine Schwerpunkte sind Softwareentwicklung mit Laravel, Livewire, Alpine.js und Tailwind CSS sowie Unterstützung am lokalen Computer. Beachte das vorhandene Projekt, seine Versionen und die Anweisungen des Nutzers. Trenne belegte Ergebnisse, Annahmen und offene Fragen. Behaupte keine ausgeführten Aktionen oder Tests ohne beobachtbares Ergebnis. Gib bei längeren Arbeiten kurze Fortschrittsmeldungen mit Arbeitsschritt, Ergebnis und nächstem Schritt aus, sobald diese tatsächlich vorliegen. Erläutere Entscheidungen knapp mit überprüfbaren Gründen; erfinde keine internen Denkprotokolle. Schütze persönliche Daten und Zugangsdaten. Dieser Grundentwurf ist mit dem Nutzer besprechbar und editierbar.
+                    - button "Änderungen speichern" [ref=f2e261] [cursor=pointer]
+          - generic [ref=f2e157]:
+            - generic [ref=f2e158]:
+              - heading "Skill anlegen (wiederverwendbares Bündel)" [level=2] [ref=f2e159]
+              - paragraph [ref=f2e160]: Aktive Prompt-Skills werden automatisch als Anweisungen verwendet. Workflow-Skills sind benannte, ausdrücklich startbare Abläufe.
+              - generic [ref=f2e161]:
+                - textbox "Name (z. B. Code-Review-Bündel)" [ref=f2e162]
+                - combobox [ref=f2e163]:
+                  - option "Prompt-Skill (Instruktionsbaustein)" [selected]
+                  - option "Workflow-Skill (startbarer Ablauf)"
+                - textbox "Kurzbeschreibung (optional)" [ref=f2e164]
+                - textbox "Prompt-/Instruktionstext" [ref=f2e165]
+                - textbox "Tags, kommagetrennt (optional)" [ref=f2e166]
+                - button "Skill speichern" [ref=f2e167] [cursor=pointer]
+            - generic [ref=f2e168]:
+              - heading "Skills" [level=2] [ref=f2e169]
+              - generic [ref=f2e170]:
+                - generic [ref=f2e171]:
+                  - generic [ref=f2e172]:
+                    - generic [ref=f2e173]:
+                      - generic [ref=f2e174]:
+                        - generic [ref=f2e175]: Laravel und Backend
+                        - generic [ref=f2e176]: prompt
+                        - generic [ref=f2e177]: aktiv
+                      - paragraph [ref=f2e178]: Vorhandene Laravel-Projekte nachvollziehen, Fehler gezielt beheben und Änderungen prüfen.
+                      - generic [ref=f2e179]: luczor-laravel-backend · 0× genutzt
+                    - group [ref=f2e181]:
+                      - generic "Aktionen für Laravel und Backend" [ref=f2e182] [cursor=pointer]: ⋮
+                  - paragraph [ref=f2e183]: Global für alle Nutzer · wird automatisch eingebunden
+                  - group [ref=f2e184]:
+                    - generic "Inhalt ansehen und bearbeiten" [active] [ref=f2e185] [cursor=pointer]
+                - generic [ref=f2e186]:
+                  - generic [ref=f2e187]:
+                    - generic [ref=f2e188]:
+                      - generic [ref=f2e189]:
+                        - generic [ref=f2e190]: Livewire, Alpine.js und Tailwind CSS
+                        - generic [ref=f2e191]: prompt
+                        - generic [ref=f2e192]: aktiv
+                      - paragraph [ref=f2e193]: Verständliche, zugängliche und responsive Oberflächen im bestehenden Design umsetzen.
+                      - generic [ref=f2e194]: luczor-livewire-alpine-tailwind · 0× genutzt
+                    - group [ref=f2e196]:
+                      - generic "Aktionen für Livewire, Alpine.js und Tailwind CSS" [ref=f2e197] [cursor=pointer]: ⋮
+                  - paragraph [ref=f2e198]: Global für alle Nutzer · wird automatisch eingebunden
+                  - group [ref=f2e199]:
+                    - generic "Inhalt ansehen und bearbeiten" [ref=f2e200] [cursor=pointer]
+                - generic [ref=f2e201]:
+                  - generic [ref=f2e202]:
+                    - generic [ref=f2e203]:
+                      - generic [ref=f2e204]:
+                        - generic [ref=f2e205]: Lokale Unterstützung und Diagnose
+                        - generic [ref=f2e206]: prompt
+                        - generic [ref=f2e207]: aktiv
+                      - paragraph [ref=f2e208]: Lokale Einrichtung und Probleme anhand echter Statusdaten verständlich begleiten.
+                      - generic [ref=f2e209]: luczor-lokale-unterstuetzung · 0× genutzt
+                    - group [ref=f2e211]:
+                      - generic "Aktionen für Lokale Unterstützung und Diagnose" [ref=f2e212] [cursor=pointer]: ⋮
+                  - paragraph [ref=f2e213]: Global für alle Nutzer · wird automatisch eingebunden
+                  - group [ref=f2e214]:
+                    - generic "Inhalt ansehen und bearbeiten" [ref=f2e215] [cursor=pointer]
+          - generic [ref=f2e216]:
+            - heading "Planning-Engine (Ziel → Workflow-Entwurf)" [level=2] [ref=f2e217]
+            - paragraph [ref=f2e218]: Erzeugt aus einem Ziel einen validierten Workflow-Entwurf (Kontext → LLM → Review, optional mit Geräte-Recherche). Danach im Board verfeinern.
+            - generic [ref=f2e219]:
+              - textbox "Ziel (z. B. „Wettbewerber-Preise recherchieren und zusammenfassen“)" [ref=f2e220]
+              - generic [ref=f2e221]:
+                - checkbox "Geräte-Recherche" [ref=f2e222]
+                - text: Geräte-Recherche
+              - button "Planen & öffnen" [ref=f2e223] [cursor=pointer]
+          - generic [ref=f2e224]:
+            - heading "Advisory-Review (Self-Review-Policy je Anwendungsfall, §10)" [level=2] [ref=f2e225]
+            - paragraph [ref=f2e226]:
+              - text: Ist Review aktiv, signalisiert der Proxy per Header
+              - code [ref=f2e227]: X-Luczor-Review-Enabled
+              - text: einen zweiten Prüf-Durchlauf über den gewählten Review-Anwendungsfall.
+            - table [ref=f2e228]:
+              - rowgroup [ref=f2e229]:
+                - row [ref=f2e230]:
+                  - columnheader "Anwendungsfall" [ref=f2e231]
+                  - columnheader "Review aktiv" [ref=f2e232]
+                  - columnheader "Review-Anwendungsfall" [ref=f2e233]
+                  - columnheader [ref=f2e234]
+              - rowgroup
+          - generic [ref=f2e235]:
+            - heading "Reflexionen & Reviews (Self-Review nach Antwort, §10)" [level=2] [ref=f2e236]
+            - table [ref=f2e237]:
+              - rowgroup [ref=f2e238]:
+                - row [ref=f2e239]:
+                  - columnheader "Evaluator" [ref=f2e240]
+                  - columnheader "Status" [ref=f2e241]
+                  - columnheader "Qualität" [ref=f2e242]
+                  - columnheader "Tests" [ref=f2e243]
+                  - columnheader "Sicherheit" [ref=f2e244]
+                  - columnheader "Notiz" [ref=f2e245]
+                  - columnheader "Zeit" [ref=f2e246]
+              - rowgroup [ref=f2e247]:
+                - row [ref=f2e248]:
+                  - cell "Noch keine Reflexionen/Reviews. Aktiviere Advisory-Review an einem Anwendungsfall (review_enabled)." [ref=f2e249]
+          - heading "Netzwerk-Policies" [level=2] [ref=f2e251]
+        - generic [ref=f2e252]:
+          - generic [ref=f2e253]: Luczor Local Model Test Control Plane
+          - generic [aria-hidden] [ref=f2e254]: ·
+          - generic [ref=f2e255]: Admin API & Control Plane

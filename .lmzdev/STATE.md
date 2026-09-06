@@ -59,3 +59,12 @@
 - Der kurzlebige, geraetegebundene API-Key besitzt exakt `settings.read`; gleichnamige Alt-Keys werden deaktiviert. Es werden weder Seeder noch Device-, Settings- oder Modelldaten angelegt.
 - Der Klartext-Token wird ausschliesslich in die explizit angegebene absolute Datei ausserhalb des Checkouts geschrieben. Relative, UNC-, Checkout-interne, symbolisch/hart verknuepfte sowie fremde Bestandsdateien scheitern vor der Datenmutation.
 - Verifiziert: komplette Laravel-Suite 435 Tests / 3.054 Assertions; fokussierte Bootstrap-, API-Key- und Local-Model-Manifest-Suite 29 Tests / 242 Assertions; gezieltes PHPStan ohne Fehler; Pint und `git diff --check` bestanden.
+
+## 2026-09-06 | Editable assistant profile and local baseline
+
+- Added actor-scoped `GET /api/v1/assistant-profile` with `settings.read`; the same profile is returned as `bootstrap.assistant_profile`. Contract: selected active persona or null; active global plus actor-owned prompt skills; deterministic revision hash; optional descriptions and tags normalized to empty string/array. Workflow skills never start automatically.
+- The server proxy inserts the authoritative persona and active prompt skills before request history. A missing actor receives only global skills. Desktop can use this profile for local inference without sending duplicate profile instructions to the proxy.
+- Admin persona and skill editors update by stable ID, preserving slug, ownership and activation. The approved German discussion draft comprises one clear/friendly Luczor persona and three conditional skills: Laravel backend; Livewire/Alpine/Tailwind; local support and diagnosis.
+- `luczor:assistant-defaults` permits only local/testing plus SQLite. Explicit `--env=local` seeded the existing local model-test control-plane SQLite: first run 1 persona + 3 skills, repeat 0 + 0. The production `.env`/MySQL database and remote server were not touched.
+- Verified: 24 focused tests / 105 assertions; 52 proxy/routing tests / 370 assertions; targeted PHPStan, Pint, Vite production build. GET-only loopback visual preview passed editor pointer/keyboard operation and 390/320px document overflow checks. Only console issue was the fixture-only favicon 404. Screenshots: `artifacts/screenshots/assistant-admin-desktop.png`, `artifacts/screenshots/assistant-admin-mobile.png`.
+- External work advanced backend HEAD to `f84a06d` during implementation and captured source changes; this agent did not commit or undo it. No production deployment performed.

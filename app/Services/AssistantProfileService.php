@@ -21,6 +21,10 @@ class AssistantProfileService
             ->orderBy('name')->orderBy('id')
             ->get(['id', 'slug', 'name', 'description', 'kind', 'prompt', 'tags'])
             ->filter(fn (Skill $skill) => trim((string) $skill->prompt) !== '')
+            ->map(fn (Skill $skill) => array_replace($skill->toArray(), [
+                'description' => (string) ($skill->description ?? ''),
+                'tags' => array_values(array_filter($skill->tags ?? [], 'is_string')),
+            ]))
             ->values()->toArray();
         $profile = ['persona' => $persona?->toArray(), 'skills' => $skills];
 
