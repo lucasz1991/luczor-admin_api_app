@@ -17,6 +17,13 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(600)->by($request->user()?->id ?: $request->ip());
         });
+        RateLimiter::for('voice-tts', function (Request $request) {
+            return Limit::perMinute(max(1, min(60, (int) config('shared_speech.requests_per_minute', 30))))
+                ->by('voice-tts:user:'.$request->user()?->id);
+        });
+        RateLimiter::for('voice-tts-status', function (Request $request) {
+            return Limit::perMinute(12)->by('voice-tts-status:user:'.$request->user()?->id);
+        });
         RateLimiter::for('memory-improve', function (Request $request) {
             $credential = trim((string) $request->header('X-Api-Key', ''));
             $actor = $request->user()?->id

@@ -52,3 +52,10 @@
 - Keine offenen Blocker fuer Redis, Cognee Improve oder den gemeinsamen App-Test. Improve bleibt bewusst explizit und wird nicht an normale Memory-Writes gekoppelt.
 - Der alte eigenstaendige `luczor-redis-auth`-Container ist gestoppt und darf erst entfernt werden, wenn die vereinbarte Rollback-Aufbewahrung abgelaufen ist.
 - Der Repository-Graph-Indexer bleibt absichtlich Desktop-lokal und wird auf Plesk weder gestartet noch mit Server-Secrets versorgt.
+
+## 2026-09-05 | Isolierter lokaler Modell-Testbootstrap
+
+- `luczor:local-model-test:bootstrap --token-file=<absoluter Pfad>` erzeugt beziehungsweise erneuert ausschliesslich unter `APP_ENV=local|testing` und einer tatsaechlichen SQLite-Standardverbindung eine dedizierte aktive Minimalidentitaet.
+- Der kurzlebige, geraetegebundene API-Key besitzt exakt `settings.read`; gleichnamige Alt-Keys werden deaktiviert. Es werden weder Seeder noch Device-, Settings- oder Modelldaten angelegt.
+- Der Klartext-Token wird ausschliesslich in die explizit angegebene absolute Datei ausserhalb des Checkouts geschrieben. Relative, UNC-, Checkout-interne, symbolisch/hart verknuepfte sowie fremde Bestandsdateien scheitern vor der Datenmutation.
+- Verifiziert: komplette Laravel-Suite 435 Tests / 3.054 Assertions; fokussierte Bootstrap-, API-Key- und Local-Model-Manifest-Suite 29 Tests / 242 Assertions; gezieltes PHPStan ohne Fehler; Pint und `git diff --check` bestanden.

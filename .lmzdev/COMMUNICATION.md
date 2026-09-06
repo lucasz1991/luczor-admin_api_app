@@ -226,3 +226,16 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Application: beide Deployment-Gates, Migrationen, Cognee-Check, Redis, Horizon, Scheduler und Login HTTP 200 sind gruen; sechs Memory-Container gesund, keine Restarts/OOM; `smoke_users=0`, `synthetic_links=0`; serverseitige Graph-Indexer-Container=0.
 - Backups: Redis-Cutover unter `/var/backups/luczor/redis-cutover-20260829T051214Z`; konsistente Cognee-1.4.2-Baseline vor Canaries unter `/var/backups/luczor/cognee-1.4.2-baseline-20260829T051723Z`; beide root-only und verifiziert.
 - Verified local: 383 Laravel-Tests / 2.647 Assertions, PHPStan, Pint, 28 Python-Wrapper-Tests mit einem Windows-Symlink-Skip, Compose-/Shell-Pruefungen und `git diff --check` bestanden.
+
+## 2026-09-05T21:29:16Z | Codex/root/local_test_bootstrap_command -> all | status
+
+- Message: Started: Isolierten lokalen Modell-Smoke-Bootstrap als fail-closed Artisan-Command samt Feature-Test umsetzen
+
+## 2026-09-05T21:38:32Z | Codex/root/local_test_bootstrap_command -> all | handoff
+
+- Task: Isolierten lokalen Modell-Smoke-Bootstrap fuer den echten Desktop-Bootstrap-Pfad bereitstellen.
+- Status: completed; lokal implementiert, nicht committed.
+- Changed: `app/Console/Commands/BootstrapLocalModelTest.php`, `tests/Feature/BootstrapLocalModelTestCommandTest.php` sowie diese `.lmzdev`-Koordination.
+- Contract: Nur `local|testing` plus tatsaechliches SQLite; tenantloser Minimalbenutzer; acht Stunden gueltiger Device/API-Key mit exakt `settings.read`; gleichnamige Alt-Keys deaktiviert; kein Seeder. Token nur in expliziter absoluter Datei ausserhalb des Checkouts und nie in Console/Logs.
+- Verified: 435 Laravel-Tests / 3.054 Assertions; fokussiert 29 / 242; gezieltes PHPStan ohne Fehler; Pint und `git diff --check` bestanden.
+- Next: Parent kann den Command gegen seine isolierte lokale SQLite-Datei ausfuehren und den Token-Dateipfad der Desktop-Testkonfiguration uebergeben; keine Produktionsdatenbank verwenden.

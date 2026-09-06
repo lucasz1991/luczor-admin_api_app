@@ -26,7 +26,9 @@ use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Controllers\Api\V1\VoiceAssetController;
 use App\Http\Controllers\Api\V1\VoiceManifestController;
+use App\Http\Controllers\Api\V1\VoiceTtsController;
 use App\Http\Controllers\Api\V1\WorkflowController;
+use App\Http\Middleware\ThrottleAuthenticatedSpeech;
 use App\Models\Skill;
 use App\Services\ApiActor;
 use App\Services\WorkflowTaskCatalog;
@@ -185,6 +187,10 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('luczor.api:proxy.use')->group(function () {
         Route::post('/proxy/chat', [ProxyController::class, 'chat'])->name('api.v1.proxy.chat');
+        Route::post('/voice/tts', [VoiceTtsController::class, 'synthesize'])
+            ->middleware(ThrottleAuthenticatedSpeech::class)->name('api.v1.voice.tts');
+        Route::get('/voice/tts/status', [VoiceTtsController::class, 'status'])
+            ->middleware(ThrottleAuthenticatedSpeech::class.':voice-tts-status')->name('api.v1.voice.tts.status');
     });
 
     // Memory (Cognee behind Laravel + memory_links System-of-Record)

@@ -102,3 +102,9 @@ Record durable decisions with date, context, decision, and consequences.
 
 - `luczor:scheduler-heartbeat` verwendet `evenInMaintenanceMode()`, damit das Production-Gate waehrend eines kontrollierten Deployments die Scheduler-Liveness pruefen kann.
 - Fachliche Workflow-, Memory- und Cleanup-Jobs bleiben im Wartungsmodus unterdrueckt; der Heartbeat erweitert keine Ausfuehrungsberechtigung fuer sie.
+
+## 2026-09-05 | Der lokale Modell-Smoke nutzt eine eigene minimale SQLite-Identitaet
+
+- Der Bootstrap-Helfer ist kein Seeder und darf weder Produktionsumgebungen noch nicht-lokale Datenbanken beruehren. Laufzeitumgebung, konfigurierte Standardverbindung und tatsaechlicher PDO-Treiber muessen den lokalen SQLite-Vertrag bestaetigen.
+- Die dedizierte Identitaet bleibt tenantlos, aktiv und auf einen acht Stunden gueltigen Device/API-Key mit exakt `settings.read` begrenzt. Ein Namens-/Rollen-/Tenant-Konflikt auf der reservierten Testadresse blockiert statt eine vorhandene Identitaet umzudeuten.
+- Der Klartext-Token erscheint weder in Console noch Logs oder Repositorydateien. Nur eine explizite absolute Zieldatei ausserhalb des Checkouts darf ihn aufnehmen; Bestandsdateien werden nur erneuert, wenn sie bereits dem exakten Tokenformat entsprechen.

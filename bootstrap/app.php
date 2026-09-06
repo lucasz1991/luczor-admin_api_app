@@ -20,6 +20,16 @@ $app = new Application(
     $_ENV['APP_BASE_PATH'] ?? dirname(__DIR__)
 );
 
+// Laravel treats only paths beginning with "/" or "\\" as absolute cache
+// paths. Register ordinary Windows drive roots before any package/config cache
+// lookup so isolated caches on another volume are not prefixed with base_path.
+if (PHP_OS_FAMILY === 'Windows') {
+    foreach (range('A', 'Z') as $driveLetter) {
+        $app->addAbsoluteCachePathPrefix($driveLetter.':\\');
+        $app->addAbsoluteCachePathPrefix($driveLetter.':/');
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | Bind Important Interfaces
