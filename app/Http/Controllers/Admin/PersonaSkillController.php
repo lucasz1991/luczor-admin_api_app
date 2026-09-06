@@ -6,6 +6,7 @@ use App\Models\ModelUseCase;
 use App\Models\Persona;
 use App\Models\Setting;
 use App\Models\Skill;
+use App\Services\AssistantDefaultsService;
 use App\Services\SkillService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -21,6 +22,26 @@ class PersonaSkillController extends AdminController
         Persona::updateOrCreate(['slug' => Str::slug($data['name'])], ['name' => $data['name'], 'prompt' => $data['prompt']]);
 
         return Redirect::route('admin.page', 'optimizer')->with('status', 'Persönlichkeit gespeichert.');
+    }
+
+    public function updatePersona(Request $request, Persona $persona)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate(['name' => ['required', 'string', 'max:120'], 'prompt' => ['required', 'string', 'max:20000']]);
+        $persona->update($data);
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Persönlichkeit aktualisiert.');
+    }
+
+    public function prepareDefaults(Request $request, AssistantDefaultsService $defaults)
+    {
+        $this->ensureAdmin($request);
+        $result = $defaults->prepare();
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', sprintf(
+            'Grundentwurf ergänzt: %d Persönlichkeit(en), %d Skill(s). Vorhandene Inhalte und Auswahl bleiben erhalten.',
+            $result['personas_created'], $result['skills_created']
+        ));
     }
 
     public function storeSkill(Request $request)
@@ -49,6 +70,29 @@ class PersonaSkillController extends AdminController
         $skill->update(['active' => ! $skill->active]);
 
         return Redirect::route('admin.page', 'optimizer')->with('status', $skill->active ? 'Skill aktiviert.' : 'Skill deaktiviert.');
+    }
+
+    public function updateSkill(Request $request, Skill $skill)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'prompt' => ['nullable', 'string', 'max:20000'],
+            'workflow_definition_id' => ['nullable', 'integer', 'exists:workflow_definitions,id'],
+            'tags' => ['nullable', 'string', 'max:500'],
+        ]);
+        try {
+            app(SkillService::class)->upsert($data + [
+                'user_id' => $skill->user_id,
+                'active' => $skill->active,
+                'kind' => $skill->kind,
+            ], $skill);
+        } catch (HttpException $e) {
+            return Redirect::route('admin.page', 'optimizer')->withErrors(['skill' => $e->getMessage()]);
+        }
+
+        return Redirect::route('admin.page', 'optimizer')->with('status', 'Skill aktualisiert.');
     }
 
     public function runSkill(Request $request, Skill $skill)

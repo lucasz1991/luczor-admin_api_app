@@ -3,7 +3,7 @@
 {{-- Skill-System --}}
 <div class="mt-6 grid gap-6 lg:grid-cols-2">
     <section class="luczor-card p-5"><h2 class="font-semibold">Skill anlegen <span class="text-xs text-slate-500">(wiederverwendbares Bündel)</span></h2>
-        <p class="mt-1 text-xs text-slate-500">Prompt-Skill = wiederverwendbarer Instruktionsbaustein · Workflow-Skill = benannter, startbarer Ablauf.</p>
+        <p class="mt-1 text-xs text-slate-500">Aktive Prompt-Skills werden automatisch als Anweisungen verwendet. Workflow-Skills sind benannte, ausdrücklich startbare Abläufe.</p>
         <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.skills.store') }}" x-data="{ kind: 'prompt' }">@csrf
             <input class="luczor-input" name="name" placeholder="Name (z. B. Code-Review-Bündel)" required maxlength="120">
             <select class="luczor-input" name="kind" x-model="kind">
@@ -34,9 +34,9 @@
                         <div class="mt-1 font-mono text-[10px] text-slate-600">{{ $skill->slug }} · {{ $skill->use_count }}× genutzt{{ $skill->kind === 'workflow' && $skill->workflowDefinition ? ' · '.$skill->workflowDefinition->name : '' }}</div>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                        <form method="POST" action="{{ route('dashboard.skills.run', $skill) }}">@csrf<button class="luczor-btn-secondary !px-2 !py-1 text-xs" @unless($skill->active) disabled @endunless>{{ $skill->kind === 'workflow' ? 'Starten' : 'Anwenden' }}</button></form>
+                        @if($skill->kind === 'workflow')<form method="POST" action="{{ route('dashboard.skills.run', $skill) }}">@csrf<button class="luczor-btn-secondary !px-2 !py-1 text-xs" @unless($skill->active) disabled @endunless>Starten</button></form>@endif
                         <details class="relative">
-                            <summary class="cursor-pointer list-none rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800">⋮</summary>
+                            <summary aria-label="Aktionen für {{ $skill->name }}" class="cursor-pointer list-none rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800">⋮</summary>
                             <div class="absolute right-0 z-20 mt-1 w-40 rounded border border-slate-700 bg-slate-950 p-1 shadow-xl">
                                 <form method="POST" action="{{ route('dashboard.skills.toggle', $skill) }}">@csrf<button class="block w-full rounded px-3 py-2 text-left text-xs text-cyan-100 hover:bg-cyan-400/10">{{ $skill->active ? 'Deaktivieren' : 'Aktivieren' }}</button></form>
                                 <form method="POST" action="{{ route('dashboard.skills.destroy', $skill) }}" onsubmit="return confirm('Skill „{{ $skill->name }}“ löschen?');">@csrf @method('DELETE')<button class="block w-full rounded px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-400/10">Löschen</button></form>
@@ -44,6 +44,23 @@
                         </details>
                     </div>
                 </div>
+                <p class="mt-2 text-xs text-slate-500">{{ $skill->user_id === null ? 'Global für alle Nutzer' : 'Nutzergebundener Skill' }}{{ $skill->kind === 'prompt' && $skill->active ? ' · wird automatisch eingebunden' : '' }}</p>
+                <details class="mt-3">
+                    <summary class="cursor-pointer text-sm text-cyan-200">Inhalt ansehen und bearbeiten</summary>
+                    <form class="mt-3 space-y-3" method="POST" action="{{ route('dashboard.skills.update', $skill) }}">@csrf @method('PATCH')
+                        <label class="block text-xs text-slate-400">Name<input class="luczor-input mt-1" name="name" value="{{ $skill->name }}" required maxlength="120"></label>
+                        <label class="block text-xs text-slate-400">Kurzbeschreibung<textarea class="luczor-input mt-1 text-sm" name="description" rows="2" maxlength="2000">{{ $skill->description }}</textarea></label>
+                        @if($skill->kind === 'prompt')
+                            <label class="block text-xs text-slate-400">Anweisungen<textarea class="luczor-input mt-1 text-sm" name="prompt" rows="8" required maxlength="20000">{{ $skill->prompt }}</textarea></label>
+                        @else
+                            <label class="block text-xs text-slate-400">Workflow<select class="luczor-input mt-1" name="workflow_definition_id" required>
+                                @foreach($skillWorkflows as $wf)<option value="{{ $wf->id }}" @selected($skill->workflow_definition_id === $wf->id)>{{ $wf->name }}</option>@endforeach
+                            </select></label>
+                        @endif
+                        <label class="block text-xs text-slate-400">Tags, kommagetrennt<input class="luczor-input mt-1" name="tags" value="{{ implode(', ', $skill->tags ?? []) }}" maxlength="500"></label>
+                        <button class="luczor-btn">Änderungen speichern</button>
+                    </form>
+                </details>
             </div>
         @empty<p class="text-xs text-slate-500">Noch keine Skills.</p>@endforelse</div>
     </section>

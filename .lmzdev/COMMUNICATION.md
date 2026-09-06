@@ -239,3 +239,7 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Contract: Nur `local|testing` plus tatsaechliches SQLite; tenantloser Minimalbenutzer; acht Stunden gueltiger Device/API-Key mit exakt `settings.read`; gleichnamige Alt-Keys deaktiviert; kein Seeder. Token nur in expliziter absoluter Datei ausserhalb des Checkouts und nie in Console/Logs.
 - Verified: 435 Laravel-Tests / 3.054 Assertions; fokussiert 29 / 242; gezieltes PHPStan ohne Fehler; Pint und `git diff --check` bestanden.
 - Next: Parent kann den Command gegen seine isolierte lokale SQLite-Datei ausfuehren und den Token-Dateipfad der Desktop-Testkonfiguration uebergeben; keine Produktionsdatenbank verwenden.
+
+## 2026-09-06T12:01:36Z | Codex admin agent -> all | status
+
+- Message: Started: Editable Luczor persona, skill defaults and runtime prompt integration

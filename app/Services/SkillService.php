@@ -22,15 +22,15 @@ class SkillService
      *
      * @param  array<string,mixed>  $data
      */
-    public function upsert(array $data): Skill
+    public function upsert(array $data, ?Skill $existing = null): Skill
     {
         $kind = in_array($data['kind'] ?? 'prompt', Skill::KINDS, true) ? $data['kind'] : 'prompt';
         abort_if($kind === 'prompt' && trim((string) ($data['prompt'] ?? '')) === '', 422, 'Ein Prompt-Skill braucht einen Prompt-Text.');
         abort_if($kind === 'workflow' && empty($data['workflow_definition_id']), 422, 'Ein Workflow-Skill braucht eine Workflow-Definition.');
 
-        return DB::transaction(function () use ($data, $kind) {
+        return DB::transaction(function () use ($data, $kind, $existing) {
             $skill = Skill::updateOrCreate(
-                ['slug' => Str::slug($data['name'])],
+                $existing ? ['id' => $existing->id] : ['slug' => Str::slug($data['name'])],
                 [
                     'user_id' => $data['user_id'] ?? null,
                     'name' => $data['name'],
@@ -118,7 +118,7 @@ class SkillService
     {
         return Skill::active()
             ->where('kind', 'prompt')
-            ->when($userId !== null, fn ($q) => $q->where(fn ($w) => $w->whereNull('user_id')->orWhere('user_id', $userId)))
+            ->where(fn ($q) => $q->whereNull('user_id')->when($userId !== null, fn ($owned) => $owned->orWhere('user_id', $userId)))
             ->orderByDesc('use_count')
             ->pluck('prompt')
             ->filter()

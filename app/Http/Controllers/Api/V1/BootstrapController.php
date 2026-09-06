@@ -5,12 +5,13 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\ModelProfile;
 use App\Models\Setting;
+use App\Services\AssistantProfileService;
 use App\Services\LocalModelManifestService;
 use Illuminate\Http\Request;
 
 class BootstrapController extends Controller
 {
-    public function bootstrap(Request $request, LocalModelManifestService $localModels)
+    public function bootstrap(Request $request, LocalModelManifestService $localModels, AssistantProfileService $assistant)
     {
         $apiKey = $request->attributes->get('apiKey');
 
@@ -29,7 +30,13 @@ class BootstrapController extends Controller
             'realtime' => $this->realtimePayload(),
             'local_model_manifest' => $localModels->discovery(),
             'routing' => $this->routingPayload(),
+            'assistant_profile' => $assistant->forUser($request->user()?->id),
         ]);
+    }
+
+    public function assistantProfile(Request $request, AssistantProfileService $assistant)
+    {
+        return response()->json(['data' => $assistant->forUser($request->user()?->id)]);
     }
 
     public function modelProfiles(Request $request)

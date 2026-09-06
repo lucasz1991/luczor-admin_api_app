@@ -214,9 +214,17 @@ function setChainStatus(list, message, state){
     @elseif($page === 'archives')
         @include('admin.archives')
     @elseif($page === 'optimizer')
+        <section class="luczor-card mb-6 p-5">
+            <h2 class="font-semibold">Persönlichkeit und Skills gemeinsam ausarbeiten</h2>
+            <p class="mt-2 text-sm text-slate-400">Der Grundentwurf spricht Deutsch, ist klar und freundlich und unterstützt Laravel, Livewire, Alpine.js, Tailwind CSS sowie lokale Diagnose. Alle Texte sind hier einsehbar und bearbeitbar. Aktive Prompt-Skills gelten für den jeweiligen Nutzer und globale Skills für alle; Workflows starten ausschließlich auf Anforderung.</p>
+            <form class="mt-3" method="POST" action="{{ route('dashboard.assistant-defaults.store') }}">@csrf
+                <button class="luczor-btn-secondary">Grundentwurf ergänzen</button>
+                <p class="mt-2 text-xs text-slate-500">Ergänzt nur fehlende Einträge. Vorhandene Texte, deaktivierte Skills und eine bestehende Persönlichkeitsauswahl bleiben erhalten.</p>
+            </form>
+        </section>
         <div class="grid gap-6 lg:grid-cols-2">
             <section class="luczor-card p-5"><h2 class="font-semibold">Prompt-Version veröffentlichen</h2>
-                <p class="mt-1 text-xs text-slate-500">Reihenfolge: luczor.system → Use-Case → Rollen-Regeln (nach Priorität) → Verlauf.</p>
+                <p class="mt-1 text-xs text-slate-500">Server-Prompt: luczor.system → Persönlichkeit → aktive Prompt-Skills → Use-Case → Rollen-Regeln → Verlauf. Die Desktop-App lädt Persönlichkeit und Skills auch für lokale Antworten.</p>
                 <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.prompt-templates.store') }}">@csrf
                     <input class="luczor-input" name="key" placeholder="Key (z. B. luczor.role.coder)" required>
                     <div class="grid grid-cols-3 gap-2">
@@ -243,7 +251,22 @@ function setChainStatus(list, message, state){
                 </form>
             </section>
             <section class="luczor-card overflow-x-auto p-5"><div class="flex items-center justify-between"><h2 class="font-semibold">Persönlichkeiten</h2><form method="POST" action="{{ route('dashboard.personas.deactivate') }}">@csrf<button class="luczor-btn-secondary">Keine aktiv</button></form></div>
-                <div class="mt-3 space-y-2">@forelse($personas as $p)<div class="flex items-center justify-between rounded border border-slate-800 p-2"><div><b class="text-cyan-100">{{ $p->name }}</b>@if($p->active)<span class="ml-2 rounded border border-emerald-400/30 px-1.5 text-[10px] text-emerald-200">aktiv</span>@endif<div class="font-mono text-[10px] text-slate-600">{{ $p->slug }}</div></div>@unless($p->active)<form method="POST" action="{{ route('dashboard.personas.activate',$p) }}">@csrf<button class="luczor-btn-secondary">Aktivieren</button></form>@endunless</div>@empty<p class="text-xs text-slate-500">Noch keine Persönlichkeiten.</p>@endforelse</div>
+                <div class="mt-3 space-y-3">@forelse($personas as $p)
+                    <div class="rounded border border-slate-800 p-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div><b class="text-cyan-100">{{ $p->name }}</b>@if($p->active)<span class="ml-2 rounded border border-emerald-400/30 px-1.5 text-[10px] text-emerald-200">aktiv</span>@endif<div class="font-mono text-[10px] text-slate-500">{{ $p->slug }}</div></div>
+                            @unless($p->active)<form method="POST" action="{{ route('dashboard.personas.activate', $p) }}">@csrf<button class="luczor-btn-secondary">Aktivieren</button></form>@endunless
+                        </div>
+                        <details class="mt-3">
+                            <summary class="cursor-pointer text-sm text-cyan-200">Text ansehen und bearbeiten</summary>
+                            <form class="mt-3 space-y-3" method="POST" action="{{ route('dashboard.personas.update', $p) }}">@csrf @method('PATCH')
+                                <label class="block text-xs text-slate-400">Name<input class="luczor-input mt-1" name="name" value="{{ $p->name }}" required maxlength="120"></label>
+                                <label class="block text-xs text-slate-400">Persönlichkeit und Tonalität<textarea class="luczor-input mt-1 text-sm" name="prompt" rows="10" required maxlength="20000">{{ $p->prompt }}</textarea></label>
+                                <button class="luczor-btn">Änderungen speichern</button>
+                            </form>
+                        </details>
+                    </div>
+                @empty<p class="text-xs text-slate-500">Noch keine Persönlichkeiten. Der Grundentwurf kann oben ergänzt werden.</p>@endforelse</div>
             </section>
         </div>
         @include('admin.optimizer-extras')

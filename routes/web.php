@@ -40,9 +40,12 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/agent-profiles', [ModelConfigurationController::class, 'storeAgentProfile'])->name('dashboard.agent-profiles.store');
 
         Route::post('/dashboard/personas', [PersonaSkillController::class, 'storePersona'])->name('dashboard.personas.store');
+        Route::patch('/dashboard/personas/{persona}', [PersonaSkillController::class, 'updatePersona'])->name('dashboard.personas.update');
+        Route::post('/dashboard/assistant-defaults', [PersonaSkillController::class, 'prepareDefaults'])->name('dashboard.assistant-defaults.store');
         Route::post('/dashboard/personas/{persona}/activate', [PersonaSkillController::class, 'activatePersona'])->name('dashboard.personas.activate');
         Route::post('/dashboard/personas/deactivate', [PersonaSkillController::class, 'deactivatePersonas'])->name('dashboard.personas.deactivate');
         Route::post('/dashboard/skills', [PersonaSkillController::class, 'storeSkill'])->name('dashboard.skills.store');
+        Route::patch('/dashboard/skills/{skill}', [PersonaSkillController::class, 'updateSkill'])->name('dashboard.skills.update');
         Route::post('/dashboard/skills/{skill}/toggle', [PersonaSkillController::class, 'toggleSkill'])->name('dashboard.skills.toggle');
         Route::post('/dashboard/skills/{skill}/run', [PersonaSkillController::class, 'runSkill'])->name('dashboard.skills.run');
         Route::delete('/dashboard/skills/{skill}', [PersonaSkillController::class, 'deleteSkill'])->name('dashboard.skills.destroy');

@@ -4,13 +4,13 @@ namespace App\Services\Proxy;
 
 use App\Data\Proxy\PreparedProxyRequest;
 use App\Data\Proxy\ProxyChatInput;
-use App\Models\Persona;
 use App\Models\PromptTemplate;
+use App\Services\AssistantProfileService;
 use App\Services\ProviderPolicyService;
 
 final class ProxyPromptBuilder
 {
-    public function __construct(private ProviderPolicyService $providerPolicy) {}
+    public function __construct(private ProviderPolicyService $providerPolicy, private AssistantProfileService $assistant) {}
 
     /** @param array<string,mixed> $meta */
     public function prepare(ProxyChatInput $input, array $meta): PreparedProxyRequest
@@ -29,10 +29,17 @@ final class ProxyPromptBuilder
             $prefix = 1;
         }
 
-        $persona = Persona::activePrompt();
+        $profile = $this->assistant->forUser(isset($meta['user_id']) ? (int) $meta['user_id'] : null);
+        $persona = $profile['persona']['prompt'] ?? null;
         if ($persona) {
             array_splice($payload['messages'], $prefix, 0, [['role' => 'system', 'content' => $persona]]);
             $prefix++;
+        }
+
+        $skillMessages = array_map(fn (array $skill): array => ['role' => 'system', 'content' => $skill['prompt']], $profile['skills']);
+        if ($skillMessages !== []) {
+            array_splice($payload['messages'], $prefix, 0, $skillMessages);
+            $prefix += count($skillMessages);
         }
 
         $useCase = $this->providerPolicy->useCaseFor($input->taskType);
