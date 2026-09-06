@@ -68,3 +68,10 @@
 - `luczor:assistant-defaults` permits only local/testing plus SQLite. Explicit `--env=local` seeded the existing local model-test control-plane SQLite: first run 1 persona + 3 skills, repeat 0 + 0. The production `.env`/MySQL database and remote server were not touched.
 - Verified: 24 focused tests / 105 assertions; 52 proxy/routing tests / 370 assertions; targeted PHPStan, Pint, Vite production build. GET-only loopback visual preview passed editor pointer/keyboard operation and 390/320px document overflow checks. Only console issue was the fixture-only favicon 404. Screenshots: `artifacts/screenshots/assistant-admin-desktop.png`, `artifacts/screenshots/assistant-admin-mobile.png`.
 - External work advanced backend HEAD to `f84a06d` during implementation and captured source changes; this agent did not commit or undo it. No production deployment performed.
+
+## 2026-09-06T12:59:13Z | Assistant production deployment
+
+- Explicit user authorization followed by successful Plesk Git deployment of d49abf0. All536 tracked files except the deliberately retained server package-lock match the commit. New Vite assets live; Blade rebuilt; Horizon gracefully restarted.
+- Production baseline created1 active persona/3 active global skills; second run0/0. Private source backup /var/backups/luczor-assistant-20260906T125505Z and verified DB pre-write snapshot outside webroot retained.
+- HTTPS profile/bootstrap/manifest200, unauth profile401, health/ready200; production gate23/23. Profile contents/revision, RSA signature/pin and catalog2026090602/context32768 verified. Temporary key removed; environment/signing/catalog and existing rows/selection preserved.
+- Full report in workspace root .lmzdev/artifacts/reports/2026-09-06-assistant-server-deployment.md. No desktop restart or installer publication.

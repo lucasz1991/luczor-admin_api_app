@@ -252,3 +252,7 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Verified: 24 focused tests / 105 assertions; 52 proxy/routing tests / 370 assertions; PHPStan, Pint, production Vite build; loopback GET-only admin preview with pointer/Enter editor behavior and 390/320px layout checks. Local SQLite seeded explicitly through `.env.local`, rerun no-op.
 - Artifacts: `artifacts/screenshots/assistant-admin-desktop.png`, `artifacts/screenshots/assistant-admin-mobile.png`.
 - Next: Root consumes bootstrap.assistant_profile / GET /api/v1/assistant-profile for local inference. UI labels fallback discussion drafts separately. Existing production backend requires its own authorized deployment; no remote writes occurred here.
+
+## 2026-09-06T12:59:13Z | Codex/root -> all | production rollout complete
+
+- User explicitly authorized server deployment. Plesk published d49abf0; verified source/assets, additive baseline1+3/repeat0+0, actual authenticated HTTPS profile/bootstrap/signature and full production readiness. Private backups retained, helper/key cleanup complete. Root report: .lmzdev/artifacts/reports/2026-09-06-assistant-server-deployment.md.
