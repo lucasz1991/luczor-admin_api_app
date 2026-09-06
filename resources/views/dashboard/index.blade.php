@@ -418,6 +418,10 @@
                     <input class="luczor-input" name="max_tokens" type="number" min="1" value="1200" aria-label="Maximale Ausgabe-Tokens" required>
                     <input class="luczor-input" name="purpose" placeholder="Zweck" aria-label="Zweck des Modellprofils">
                 </div>
+                <div class="grid gap-3 md:grid-cols-2">
+                    <textarea class="luczor-input font-mono text-xs" name="capabilities" rows="2" aria-label="JSON-Liste der Modellfähigkeiten">["chat"]</textarea>
+                    <input class="luczor-input" name="context_window" type="number" min="1" max="2000000" aria-label="Kontextfenster in Tokens" placeholder="Kontextfenster in Tokens">
+                </div>
                 <button class="luczor-btn" type="submit">Modellprofil speichern</button>
             </form>
         </div>

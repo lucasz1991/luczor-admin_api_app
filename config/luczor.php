@@ -28,6 +28,14 @@ return [
         'max_response_bytes' => (int) env('LUCZOR_PROXY_MAX_RESPONSE_BYTES', 16 * 1024 * 1024),
         'max_stream_bytes' => (int) env('LUCZOR_PROXY_MAX_STREAM_BYTES', 64 * 1024 * 1024),
         'max_stream_frame_bytes' => (int) env('LUCZOR_PROXY_MAX_STREAM_FRAME_BYTES', 1024 * 1024),
+        'circuit_breaker' => [
+            'enabled' => filter_var(env('LUCZOR_PROXY_CIRCUIT_BREAKER_ENABLED', true), FILTER_VALIDATE_BOOL),
+            'failure_threshold' => max(1, (int) env('LUCZOR_PROXY_CIRCUIT_FAILURE_THRESHOLD', 3)),
+            'failure_window_seconds' => max(60, (int) env('LUCZOR_PROXY_CIRCUIT_FAILURE_WINDOW', 300)),
+            'cooldown_seconds' => max(1, (int) env('LUCZOR_PROXY_CIRCUIT_COOLDOWN', 60)),
+            'max_retry_after_seconds' => max(1, (int) env('LUCZOR_PROXY_CIRCUIT_MAX_RETRY_AFTER', 900)),
+            'probe_seconds' => max(1, (int) env('LUCZOR_PROXY_CIRCUIT_PROBE_SECONDS', 15)),
+        ],
     ],
     'device_jobs' => [
         'private_key' => env('LUCZOR_JOB_PRIVATE_KEY', ''),

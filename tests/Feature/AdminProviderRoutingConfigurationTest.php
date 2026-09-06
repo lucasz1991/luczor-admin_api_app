@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ModelProfile;
 use App\Models\NetworkPolicy;
 use App\Models\ProviderCredential;
 use App\Models\User;
@@ -57,6 +58,8 @@ class AdminProviderRoutingConfigurationTest extends TestCase
             'temperature' => 0.1,
             'max_tokens' => 100,
             'purpose' => 'chat',
+            'capabilities' => '["chat","tools","chat"]',
+            'context_window' => 32768,
         ];
 
         $this->actingAs($admin)->from('/dashboard')->post(route('dashboard.model-profiles.store'), $profile)
@@ -69,7 +72,16 @@ class AdminProviderRoutingConfigurationTest extends TestCase
             'slug' => 'explicit-profile',
             'provider' => 'openrouter',
             'provider_credential_id' => $credential->id,
+            'context_window' => 32768,
         ]);
+        $stored = ModelProfile::query()->where('slug', 'explicit-profile')->firstOrFail();
+        $this->assertSame(['chat', 'tools'], $stored->capabilities);
+
+        $profile['capabilities'] = ['reasoning', 'tools'];
+        $profile['context_window'] = 65536;
+        $this->actingAs($admin)->put(route('dashboard.model-profiles.update', $stored), $profile)->assertRedirect();
+        $this->assertSame(['reasoning', 'tools'], $stored->fresh()->capabilities);
+        $this->assertSame(65536, $stored->fresh()->context_window);
     }
 
     public function test_admin_created_network_policy_gets_an_explicit_retry_contract(): void

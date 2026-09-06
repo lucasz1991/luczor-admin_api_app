@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use JsonException;
 
 class ModelConfigurationController extends AdminController
 {
@@ -65,7 +66,10 @@ class ModelConfigurationController extends AdminController
             'temperature' => ['required', 'numeric', 'min:0', 'max:2'],
             'max_tokens' => ['required', 'integer', 'min:1', 'max:200000'],
             'purpose' => ['nullable', 'string', 'max:120'],
+            'capabilities' => ['nullable'],
+            'context_window' => ['nullable', 'integer', 'min:1', 'max:2000000'],
         ]);
+        $data['capabilities'] = $this->normalizeCapabilities($data['capabilities'] ?? null);
         $this->ensureCredentialMatchesProfile($data);
 
         $data['slug'] = Str::slug($data['name']);
@@ -92,7 +96,9 @@ class ModelConfigurationController extends AdminController
             'provider_credential_id' => ['required', 'integer', 'exists:provider_credentials,id'],
             'model_id' => ['required', 'string', 'max:180'], 'temperature' => ['required', 'numeric', 'min:0', 'max:2'],
             'max_tokens' => ['required', 'integer', 'min:1', 'max:200000'], 'purpose' => ['nullable', 'string', 'max:120'],
+            'capabilities' => ['nullable'], 'context_window' => ['nullable', 'integer', 'min:1', 'max:2000000'],
         ]);
+        $data['capabilities'] = $this->normalizeCapabilities($data['capabilities'] ?? null);
         $this->ensureCredentialMatchesProfile($data);
         $modelProfile->update($data + ['slug' => Str::slug($data['name'])]);
 
@@ -317,6 +323,35 @@ class ModelConfigurationController extends AdminController
         });
 
         return Redirect::route('admin.page', 'models')->with('status', 'Modell-Reihenfolge gespeichert.');
+    }
+
+    /** @return array<int,string>|null */
+    private function normalizeCapabilities(mixed $value): ?array
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_string($value)) {
+            try {
+                $value = json_decode($value, true, 16, JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                throw ValidationException::withMessages(['capabilities' => 'Capabilities must be a JSON string list.']);
+            }
+        }
+        if (! is_array($value) || count($value) > 32) {
+            throw ValidationException::withMessages(['capabilities' => 'Capabilities must be a list with at most 32 entries.']);
+        }
+        $capabilities = [];
+        foreach ($value as $capability) {
+            if (! is_string($capability) || ! preg_match('/^[a-z][a-z0-9_.-]{0,63}$/', $capability)) {
+                throw ValidationException::withMessages([
+                    'capabilities' => 'Every capability must be a valid lower-case identifier.',
+                ]);
+            }
+            $capabilities[] = $capability;
+        }
+
+        return array_values(array_unique($capabilities));
     }
 
     /** @param array<string,mixed> $data */

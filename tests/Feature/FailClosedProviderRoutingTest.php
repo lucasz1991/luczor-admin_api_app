@@ -14,11 +14,13 @@ use App\Models\NetworkPolicy;
 use App\Models\ProviderCredential;
 use App\Models\ProviderPriceSnapshot;
 use App\Models\User;
+use App\Services\ProviderCircuitBreaker;
 use App\Services\ProviderHttpClientFactory;
 use App\Services\ProviderPolicyService;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Mockery;
 use Tests\TestCase;
 
@@ -102,6 +104,24 @@ class FailClosedProviderRoutingTest extends TestCase
         ]]])
             ->assertStatus(422)
             ->assertJsonPath('code', 'routing_input_budget_exceeded');
+
+        $this->assertSame(0, LlmAttempt::count());
+    }
+
+    public function test_profile_context_window_rejects_input_and_reserved_output_before_dispatch(): void
+    {
+        [, $token] = $this->deviceToken();
+        $credential = $this->credential('openrouter', 'chat_completions');
+        $profile = $this->profile('openrouter', 'test/tiny-context', $credential);
+        $profile->update(['context_window' => 64, 'max_tokens' => 40]);
+        $this->price($profile);
+        $this->useCase('chat', [$profile]);
+        $this->policy('proxy.strict');
+        $this->expectNoProviderClient();
+
+        $this->proxy($token, ['max_tokens' => 40])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'routing_context_window_exceeded');
 
         $this->assertSame(0, LlmAttempt::count());
     }
@@ -373,6 +393,62 @@ class FailClosedProviderRoutingTest extends TestCase
         $fallbackEstimate = (float) $attempts[1]->routing_meta['estimated_cost_usd'];
         $this->assertNotSame($primaryEstimate, $fallbackEstimate);
         $this->assertEqualsWithDelta($fallbackEstimate, (float) $run->estimated_cost_usd, 0.00000001);
+    }
+
+    public function test_open_provider_circuit_skips_the_unhealthy_profile_on_the_next_request(): void
+    {
+        [, $token] = $this->deviceToken();
+        Config::set('luczor.proxy.circuit_breaker.failure_threshold', 1);
+        Config::set('luczor.proxy.circuit_breaker.cooldown_seconds', 300);
+        $credential = $this->credential('openrouter', 'chat_completions');
+        $primary = $this->profile('openrouter', 'test/circuit-primary', $credential);
+        $fallback = $this->profile('openrouter', 'test/circuit-fallback', $credential);
+        $this->price($primary);
+        $this->price($fallback);
+        $this->useCase('chat', [$primary, $fallback], maxAttempts: 2);
+        $this->policy('proxy.strict', maxAttempts: 2);
+
+        $models = [];
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->times(3)->andReturnUsing(function (string $method, string $url, array $options) use (&$models): Response {
+            $models[] = $options['json']['model'];
+
+            return count($models) === 1 ? new Response(503, [], 'retry') : $this->successResponse();
+        });
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->twice()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $this->proxy($token)->assertOk()->assertHeader('X-Luczor-Model-Id', $fallback->model_id);
+        $this->proxy($token)->assertOk()->assertHeader('X-Luczor-Model-Id', $fallback->model_id);
+        $this->assertSame([$primary->model_id, $fallback->model_id, $fallback->model_id], $models);
+    }
+
+    public function test_gateway_does_not_reserve_a_half_open_probe_beyond_the_attempt_limit(): void
+    {
+        [, $token] = $this->deviceToken();
+        Config::set('luczor.proxy.circuit_breaker.failure_threshold', 1);
+        Config::set('luczor.proxy.circuit_breaker.cooldown_seconds', 300);
+        $credential = $this->credential('openrouter', 'chat_completions');
+        $primary = $this->profile('openrouter', 'test/probe-primary', $credential);
+        $unusedFallback = $this->profile('openrouter', 'test/probe-unused', $credential);
+        $this->price($primary);
+        $this->price($unusedFallback);
+        $this->useCase('chat', [$primary, $unusedFallback], maxAttempts: 1);
+        $this->policy('proxy.strict', maxAttempts: 1);
+
+        $breaker = app(ProviderCircuitBreaker::class);
+        $breaker->recordFailure($unusedFallback, $credential, 503);
+        $this->travel(301)->seconds();
+
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->andReturn($this->successResponse());
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+
+        $this->proxy($token)->assertOk()->assertHeader('X-Luczor-Model-Id', $primary->model_id);
+        $this->assertTrue($breaker->allows($unusedFallback, $credential));
     }
 
     public function test_cost_cap_reserves_the_complete_possible_retry_ladder_before_dispatch(): void

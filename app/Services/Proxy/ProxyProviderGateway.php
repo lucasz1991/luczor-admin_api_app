@@ -13,6 +13,7 @@ use App\Services\Llm\ProviderDriverRegistry;
 use App\Services\Llm\ProviderWireFormat;
 use App\Services\LlmTelemetryService;
 use App\Services\NetworkOptimizer;
+use App\Services\ProviderCircuitBreaker;
 use App\Services\ProviderHttpClientFactory;
 use App\Services\ProviderPolicyService;
 use GuzzleHttp\Exception\GuzzleException;
@@ -24,6 +25,7 @@ final class ProxyProviderGateway
         private ProviderDriverRegistry $drivers,
         private NetworkOptimizer $networkOptimizer,
         private ProviderPolicyService $providerPolicy,
+        private ProviderCircuitBreaker $circuitBreaker,
         private LlmTelemetryService $telemetry,
         private BoundedBodyReader $bodyReader,
     ) {}
@@ -34,21 +36,31 @@ final class ProxyProviderGateway
         LlmRun $run,
         ProxyResponseLimits $limits,
     ): ProxyDispatchResult {
-        $profiles = $routing->profiles;
+        $profiles = [];
+        foreach ($routing->profiles as $profile) {
+            if (count($profiles) >= $routing->maxAttempts) {
+                break;
+            }
+            $credential = $profile->credential?->fresh();
+            if (! $credential || ! ProviderWireFormat::isCompatible($profile, $credential)) {
+                return $this->policyFailure($run, 'routing_credential_incompatible', 503);
+            }
+            if ($this->circuitBreaker->allows($profile, $credential)) {
+                $profiles[] = [$profile, $credential];
+            }
+        }
+        if ($profiles === []) {
+            return $this->policyFailure($run, 'routing_provider_circuit_open', 503);
+        }
         $networkPolicy = $routing->networkPolicy;
         $client = $this->httpClients->make($networkPolicy);
         $terminalReadFailure = null;
         $committedCostUsd = 0.0;
 
-        foreach ($profiles as $index => $profile) {
+        foreach ($profiles as $index => [$profile, $credential]) {
             $attemptNo = $index + 1;
             if ($attemptNo > $routing->maxAttempts) {
                 break;
-            }
-
-            $credential = $profile->credential?->fresh();
-            if (! $credential || ! ProviderWireFormat::isCompatible($profile, $credential)) {
-                return $this->policyFailure($run, 'routing_credential_incompatible', 503);
             }
 
             $remainingProfiles = array_slice(
@@ -57,7 +69,7 @@ final class ProxyProviderGateway
                 $routing->maxAttempts - $index,
             );
             $reservation = $this->providerPolicy->currentCostReservation(
-                $remainingProfiles,
+                array_map(static fn (array $candidate): ModelProfile => $candidate[0], $remainingProfiles),
                 $prepared->payload,
                 $networkPolicy,
                 count($remainingProfiles),
@@ -109,6 +121,7 @@ final class ProxyProviderGateway
                     'http_errors' => false,
                 ]);
             } catch (GuzzleException $exception) {
+                $this->circuitBreaker->recordFailure($profile, $credential);
                 $this->telemetry->failAttempt(
                     $attempt,
                     class_basename($exception),
@@ -130,6 +143,16 @@ final class ProxyProviderGateway
 
             $status = $upstream->getStatusCode();
             $connectMs = $this->elapsedMs($startedAt);
+            if ($status === 429 || $status >= 500) {
+                $this->circuitBreaker->recordFailure(
+                    $profile,
+                    $credential,
+                    $status,
+                    $upstream->getHeaderLine('Retry-After') ?: null,
+                );
+            } elseif ($status >= 200 && $status < 300) {
+                $this->circuitBreaker->recordSuccess($profile, $credential);
+            }
             if ($this->networkOptimizer->shouldRetry($status, $attemptNo, $routing->maxAttempts, $networkPolicy)) {
                 $errorBody = $this->bodyReader->read($upstream->getBody(), $limits->bodyBytes);
                 if ($errorBody->limitExceeded || $errorBody->readFailed) {

@@ -13,7 +13,8 @@ class ModelRanker
         $userSelect = $userId ? 'llm_runs.user_id as user_id,' : 'NULL as user_id,';
         $query = LlmAttempt::query()
             ->join('llm_runs', 'llm_runs.id', '=', 'llm_attempts.llm_run_id')
-            ->selectRaw($userSelect." llm_runs.task_type, llm_attempts.model_id, llm_attempts.provider_id,
+            ->whereNotNull('llm_attempts.model_profile_id')
+            ->selectRaw($userSelect." llm_runs.task_type, llm_attempts.model_profile_id, llm_attempts.model_id, llm_attempts.provider_id,
                 count(*) as sample_count,
                 avg(case when llm_attempts.status = 'completed' then 1.0 else 0.0 end) as success_rate,
                 avg(llm_attempts.total_ms) as avg_latency,
@@ -23,22 +24,23 @@ class ModelRanker
                 sum(llm_attempts.effective_cost) / nullif(sum(case when llm_attempts.status = 'completed' then 1 else 0 end), 0) as cost_per_success,
                 avg(llm_attempts.input_tokens) as avg_input_tokens,
                 avg(case when llm_attempts.attempt_no > 1 then 1.0 else 0.0 end) as fallback_rate,
-                avg(case when llm_attempts.status = 'completed' then coalesce(llm_runs.quality_score, 0.5) else 0.0 end) as quality_score,
+                avg(case when llm_attempts.status = 'completed' and llm_runs.quality_score is not null then llm_runs.quality_score else null end) as quality_score,
                 avg(case when llm_attempts.status = 'completed' and llm_runs.test_passed = 1 then 1.0 when llm_attempts.status = 'completed' and llm_runs.test_passed = 0 then 0.0 else null end) as test_pass_rate")
             ->when($taskType, fn ($q) => $q->where('llm_runs.task_type', $taskType))
             ->when($userId, fn ($q) => $q->where('llm_runs.user_id', $userId))
             ->groupBy(...($userId
-                ? ['llm_runs.user_id', 'llm_runs.task_type', 'llm_attempts.model_id', 'llm_attempts.provider_id']
-                : ['llm_runs.task_type', 'llm_attempts.model_id', 'llm_attempts.provider_id']));
+                ? ['llm_runs.user_id', 'llm_runs.task_type', 'llm_attempts.model_profile_id', 'llm_attempts.model_id', 'llm_attempts.provider_id']
+                : ['llm_runs.task_type', 'llm_attempts.model_profile_id', 'llm_attempts.model_id', 'llm_attempts.provider_id']));
 
         foreach ($query->get() as $row) {
             // Aggregate aliases are not model properties. Read them through
             // Eloquent's attribute boundary so their database origin remains
             // explicit and static analysis cannot mistake them for relations.
             $success = (float) $row->getAttribute('success_rate');
-            $quality = (float) ($row->getAttribute('quality_score') ?? 0);
+            $qualityValue = $row->getAttribute('quality_score');
+            $quality = $qualityValue === null ? 0.0 : (float) $qualityValue;
             $testPassRate = $row->getAttribute('test_pass_rate');
-            $tests = $testPassRate === null ? $success : (float) $testPassRate;
+            $tests = $testPassRate === null ? 0.0 : (float) $testPassRate;
             $latency = (int) round((float) ($row->getAttribute('avg_latency') ?? 0));
             $ttft = (int) round((float) ($row->getAttribute('avg_ttft') ?? 0));
             $tps = (float) ($row->getAttribute('avg_tps') ?? 0);
@@ -58,16 +60,16 @@ class ModelRanker
                 [
                     'user_id' => $row->getAttribute('user_id'),
                     'task_type' => $row->getAttribute('task_type'),
-                    'model_id' => $row->getAttribute('model_id'),
+                    'model_profile_id' => $row->getAttribute('model_profile_id'),
                 ],
-                ['provider_id' => $row->getAttribute('provider_id'), 'sample_count' => (int) $row->getAttribute('sample_count'),
-                    'success_rate' => round($success, 4), 'test_pass_rate' => round($tests, 4),
-                    'quality_score' => round($quality, 4), 'avg_latency_ms' => $latency, 'avg_ttft_ms' => $ttft,
+                ['model_id' => $row->getAttribute('model_id'), 'provider_id' => $row->getAttribute('provider_id'), 'sample_count' => (int) $row->getAttribute('sample_count'),
+                    'success_rate' => round($success, 4), 'test_pass_rate' => $testPassRate === null ? null : round($tests, 4),
+                    'quality_score' => $qualityValue === null ? null : round($quality, 4), 'avg_latency_ms' => $latency, 'avg_ttft_ms' => $ttft,
                     'avg_tokens_per_second' => round($tps, 4), 'avg_cost_total' => $costKnown ? round($cost, 8) : null,
                     'cost_per_success' => $row->getAttribute('cost_per_success') === null
                         ? null
                         : round((float) $row->getAttribute('cost_per_success'), 8),
-                    'avg_input_tokens' => $inputTokens, 'context_efficiency_score' => round($contextEfficiency, 4),
+                    'avg_input_tokens' => $inputTokens, 'context_efficiency_score' => $qualityValue === null ? null : round($contextEfficiency, 4),
                     'fallback_rate' => round($fallback, 4), 'score' => round(max(0, min(1, $score)), 4)]
             );
         }

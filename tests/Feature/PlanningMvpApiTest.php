@@ -9,6 +9,7 @@ use App\Models\EvaluationResult;
 use App\Models\LlmAttempt;
 use App\Models\LlmRun;
 use App\Models\MemoryLink;
+use App\Models\ModelProfile;
 use App\Models\ModelRanking;
 use App\Models\PerformanceProfile;
 use App\Models\User;
@@ -172,6 +173,15 @@ class PlanningMvpApiTest extends TestCase
     {
         [$user, $token] = $this->token(['brain.write', 'brain.read']);
 
+        $profile = ModelProfile::create([
+            'name' => 'Preset Luczor',
+            'slug' => 'preset-luczor',
+            'provider' => 'openrouter',
+            'model_id' => '@preset/luczor',
+            'temperature' => 0.1,
+            'max_tokens' => 1000,
+            'active' => true,
+        ]);
         $run = LlmRun::create([
             'user_id' => $user->id,
             'project_id' => 'p1',
@@ -187,6 +197,7 @@ class PlanningMvpApiTest extends TestCase
         ]);
         LlmAttempt::create([
             'llm_run_id' => $run->id,
+            'model_profile_id' => $profile->id,
             'attempt_no' => 1,
             'provider_id' => 'openrouter',
             'model_id' => '@preset/luczor',

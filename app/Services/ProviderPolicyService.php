@@ -55,6 +55,7 @@ class ProviderPolicyService
         $estimatedCosts = [];
         $excluded = [];
         $eligible = collect();
+        $estimatedInputTokens = $this->estimatedInputTokens($payload);
 
         foreach ($profiles as $profile) {
             $profile->loadMissing('credential');
@@ -69,6 +70,12 @@ class ProviderPolicyService
                 $profile,
                 $payload['max_tokens'] ?? $networkPolicy->max_output_tokens,
             );
+            if ($profile->context_window !== null
+                && $estimatedInputTokens + $outputTokens > (int) $profile->context_window) {
+                $excluded[] = 'routing_context_window_exceeded';
+
+                continue;
+            }
             $estimated = $this->estimatedCost($profile, $payload, $outputTokens);
             $estimatedCosts[$profile->id] = $estimated;
             if ($estimated === null) {
@@ -306,10 +313,10 @@ class ProviderPolicyService
             $ranking = ModelRanking::query()
                 ->whereNull('user_id')
                 ->where('task_type', $taskType)
-                ->whereIn('model_id', $profiles->pluck('model_id'))
+                ->whereIn('model_profile_id', $profiles->pluck('id'))
                 ->where('sample_count', '>=', 5)
                 ->get()
-                ->keyBy('model_id');
+                ->keyBy('model_profile_id');
             if ($ranking->isEmpty()) {
                 $this->selectionSource = 'admin_policy_ranked_insufficient_samples';
 
@@ -318,7 +325,7 @@ class ProviderPolicyService
 
             $adminOrder = $profiles->values()->pluck('id')->flip();
             $profiles = $profiles->sortByDesc(function (ModelProfile $profile) use ($ranking, $adminOrder): float {
-                $measured = $ranking->get($profile->model_id);
+                $measured = $ranking->get($profile->id);
                 if (! $measured) {
                     return -1000000.0 - (float) ($adminOrder[$profile->id] ?? 0);
                 }
@@ -385,7 +392,7 @@ class ProviderPolicyService
     /** @param array<int,string> $excluded */
     private function terminalReason(array $excluded): string
     {
-        foreach (['routing_price_unavailable', 'routing_budget_exceeded', 'routing_credential_incompatible'] as $reason) {
+        foreach (['routing_context_window_exceeded', 'routing_price_unavailable', 'routing_budget_exceeded', 'routing_credential_incompatible'] as $reason) {
             if (in_array($reason, $excluded, true)) {
                 return $reason;
             }
@@ -397,7 +404,9 @@ class ProviderPolicyService
     /** @param array<int,string> $excluded */
     private function terminalStatus(array $excluded): int
     {
-        return in_array('routing_budget_exceeded', $excluded, true) ? 422 : 503;
+        return array_intersect(['routing_budget_exceeded', 'routing_context_window_exceeded'], $excluded) !== []
+            ? 422
+            : 503;
     }
 
     private function optimizer(): NetworkOptimizer
