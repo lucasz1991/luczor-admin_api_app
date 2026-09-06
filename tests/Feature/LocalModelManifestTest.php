@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Services\LocalModelManifestService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Tests\TestCase;
 
 class LocalModelManifestTest extends TestCase
@@ -158,6 +160,76 @@ class LocalModelManifestTest extends TestCase
             ->assertJsonPath('routing.external_client_model_selection', false)
             ->assertJsonPath('routing.local_routing_managed_by', 'desktop_signed_policy')
             ->assertJsonPath('routing.local_model_manifest_required', true);
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_open_basedir_signing_key_warnings_keep_bootstrap_available_and_manifest_unavailable(): void
+    {
+        $this->configureFromFixture('metadata_only_default');
+        $keyPath = dirname(base_path());
+        config()->set('local_models.signing.private_key', '');
+        config()->set('local_models.signing.private_key_file', $keyPath);
+        [, $token] = $this->deviceToken(['settings.read']);
+        $this->assertNotFalse(ini_set('open_basedir', base_path().PATH_SEPARATOR.sys_get_temp_dir()));
+
+        $warnings = [];
+        set_error_handler(static function (int $severity, string $message, string $file, int $line) use (&$warnings): never {
+            $warnings[] = $message;
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        });
+        try {
+            $this->assertUnavailableSigningFile($token, $keyPath);
+            $this->app->detectEnvironment(fn () => 'production');
+            $this->assertUnavailableSigningFile($token, $keyPath);
+        } finally {
+            restore_error_handler();
+            $this->app->detectEnvironment(fn () => 'testing');
+        }
+        $this->assertTrue((bool) array_filter($warnings, fn (string $warning) => str_starts_with($warning, 'is_readable(')));
+        $this->assertTrue((bool) array_filter($warnings, fn (string $warning) => str_starts_with($warning, 'realpath(')));
+    }
+
+    public function test_signing_file_read_warning_does_not_escape_as_an_http_500_or_raw_exception(): void
+    {
+        $this->configureFromFixture('metadata_only_default');
+        $keyPath = base_path('tests/Fixtures');
+        config()->set('local_models.signing.private_key', '');
+        config()->set('local_models.signing.private_key_file', $keyPath);
+        [, $token] = $this->deviceToken(['settings.read']);
+        $warnings = [];
+        set_error_handler(static function (int $severity, string $message, string $file, int $line) use (&$warnings): never {
+            $warnings[] = $message;
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        });
+        try {
+            $this->assertUnavailableSigningFile($token, $keyPath);
+        } finally {
+            restore_error_handler();
+        }
+        $this->assertTrue((bool) array_filter($warnings, fn (string $warning) => str_starts_with($warning, 'file_get_contents(')));
+    }
+
+    private function assertUnavailableSigningFile(string $token, string $keyPath): void
+    {
+        $service = app(LocalModelManifestService::class);
+        $this->assertFalse($service->discovery()['available']);
+        $bootstrap = $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/bootstrap');
+        $bootstrap->assertOk()->assertJsonPath('local_model_manifest.available', false);
+        $response = $this->withHeader('X-Api-Key', $token)->getJson('/api/v1/local-model/manifest');
+        $response->assertStatus(503)
+            ->assertJsonPath('code', 'local_model_signing_key_unreadable')
+            ->assertJsonMissingPath('exception');
+        $this->assertStringNotContainsString($keyPath, $bootstrap->getContent());
+        $this->assertStringNotContainsString($keyPath, $response->getContent());
+        try {
+            $service->envelope();
+            $this->fail('An unreadable signing key must be rejected.');
+        } catch (LocalModelManifestConfigurationException $exception) {
+            $this->assertSame('local_model_signing_key_unreadable', $exception->reasonCode);
+            $this->assertNull($exception->getPrevious());
+            $this->assertStringNotContainsString($keyPath, $exception->getMessage());
+        }
     }
 
     public function test_enabled_model_with_incomplete_artifact_metadata_is_rejected(): void

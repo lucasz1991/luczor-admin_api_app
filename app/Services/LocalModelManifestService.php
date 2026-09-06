@@ -425,31 +425,37 @@ final class LocalModelManifestService
     {
         $configured = trim((string) config('local_models.signing.private_key', ''));
         $path = trim((string) config('local_models.signing.private_key_file', ''));
-        if ($enforceProductionKeyPolicy && (
-            $configured !== ''
-            || $path === ''
-            || ! $this->absolutePath($path)
-            || $this->insideCheckout($path)
-        )) {
-            throw new LocalModelManifestConfigurationException('local_model_signing_key_path_unsafe');
-        }
-        if ($path !== '') {
-            $resolved = $this->absolutePath($path) ? $path : base_path($path);
-            if (! is_readable($resolved)) {
-                throw new LocalModelManifestConfigurationException('local_model_signing_key_unreadable');
-            }
-            $realPath = realpath($resolved);
-            if ($realPath === false) {
-                throw new LocalModelManifestConfigurationException('local_model_signing_key_unreadable');
-            }
-            if ($enforceProductionKeyPolicy && $this->insideCheckout($realPath)) {
+        try {
+            if ($enforceProductionKeyPolicy && (
+                $configured !== ''
+                || $path === ''
+                || ! $this->absolutePath($path)
+                || $this->insideCheckout($path)
+            )) {
                 throw new LocalModelManifestConfigurationException('local_model_signing_key_path_unsafe');
             }
-            $contents = file_get_contents($resolved);
-            if ($contents === false) {
-                throw new LocalModelManifestConfigurationException('local_model_signing_key_unreadable');
+            if ($path !== '') {
+                $resolved = $this->absolutePath($path) ? $path : base_path($path);
+                if (! @is_readable($resolved)) {
+                    throw new LocalModelManifestConfigurationException('local_model_signing_key_unreadable');
+                }
+                $realPath = @realpath($resolved);
+                if ($realPath === false) {
+                    throw new LocalModelManifestConfigurationException('local_model_signing_key_unreadable');
+                }
+                if ($enforceProductionKeyPolicy && $this->insideCheckout($realPath)) {
+                    throw new LocalModelManifestConfigurationException('local_model_signing_key_path_unsafe');
+                }
+                $contents = @file_get_contents($resolved);
+                if ($contents === false) {
+                    throw new LocalModelManifestConfigurationException('local_model_signing_key_unreadable');
+                }
+                $configured = $contents;
             }
-            $configured = $contents;
+        } catch (\ErrorException|\ValueError) {
+            // Some error handlers still throw for suppressed filesystem warnings.
+            // Do not expose signing-key paths or retain the original exception.
+            throw new LocalModelManifestConfigurationException('local_model_signing_key_unreadable');
         }
 
         $key = $configured === '' ? false : openssl_pkey_get_private($configured);
@@ -503,8 +509,8 @@ final class LocalModelManifestService
 
     private function insideCheckout(string $path): bool
     {
-        $base = realpath(base_path()) ?: base_path();
-        $candidate = realpath($path) ?: $path;
+        $base = @realpath(base_path()) ?: base_path();
+        $candidate = @realpath($path) ?: $path;
         $base = rtrim(str_replace('\\', '/', $base), '/');
         $candidate = rtrim(str_replace('\\', '/', $candidate), '/');
         if (PHP_OS_FAMILY === 'Windows') {
