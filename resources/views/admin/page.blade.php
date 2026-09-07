@@ -203,6 +203,7 @@ function setChainStatus(list, message, state){
     @elseif($page === 'workflows')
         @include('admin.workflows')
     @elseif($page === 'agents')
+        @include('admin.agent-teams')
         <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Agent-Läufe</h2>
             <table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Ziel / Task</th><th>Status</th><th>Modell</th><th>Aufgaben</th><th>Gestartet</th></tr></thead>
             <tbody>@forelse($agentRuns as $run)<tr class="border-t border-slate-800"><td class="py-2"><span class="text-cyan-100">{{ \Illuminate\Support\Str::limit($run->goal ?? $run->task_type, 60) }}</span><div class="text-slate-500">{{ $run->task_type }}</div></td><td>{{ $run->status }}</td><td>{{ $run->model_id ?? '—' }}</td><td>{{ $run->tasks_count }}</td><td>{{ optional($run->started_at)->format('d.m. H:i') ?? '—' }}</td></tr>@empty<tr><td colspan="5" class="py-3 text-slate-500">Noch keine Agent-Läufe.</td></tr>@endforelse</tbody></table>

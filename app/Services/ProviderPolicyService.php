@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Data\ProviderRoutingDecision;
 use App\Exceptions\RoutingPolicyException;
+use App\Models\AgentProfile;
 use App\Models\LlmExperiment;
 use App\Models\ModelProfile;
 use App\Models\ModelRanking;
@@ -12,6 +13,7 @@ use App\Models\NetworkPolicy;
 use App\Models\ProviderPriceSnapshot;
 use App\Services\Llm\ProviderWireFormat;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use JsonException;
 
 /** Enforces the server-owned external provider allow-list and fallback ladder. */
@@ -244,6 +246,14 @@ class ProviderPolicyService
 
     public function useCaseFor(string $taskType): ?ModelUseCase
     {
+        if (str_starts_with($taskType, 'agent.')) {
+            if (! AgentProfile::query()->where('key', AgentTeamPolicyService::POLICY_KEY)->where('type', 'team_policy')->where('status', 'active')->exists()) {
+                return null;
+            }
+            $role = array_search($taskType, AgentTeamPolicyService::TASKS, true);
+
+            return $role === false ? null : ModelUseCase::query()->where('slug', 'agent-'.$role)->where('active', true)->first();
+        }
         $prefix = explode('.', $taskType)[0];
         $slug = match ($prefix) {
             'coding' => 'coding',
@@ -315,6 +325,17 @@ class ProviderPolicyService
                 ->where('task_type', $taskType)
                 ->whereIn('model_profile_id', $profiles->pluck('id'))
                 ->where('sample_count', '>=', 5)
+                ->when(str_starts_with($taskType, 'agent.'), fn ($query) => $query->whereIn('model_profile_id',
+                    DB::table('evaluation_results as evidence')
+                        ->join('llm_runs as evaluated_run', 'evaluated_run.id', '=', 'evidence.llm_run_id')
+                        ->join('llm_attempts as evaluated_attempt', 'evaluated_attempt.llm_run_id', '=', 'evaluated_run.id')
+                        ->where('evaluated_run.task_type', $taskType)
+                        ->where('evaluated_attempt.status', 'completed')
+                        ->where(fn ($evidence) => $evidence->whereNotNull('evidence.quality_score')->orWhereNotNull('evidence.test_pass_rate'))
+                        ->groupBy('evaluated_attempt.model_profile_id')
+                        ->havingRaw('COUNT(DISTINCT evaluated_run.id) >= 5')
+                        ->select('evaluated_attempt.model_profile_id')
+                ))
                 ->get()
                 ->keyBy('model_profile_id');
             if ($ranking->isEmpty()) {

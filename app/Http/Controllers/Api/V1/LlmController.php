@@ -13,6 +13,7 @@ use App\Services\EvaluationService;
 use App\Services\ModelRanker;
 use App\Services\ProviderPolicyService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class LlmController extends Controller
 {
@@ -78,6 +79,11 @@ class LlmController extends Controller
             'notes' => ['nullable', 'string', 'max:8000'],
             'payload' => ['nullable', 'array'],
         ]);
+
+        if (str_starts_with($llmRun->task_type, 'agent.')
+            && ! isset($data['quality_score']) && ! isset($data['test_pass_rate']) && ! isset($data['test_passed'])) {
+            throw ValidationException::withMessages(['quality_score' => 'Agent evaluations require an explicit quality estimate or actual test result; request success alone is not an evaluation.']);
+        }
 
         if (! empty($data['agent_run_id'])) {
             $agentRun = AgentRun::findOrFail($data['agent_run_id']);

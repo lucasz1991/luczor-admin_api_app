@@ -75,3 +75,11 @@
 - Production baseline created1 active persona/3 active global skills; second run0/0. Private source backup /var/backups/luczor-assistant-20260906T125505Z and verified DB pre-write snapshot outside webroot retained.
 - HTTPS profile/bootstrap/manifest200, unauth profile401, health/ready200; production gate23/23. Profile contents/revision, RSA signature/pin and catalog2026090602/context32768 verified. Temporary key removed; environment/signing/catalog and existing rows/selection preserved.
 - Full report in workspace root .lmzdev/artifacts/reports/2026-09-06-assistant-server-deployment.md. No desktop restart or installer publication.
+
+## 2026-09-07T00:09:00Z | Codex/root | Vorlesen und V2-Stimmen abgeschlossen
+- Öffentliche lokale Zwischenkommentare/Antworten dürfen nach ausdrücklicher Nutzerzustimmung vorgelesen werden. Separate an Server/Client gebundene Zustimmung aktiviert; allgemeine Settings-Datei der laufenden App blieb unverändert. FIFO, Abbruch und Datenschutzklassifikation erhalten.
+- Wortmarkierung aus tatsächlichem Audiotakt mit ausdrücklich näherungsweiser Wortposition. V2-Katalog/Auswahl/Hörprobe/Speichern inklusive Benni, Jürgen, Alba, Javert; Piper bleibt Standard.
+- Backend a00d2cbbf3bb39c7a09df77750c05239ec605700 mit privatem Backup veröffentlicht; 536 Dateien geprüft, Produktionschecks und HTTPS Health/Ready/Katalog/Benni/Piper/401/422 erfolgreich. Spätere parallele Agententeamänderungen nicht veröffentlicht.
+- 1083 Frontendtests plus 2 zusätzliche Settings-Regressionen (7 Settings-Tests im Nachlauf), 508 Backendtests/3444 Assertions, Typecheck/Lint/Format/Pint/gezieltes PHPStan bestanden. Browser mit echter Audiodatei bei Desktop/320px geprüft; keine neue native Modell-/Mikrofonabnahme.
+- Release ohne Bundle: E:/projekte/luczor/app/src-tauri/target/release/tauri-app.exe, 14590464 Bytes, SHA256 8CE0F4E164B47C7C4FA91349176688CE92C04001412DCBE969786DDD805EB232. Laufende Debug-App PID95888 erhalten. Prüftabs und eigener Vite1444 geschlossen.
+- Bericht: app/.lmzdev/artifacts/reports/2026-09-07-commentary-read-aloud.md; Bedienung: app/docs/assistant-profile-and-streaming.md. Kein offenes Arbeitspaket dieser Erweiterung; Nutzer muss zum neuen Release wechseln.

@@ -16,6 +16,11 @@ final class ProxyPromptBuilder
     public function prepare(ProxyChatInput $input, array $meta): PreparedProxyRequest
     {
         $payload = $input->providerPayload();
+        if (str_starts_with($input->taskType, 'agent.')) {
+            // Some free text endpoints reject even an empty tool contract or choice=none.
+            // Nonempty/executable contracts have already been rejected by the FormRequest.
+            unset($payload['tools'], $payload['tool_choice']);
+        }
         $prefix = 0;
 
         $adminPrompt = PromptTemplate::query()
@@ -56,9 +61,9 @@ final class ProxyPromptBuilder
         }
 
         $role = match ($useCase?->slug) {
-            'coding' => 'coder',
-            'planner' => 'planner',
-            'verifier', 'vision' => 'analyst',
+            'coding', 'agent-coding' => 'coder',
+            'planner', 'agent-planning' => 'planner',
+            'verifier', 'vision', 'agent-review', 'agent-research' => 'analyst',
             default => 'chat',
         };
         $roleMessages = PromptTemplate::activeRolePrompts($role)

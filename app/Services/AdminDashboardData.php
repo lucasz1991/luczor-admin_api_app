@@ -120,6 +120,8 @@ class AdminDashboardData
                 ? EvaluationResult::with('llmRun')->latest()->limit(20)->get()
                 : collect(),
             'agentRuns' => $page === 'agents' ? AgentRun::withCount('tasks')->latest()->limit(30)->get() : collect(),
+            'agentTeamPolicy' => $page === 'agents' ? app(AgentTeamPolicyService::class)->payload() : [],
+            'agentModelCatalog' => $page === 'agents' ? app(AgentTeamPolicyService::class)->catalog() : [],
             'agentEvents' => $page === 'agents' ? AuditEvent::latest()->limit(50)->get() : collect(),
             'workflowDefinitions' => $page === 'workflows'
                 ? WorkflowDefinition::withCount(['runs',

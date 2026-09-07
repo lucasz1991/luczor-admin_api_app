@@ -60,13 +60,13 @@ class EvaluationService
         $quality = $this->nullableFloat($data['quality_score'] ?? null);
         $successScore = $this->nullableFloat($data['success_score'] ?? null);
         $testPassRate = $this->nullableFloat($data['test_pass_rate'] ?? null);
-        $testPassed = array_key_exists('test_passed', $data)
+        $testPassed = isset($data['test_passed'])
             ? (bool) $data['test_passed']
             : ($testPassRate === null ? null : $testPassRate >= 1.0);
 
-        $quality ??= $testPassRate ?? ($successScore ?? ($run->success ? 1.0 : 0.0));
+        $quality ??= $testPassRate ?? ($testPassed === null ? ($successScore ?? ($run->success ? 1.0 : 0.0)) : ($testPassed ? 1.0 : 0.0));
         $statusInput = $data['status'] ?? null;
-        $successScore ??= $statusInput === 'failed' ? 0.0 : ($run->success ? 1.0 : 0.0);
+        $successScore ??= $statusInput === 'failed' ? 0.0 : ($testPassed === null ? ($run->success ? 1.0 : 0.0) : ($testPassed ? 1.0 : 0.0));
 
         $contextEfficiency = $this->nullableFloat($data['context_efficiency_score'] ?? null)
             ?? $this->contextEfficiency($quality, (int) ($run->input_tokens ?? 0));

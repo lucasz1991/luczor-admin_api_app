@@ -84,6 +84,10 @@ class ProxyChatRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            $agentTask = str_starts_with((string) $this->input('task_type', ''), 'agent.');
+            if ($agentTask && ($this->filled('tools') || ! in_array($this->input('tool_choice'), [null, 'none'], true))) {
+                $validator->errors()->add('tools', 'Agent specialists accept text tasks only; tools remain under local Luczor control.');
+            }
             $messages = $this->input('messages');
             if (! is_array($messages)) {
                 return;
@@ -92,6 +96,9 @@ class ProxyChatRequest extends FormRequest
             foreach ($messages as $index => $message) {
                 if (! is_array($message)) {
                     continue;
+                }
+                if ($agentTask && (($message['role'] ?? null) === 'tool' || ! empty($message['tool_calls']))) {
+                    $validator->errors()->add("messages.$index", 'Agent specialists cannot receive executable tool history.');
                 }
                 if (($message['role'] ?? null) === 'tool'
                     && blank($message['tool_call_id'] ?? null)

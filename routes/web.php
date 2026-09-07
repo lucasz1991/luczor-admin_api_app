@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AgentTeamConfigurationController;
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ModelConfigurationController;
@@ -38,6 +39,9 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::post('/dashboard/network-policies', [ModelConfigurationController::class, 'storeNetworkPolicy'])->name('dashboard.network-policies.store');
         Route::post('/dashboard/llm-experiments', [ModelConfigurationController::class, 'storeLlmExperiment'])->name('dashboard.llm-experiments.store');
         Route::post('/dashboard/agent-profiles', [ModelConfigurationController::class, 'storeAgentProfile'])->name('dashboard.agent-profiles.store');
+        Route::post('/dashboard/agent-teams/research', [AgentTeamConfigurationController::class, 'research'])->name('dashboard.agent-teams.research');
+        Route::post('/dashboard/agent-teams/prepare', [AgentTeamConfigurationController::class, 'prepare'])->name('dashboard.agent-teams.prepare');
+        Route::put('/dashboard/agent-teams', [AgentTeamConfigurationController::class, 'update'])->name('dashboard.agent-teams.update');
 
         Route::post('/dashboard/personas', [PersonaSkillController::class, 'storePersona'])->name('dashboard.personas.store');
         Route::patch('/dashboard/personas/{persona}', [PersonaSkillController::class, 'updatePersona'])->name('dashboard.personas.update');
