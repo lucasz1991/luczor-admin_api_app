@@ -1,6 +1,6 @@
 <x-app-layout>
     <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div><div class="font-mono text-xs uppercase tracking-[.2em] text-cyan-300/70">Admin / {{ $page }}</div><h1 class="mt-2 text-2xl font-semibold text-white">{{ match($page) {'overview'=>'System Overview','providers'=>'Provider & Preise','models'=>'Modelle & Routing','telemetry'=>'Telemetry & Kosten','optimizer'=>'Prompt, Kontext & Policy','experiments'=>'Modell-Experimente','workflows'=>'Workflows','agents'=>'Agenten & Ereignisse','devices'=>'Geraete-Debug','api-keys'=>'Geraete & Keys','archives'=>'Archive & Audit','settings'=>'Server Settings'} }}</h1></div>
+        <div><div class="font-mono text-xs uppercase tracking-[.2em] text-cyan-300/70">Admin / {{ $page }}</div><h1 class="mt-2 text-2xl font-semibold text-white">{{ match($page) {'overview'=>'System Overview','providers'=>'Provider & Preise','models'=>'Modelle & Routing','telemetry'=>'Telemetry & Kosten','optimizer'=>'Prompt, Kontext & Policy','experiments'=>'Modell-Experimente','workflows'=>'Workflows','agents'=>'Agenten & Ereignisse','users'=>'Benutzer & Zuordnung','costs'=>'Kosten je Benutzer','devices'=>'Geraete-Debug','api-keys'=>'Geraete & Keys','archives'=>'Archive & Audit','settings'=>'Server Settings'} }}</h1></div>
         @if(session('status'))<div class="rounded border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-100">{{ session('status') }}</div>@endif
     </div>
     @if($errors->any())<div class="mb-6 rounded border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">{{ $errors->first() }}</div>@endif
@@ -22,7 +22,7 @@
                 <div class="mt-3 space-y-2">@forelse(($charts['workflow_status'] ?? []) as $s)<div><div class="flex justify-between text-xs"><span class="text-slate-300">{{ $s['label'] }}</span><span class="text-slate-500">{{ $s['value'] }}</span></div><div class="mt-1 h-2 rounded bg-slate-800"><div class="h-2 rounded" style="width:{{ $s['pct'] }}%;background:rgba(52,211,153,.6)"></div></div></div>@empty<p class="text-xs text-slate-500">Noch keine Läufe.</p>@endforelse</div>
             </section>
         </div>
-        <div class="mt-8 grid gap-4 md:grid-cols-3"><a href="{{ route('admin.page','models') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Modelle verwalten</b><p class="mt-2 text-sm text-slate-400">Free-Model-Ketten, Fallbacks und Messwerte.</p></a><a href="{{ route('admin.page','telemetry') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Telemetry auswerten</b><p class="mt-2 text-sm text-slate-400">Kosten, Geschwindigkeit und Erfolgsrate.</p></a><a href="{{ route('admin.page','devices') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Geraete debuggen</b><p class="mt-2 text-sm text-slate-400">Stille Debug-Anforderung und Download.</p></a><a href="{{ route('admin.page','workflows') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Workflows</b><p class="mt-2 text-sm text-slate-400">AI-Abläufe orchestrieren, starten und exportieren.</p></a><a href="{{ route('admin.page','agents') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Agenten & Ereignisse</b><p class="mt-2 text-sm text-slate-400">Agent-Läufe und Audit-Ereignisprotokoll.</p></a></div>
+        <div class="mt-8 grid gap-4 md:grid-cols-3"><a href="{{ route('admin.page','models') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Modelle verwalten</b><p class="mt-2 text-sm text-slate-400">Free-Model-Ketten, Fallbacks und Messwerte.</p></a><a href="{{ route('admin.page','telemetry') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Telemetry auswerten</b><p class="mt-2 text-sm text-slate-400">Kosten, Geschwindigkeit und Erfolgsrate.</p></a><a href="{{ route('admin.page','users') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Benutzer verwalten</b><p class="mt-2 text-sm text-slate-400">User, Projekte, Geräte und Besitzzuordnung.</p></a><a href="{{ route('admin.page','costs') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Kosten je Benutzer</b><p class="mt-2 text-sm text-slate-400">LLM-Kosten nach User, Projekt und Gerät.</p></a><a href="{{ route('admin.page','devices') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Geraete debuggen</b><p class="mt-2 text-sm text-slate-400">Stille Debug-Anforderung und Download.</p></a><a href="{{ route('admin.page','workflows') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Workflows</b><p class="mt-2 text-sm text-slate-400">AI-Abläufe orchestrieren, starten und exportieren.</p></a><a href="{{ route('admin.page','agents') }}" class="luczor-card p-5 hover:border-cyan-400/40"><b>Agenten & Ereignisse</b><p class="mt-2 text-sm text-slate-400">Agent-Läufe und Audit-Ereignisprotokoll.</p></a></div>
     @elseif($page === 'models')
         <div class="grid gap-6 xl:grid-cols-[.8fr_1.2fr]"><section class="luczor-card p-5"><h2 class="font-semibold">Neues Modellprofil</h2><p class="mt-1 text-sm text-slate-400">Nur Admins bestimmen Modelle und Fallbacks.</p><form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.model-profiles.store') }}">@csrf<input class="luczor-input" name="name" placeholder="Anzeigename" required><input class="luczor-input" name="provider" value="openrouter" required><select class="luczor-input" name="provider_credential_id" required><option value="">Explizites Provider-Credential</option>@foreach($providers->where('active', true) as $credential)<option value="{{ $credential->id }}">{{ $credential->provider }} · {{ $credential->label }}</option>@endforeach</select><input class="luczor-input" name="model_id" placeholder="nvidia/...:free" required><div class="grid grid-cols-3 gap-2"><input class="luczor-input" name="temperature" value="0.2" type="number" step="0.05" min="0" max="2"><input class="luczor-input" name="max_tokens" value="2200" type="number" min="1"><input class="luczor-input" name="purpose" value="chat"></div><textarea class="luczor-input font-mono text-xs" name="capabilities" rows="2" placeholder='["chat","tools"]'>["chat"]</textarea><input class="luczor-input" name="context_window" type="number" min="1" max="2000000" placeholder="Kontextfenster in Tokens"><button class="luczor-btn">Profil anlegen</button></form></section>
         <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Profile</h2><table class="mt-4 min-w-full text-left text-sm"><thead class="text-xs uppercase text-slate-500"><tr><th>Name / Modell</th><th>Zweck</th><th>Status</th><th></th></tr></thead><tbody class="divide-y divide-slate-800">@foreach($modelProfiles as $profile)<tr><td class="py-3"><b class="text-cyan-100">{{ $profile->name }}</b><div class="font-mono text-xs text-slate-500">{{ $profile->model_id }}</div></td><td>{{ $profile->purpose }}</td><td>{{ $profile->active?'aktiv':'aus' }}</td><td><details><summary class="cursor-pointer text-cyan-200">Bearbeiten</summary><form class="mt-3 grid gap-2" method="POST" action="{{ route('dashboard.model-profiles.update',$profile) }}">@csrf @method('PUT')<input class="luczor-input" name="name" value="{{ $profile->name }}"><input class="luczor-input" name="provider" value="{{ $profile->provider }}"><select class="luczor-input" name="provider_credential_id" required>@foreach($providers->where('active', true) as $credential)<option value="{{ $credential->id }}" @selected($profile->provider_credential_id === $credential->id)>{{ $credential->provider }} · {{ $credential->label }}</option>@endforeach</select><input class="luczor-input" name="model_id" value="{{ $profile->model_id }}"><div class="grid grid-cols-3 gap-2"><input class="luczor-input" name="temperature" value="{{ $profile->temperature }}"><input class="luczor-input" name="max_tokens" value="{{ $profile->max_tokens }}"><input class="luczor-input" name="purpose" value="{{ $profile->purpose }}"></div><textarea class="luczor-input font-mono text-xs" name="capabilities" rows="2">{{ json_encode($profile->capabilities ?? []) }}</textarea><input class="luczor-input" name="context_window" type="number" min="1" max="2000000" value="{{ $profile->context_window }}" placeholder="Kontextfenster in Tokens"><button class="luczor-btn">Speichern</button></form><form class="mt-2 inline" method="POST" action="{{ route('dashboard.model-profiles.toggle',$profile) }}">@csrf<button class="luczor-btn-secondary">{{ $profile->active?'Deaktivieren':'Aktivieren' }}</button></form><form class="ml-2 inline" method="POST" action="{{ route('dashboard.model-profiles.destroy',$profile) }}">@csrf @method('DELETE')<button class="text-rose-300">Loeschen</button></form></details></td></tr>@endforeach</tbody></table></section></div>
@@ -273,6 +273,65 @@ function setChainStatus(list, message, state){
         @include('admin.optimizer-extras')
         <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Netzwerk-Policies</h2>
             <div class="mt-3 grid gap-3 md:grid-cols-3">@foreach($networkPolicies as $policy)<div class="rounded border border-slate-800 p-3"><b>{{ $policy->name }}</b><div class="text-xs text-slate-500">{{ $policy->key }}</div></div>@endforeach</div>
+        </section>
+    @elseif($page === 'users')
+        <div class="grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
+            <section class="luczor-card overflow-x-auto p-5">
+                <h2 class="font-semibold">Benutzer, Projekte und Geräte</h2>
+                <p class="mt-1 text-sm text-slate-400">Laravel-User sind die zentrale Besitz- und Authentifizierungsquelle für Luczor-Clients, API-Keys, Projekte und lokale Geräte.</p>
+                <table class="mt-4 min-w-full text-left text-sm">
+                    <thead class="text-xs uppercase text-slate-500"><tr><th>User</th><th>Rolle</th><th>Projekte</th><th>Geräte</th><th>Keys</th><th>Status</th></tr></thead>
+                    <tbody class="divide-y divide-slate-800">
+                    @forelse($users as $user)
+                        <tr>
+                            <td class="py-3"><b class="text-cyan-100">{{ $user->name }}</b><div class="font-mono text-xs text-slate-500">{{ $user->email }}</div></td>
+                            <td>{{ $user->role }}</td>
+                            <td>{{ $user->projects_count }}</td>
+                            <td>{{ $user->devices_count }}</td>
+                            <td>{{ $user->api_keys_count }}</td>
+                            <td><span class="rounded-full px-2 py-0.5 text-xs {{ $user->status ? 'bg-emerald-400/10 text-emerald-200' : 'bg-rose-400/10 text-rose-200' }}">{{ $user->status ? 'aktiv' : 'gesperrt' }}</span></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="py-6 text-slate-500">Noch keine Benutzer.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </section>
+            <section class="luczor-card p-5">
+                <h2 class="font-semibold">Master-Gerät-Prinzip</h2>
+                <div class="mt-4 space-y-3 text-sm text-slate-300">
+                    <p>Ein Benutzer kann mehrere Geräte besitzen. Jedes Gerät meldet sich über einen eigenen API-Key und Client-Identifier am Laravel-Backend.</p>
+                    <p>Das Master-Gerät ist die Orchestrierungsinstanz für Agenten-Teams; andere Geräte bleiben als autonome Worker adressierbar, solange ihre lokalen Modelle verfügbar sind.</p>
+                    <p class="text-slate-500">Die konkrete Master-Auswahl erfolgt über Geräte-Metadaten/API-Key-Policy und bleibt serverseitig auditierbar.</p>
+                </div>
+            </section>
+        </div>
+    @elseif($page === 'costs')
+        <div class="grid gap-6 xl:grid-cols-3">
+            <section class="luczor-card overflow-x-auto p-5 xl:col-span-2">
+                <h2 class="font-semibold">Kosten je Benutzer</h2>
+                <table class="mt-4 min-w-full text-left text-sm">
+                    <thead class="text-xs uppercase text-slate-500"><tr><th>User</th><th>Rolle</th><th>Läufe</th><th>Geschätzte Kosten</th><th>Letzter Lauf</th></tr></thead>
+                    <tbody class="divide-y divide-slate-800">
+                    @forelse($userCostOverview as $row)
+                        <tr><td class="py-3"><b class="text-cyan-100">{{ $row->name }}</b><div class="font-mono text-xs text-slate-500">{{ $row->email }}</div></td><td>{{ $row->role }}</td><td>{{ $row->runs_count }}</td><td>${{ number_format((float) $row->estimated_cost_usd, 6) }}</td><td>{{ $row->last_run_at ?: '—' }}</td></tr>
+                    @empty
+                        <tr><td colspan="5" class="py-6 text-slate-500">Noch keine Kostenläufe.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </section>
+            <section class="luczor-card p-5">
+                <h2 class="font-semibold">Geräte-Kosten</h2>
+                <div class="mt-3 space-y-2">@forelse($deviceCostOverview as $row)<div class="rounded border border-slate-800 p-3"><b class="font-mono text-xs text-cyan-100">{{ $row->client_id }}</b><div class="mt-1 text-xs text-slate-400">{{ $row->runs_count }} Läufe · ${{ number_format((float) $row->estimated_cost_usd, 6) }}</div></div>@empty<p class="text-xs text-slate-500">Noch keine Geräte-Läufe.</p>@endforelse</div>
+            </section>
+        </div>
+        <section class="mt-6 luczor-card overflow-x-auto p-5">
+            <h2 class="font-semibold">Projektkosten</h2>
+            <table class="mt-4 min-w-full text-left text-sm">
+                <thead class="text-xs uppercase text-slate-500"><tr><th>Projekt-ID</th><th>Läufe</th><th>Geschätzte Kosten</th><th>Letzter Lauf</th></tr></thead>
+                <tbody class="divide-y divide-slate-800">@forelse($projectCostOverview as $row)<tr><td class="py-3 font-mono text-xs text-cyan-100">{{ $row->project_id }}</td><td>{{ $row->runs_count }}</td><td>${{ number_format((float) $row->estimated_cost_usd, 6) }}</td><td>{{ $row->last_run_at ?: '—' }}</td></tr>@empty<tr><td colspan="4" class="py-6 text-slate-500">Noch keine Projektkosten.</td></tr>@endforelse</tbody>
+            </table>
         </section>
     @elseif($page === 'settings')
         <form method="POST" action="{{ route('dashboard.settings.store') }}">@csrf

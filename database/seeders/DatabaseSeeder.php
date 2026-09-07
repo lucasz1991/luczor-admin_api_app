@@ -34,6 +34,20 @@ class DatabaseSeeder extends Seeder
         if (! $admin->tenant_id) {
             $admin->update(['tenant_id' => $tenant->id]);
         }
+        $primaryUser = User::firstOrCreate(
+            ['email' => 'lukas.zacharias@luczor.local'],
+            [
+                'tenant_id' => $tenant->id,
+                'name' => 'L. Zacharias',
+                'password' => Hash::make('password'),
+                'role' => 'user',
+                'status' => true,
+                'email_verified_at' => now(),
+            ]
+        );
+        if (! $primaryUser->tenant_id) {
+            $primaryUser->update(['tenant_id' => $tenant->id]);
+        }
 
         // Current free OpenRouter models. The policy service ranks these candidates
         // from observed cost, latency, quality and success data after enough samples.

@@ -46,6 +46,16 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(ApiKey::class);
     }
 
+    public function devices()
+    {
+        return $this->hasMany(Device::class);
+    }
+
+    public function projects()
+    {
+        return $this->hasMany(Project::class);
+    }
+
     public function oauthConnections()
     {
         return $this->hasMany(OAuthConnection::class);

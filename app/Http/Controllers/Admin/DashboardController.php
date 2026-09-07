@@ -17,7 +17,7 @@ class DashboardController extends AdminController
     public function page(Request $request, string $page)
     {
         $this->ensureAdmin($request);
-        abort_unless(in_array($page, ['overview', 'providers', 'models', 'telemetry', 'optimizer', 'experiments', 'workflows', 'agents', 'devices', 'api-keys', 'archives', 'settings'], true), 404);
+        abort_unless(in_array($page, ['overview', 'providers', 'models', 'telemetry', 'optimizer', 'experiments', 'workflows', 'agents', 'users', 'costs', 'devices', 'api-keys', 'archives', 'settings'], true), 404);
 
         return view('admin.page', $this->data->forPage($page));
     }

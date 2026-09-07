@@ -34,6 +34,7 @@ use App\Models\Skill;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -108,6 +109,10 @@ class AdminDashboardData
             'telemetry' => $this->telemetrySummary(), 'modelTelemetry' => $this->modelTelemetry(), 'recentAttempts' => LlmAttempt::with('run')->latest()->limit(50)->get(), 'modelRankings' => ModelRanking::whereNull('user_id')->orderBy('task_type')->orderByDesc('score')->get(),
             'providerPrices' => ProviderPriceSnapshot::latest('valid_from')->get(), 'promptTemplates' => PromptTemplate::latest('version')->get(), 'contextStrategies' => ContextStrategy::orderBy('key')->get(), 'networkPolicies' => NetworkPolicy::orderBy('key')->get(), 'llmExperiments' => LlmExperiment::latest()->get(),
             'devices' => Device::with('user')->latest('last_seen_at')->get(), 'debugRequests' => DeviceDebugRequest::with('device')->latest()->limit(50)->get(), 'apiKeys' => ApiKey::with('user')->latest()->get(), 'abilities' => ApiKey::ABILITIES,
+            'users' => $page === 'users' ? $this->userOverview() : collect(),
+            'userCostOverview' => in_array($page, ['users', 'costs'], true) ? $this->userCostOverview() : collect(),
+            'deviceCostOverview' => in_array($page, ['devices', 'costs'], true) ? $this->deviceCostOverview() : collect(),
+            'projectCostOverview' => $page === 'costs' ? $this->projectCostOverview() : collect(),
             'archiveCounts' => ['projects' => LuczorProjectArchive::count(), 'messages' => LuczorMessageArchive::count(), 'memories' => LuczorMemoryArchive::count(), 'summaries' => LuczorSummaryArchive::count(), 'agent_events' => LuczorAgentEventArchive::count()], 'settings' => Setting::orderBy('group')->orderBy('key')->get(),
             'charts' => $page === 'overview' ? $this->dashboardCharts() : [],
             'telemetryCharts' => $page === 'telemetry' ? $this->telemetryCharts() : [],
@@ -140,6 +145,56 @@ class AdminDashboardData
                 ? WorkflowRun::with('definition')->find((int) request()->query('run'))
                 : null,
         ];
+    }
+
+    private function userOverview()
+    {
+        return User::query()
+            ->withCount(['apiKeys', 'devices', 'projects'])
+            ->orderByDesc('status')
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function userCostOverview()
+    {
+        return User::query()
+            ->leftJoin('llm_runs', 'users.id', '=', 'llm_runs.user_id')
+            ->select('users.id', 'users.name', 'users.email', 'users.role', 'users.status')
+            ->selectRaw('COUNT(llm_runs.id) as runs_count')
+            ->selectRaw('COALESCE(SUM(llm_runs.estimated_cost_usd), 0) as estimated_cost_usd')
+            ->selectRaw('MAX(llm_runs.created_at) as last_run_at')
+            ->groupBy('users.id', 'users.name', 'users.email', 'users.role', 'users.status')
+            ->orderByDesc(DB::raw('COALESCE(SUM(llm_runs.estimated_cost_usd), 0)'))
+            ->get();
+    }
+
+    private function deviceCostOverview()
+    {
+        return LlmRun::query()
+            ->select('client_id')
+            ->selectRaw('COUNT(*) as runs_count')
+            ->selectRaw('COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost_usd')
+            ->selectRaw('MAX(created_at) as last_run_at')
+            ->whereNotNull('client_id')
+            ->groupBy('client_id')
+            ->orderByDesc('last_run_at')
+            ->limit(100)
+            ->get();
+    }
+
+    private function projectCostOverview()
+    {
+        return LlmRun::query()
+            ->select('project_id')
+            ->selectRaw('COUNT(*) as runs_count')
+            ->selectRaw('COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost_usd')
+            ->selectRaw('MAX(created_at) as last_run_at')
+            ->whereNotNull('project_id')
+            ->groupBy('project_id')
+            ->orderByDesc(DB::raw('COALESCE(SUM(estimated_cost_usd), 0)'))
+            ->limit(100)
+            ->get();
     }
 
     private function archivesPageData(): array
