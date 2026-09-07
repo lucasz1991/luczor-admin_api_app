@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "created_at": "20260907T003258Z",
+  "baseline_commit": "a00d2cbbf3bb39c7a09df77750c05239ec605700",
+  "production_deployed": false,
+  "database_migration_required": false,
+  "files": [
+    {
+      "path": "app/Data/Proxy/PreparedProxyRequest.php",
+      "category": "overlay",
+      "bytes": 542,
+      "sha256": "f66a29bcd118f5d76b137a2179b8c2ad4d579ca5e2d2767874535961d3583cb8",
+      "baseline_sha256": "8736c9e88a9ffa3a1201e8191789a625071a517b327c577f67e45248a1891511"
+    },
+    {
+      "path": "app/Data/Proxy/ProxyChatInput.php",
+      "category": "overlay",
+      "bytes": 4382,
+      "sha256": "1753adebf08f0551e199a388867bdfe291cc61e9a6d5ff5f6c344bd46b53a2db",
+      "baseline_sha256": "cebfca1830ea9d3526ff9b29d19d3e67822de350c76fef64152e22125c5259c6"
+    },
+    {
+      "path": "app/Http/Controllers/Admin/AgentTeamConfigurationController.php",
+      "category": "overlay",
+      "bytes": 2018,
+      "sha256": "3c31485ac4ed278e247eede8c8787be2d18543941db099ff1539cd8a52a84954",
+      "baseline_sha256": null
+    },
+    {
+      "path": "app/Http/Controllers/Api/V1/AgentTeamPolicyController.php",
+      "category": "overlay",
+      "bytes": 353,
+      "sha256": "db192bbae92ec115bc8324608dcb73d418d89d427da9fc224167bf2fe78b354c",
+      "baseline_sha256": null
+    },
+    {
+      "path": "app/Http/Controllers/Api/V1/LlmController.php",
+      "category": "overlay",
+      "bytes": 6257,
+      "sha256": "2031997a495a20e802a5114c3557e77e7ff74546dd3f8a95bd23ea958e0140b6",
+      "baseline_sha256": "d0f0678ca3e30852be3f9477af79f4e2e6b69a8ff51aeb4bc7411f6c717d49c4"
+    },
+    {
+      "path": "app/Http/Requests/Api/V1/ProxyChatRequest.php",
+      "category": "overlay",
+      "bytes": 6212,
+      "sha256": "c573df99d59070205a1bbcc9f83ce58398a85662779bfe98f25fc7cab496376b",
+      "baseline_sha256": "d4faf72af575ded9d016abd0037c9efe35cfd5c21320039675b956c9452b6d35"
+    },
+    {
+      "path": "app/Services/AdminDashboardData.php",
+      "category": "overlay",
+      "bytes": 22176,
+      "sha256": "fc1bac6f3793e56b3b897a908fded6415c7cb3065c62fd596c6478d99e0d9521",
+      "baseline_sha256": "a103b63007a19146c50afac2ccb0ffaab38781d23e9b0c07a955a37b2f9685d6"
+    },
+    {
+      "path": "app/Services/AgentTeamDefaultsService.php",
+      "category": "overlay",
+      "bytes": 8657,
+      "sha256": "9afb7cc7e13f34cf12371efebec287b82a00406e74aaaa971b88bd4538a81b0d",
+      "baseline_sha256": null
+    },
+    {
+      "path": "app/Services/AgentTeamPolicyService.php",
+      "category": "overlay",
+      "bytes": 5772,
+      "sha256": "0ada009e37acfbbb9162034291c13d4b7458b46ad69554bbb359d5bfb3adaf8d",
+      "baseline_sha256": null
+    },
+    {
+      "path": "app/Services/EvaluationService.php",
+      "category": "overlay",
+      "bytes": 6864,
+      "sha256": "2e9233f85ce6fcce3fa1baf283f8077e127b31016f03184f8c52a8ed5bd39ab1",
+      "baseline_sha256": "1b7b4a87b24315efbb2f8e6477fc4ddd1ce5683fc9eb9ffae6b8b10633529ecc"
+    },
+    {
+      "path": "app/Services/ProviderPolicyService.php",
+      "category": "overlay",
+      "bytes": 20835,
+      "sha256": "ea28f4aa189f23295d7f3763c80bb6f421cf24fd45d4bbc1274f31648d3738a2",
+      "baseline_sha256": "1cf21199afb0f1c1ccace073727762c19a21491290880463e68e57269bd040b3"
+    },
+    {
+      "path": "app/Services/Proxy/ProxyChatService.php",
+      "category": "overlay",
+      "bytes": 5105,
+      "sha256": "897b93f3ae1b7fd4e783f5486b73659f1af41ddada5df8038bf164d84835201c",
+      "baseline_sha256": "8458d9b67b3086d170b906c549573fded790c955cb0ab3ea809e45fdd07d33fe"
+    },
+    {
+      "path": "app/Services/Proxy/ProxyPromptBuilder.php",
+      "category": "overlay",
+      "bytes": 4279,
+      "sha256": "b9dbaf96481dbc24dcc3086a908c9c1e06ed98e374e8ff6f8c7818c0e5c61e42",
+      "baseline_sha256": "1d832ccde339b18c02e7e9f201f3dfe5499aa48795cf388a2f1bc8c6a5f56139"
+    },
+    {
+      "path": "app/Services/Proxy/ProxyProviderGateway.php",
+      "category": "overlay",
+      "bytes": 14750,
+      "sha256": "fcbbea92a3c57d32e99804a01bc9032c3550c4c9503006c0f4c599e0658e238a",
+      "baseline_sha256": "7de92a4010d19b5e4aea80d2378ab7de27a421a9687c63a2382948bd4136562d"
+    },
+    {
+      "path": "config/agent_teams.php",
+      "category": "overlay",
+      "bytes": 2044,
+      "sha256": "721ba4a8c5a4b5677932d2c584000a8273b8d69f37536a099c6d0e6a44e0adf2",
+      "baseline_sha256": null
+    },
+    {
+      "path": "resources/views/admin/agent-teams.blade.php",
+      "category": "overlay",
+      "bytes": 6462,
+      "sha256": "2720c75373fefe40201bfd2e2400475eb1fc8311ec3c197f5fb9d6473a76882e",
+      "baseline_sha256": null
+    },
+    {
+      "path": "resources/views/admin/page.blade.php",
+      "category": "overlay",
+      "bytes": 35890,
+      "sha256": "c13655a2538a26c3dd18c0890bcc88c299b94ef53a062ffb4ae19eb451e82493",
+      "baseline_sha256": "e84e22dd158e9e31aa04f252321c13ad25aade6934f0f2f2d95b4af157176597"
+    },
+    {
+      "path": "routes/api.php",
+      "category": "overlay",
+      "bytes": 16481,
+      "sha256": "726e99cd8c8a1d70fe9ec055d082df1afd80f11b5e13e973128a28a14b1537b6",
+      "baseline_sha256": "11b716e0d852191815d1229b10239aa1ea1b453a629c69f9e0941948fcbeb0c3"
+    },
+    {
+      "path": "routes/web.php",
+      "category": "overlay",
+      "bytes": 9062,
+      "sha256": "16cb89afb042a022b40d86df1fa28be1e775989ad2aa7be977a061d051c65dd3",
+      "baseline_sha256": "63f7d937b6fd9ef241fdc927a8c99916cf93115b744d7c2b47738f278b12a200"
+    },
+    {
+      "path": "public/build/manifest.json",
+      "category": "overlay",
+      "bytes": 274,
+      "sha256": "678377616568f70aae4db986973d7e99c5d8905518a7b57efcc830b817cee2d5",
+      "baseline_sha256": null
+    },
+    {
+      "path": "public/build/assets/app-21A6URpB.css",
+      "category": "overlay",
+      "bytes": 115375,
+      "sha256": "686f685ed3fa15326d7457854e0732c9ceb91c4b2b08b8e8357cd7ff331dfddc",
+      "baseline_sha256": null
+    },
+    {
+      "path": "public/build/assets/app-B4R75s-a.js",
+      "category": "overlay",
+      "bytes": 231430,
+      "sha256": "fa71d78bb38a5cabaf8c19153479ca564bdd50713975a872177f07577475bbb2",
+      "baseline_sha256": null
+    },
+    {
+      "path": "docs/agent-teams.md",
+      "category": "review",
+      "bytes": 6078,
+      "sha256": "937e2879c3fa4f201fbdbce0f984b49f1011fe670675786c3b54161fb415549d",
+      "baseline_sha256": null
+    },
+    {
+      "path": "tests/Feature/AgentTeamPolicyTest.php",
+      "category": "review",
+      "bytes": 20390,
+      "sha256": "9e690c8a337c87349e919d90ee42d1ec7b924b4be6d3de9bf6f67ad4ab8f01a8",
+      "baseline_sha256": null
+    }
+  ]
+}

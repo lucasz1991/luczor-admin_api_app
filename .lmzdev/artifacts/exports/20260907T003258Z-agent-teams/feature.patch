@@ -1,0 +1,742 @@
+diff --git a/app/Data/Proxy/PreparedProxyRequest.php b/app/Data/Proxy/PreparedProxyRequest.php
+index 6d59d7d51749a61d108df7d28448398f450e73b4..1929a1b7455d97d9e07571fb482a5a678ac0de45 100644
+--- a/app/Data/Proxy/PreparedProxyRequest.php
++++ b/app/Data/Proxy/PreparedProxyRequest.php
+@@ -17,5 +17,6 @@ final readonly class PreparedProxyRequest
+         public string $taskType,
+         public ?ModelUseCase $useCase,
+         public array $requiredCapabilities,
++        public ?string $agentTeamPolicyRevision = null,
+     ) {}
+ }
+diff --git a/app/Data/Proxy/ProxyChatInput.php b/app/Data/Proxy/ProxyChatInput.php
+index bb0792819e93441267e3a84f4a1dc546f229d271..7443692bdfc67050d834ebee079cfe5d057525a2 100644
+--- a/app/Data/Proxy/ProxyChatInput.php
++++ b/app/Data/Proxy/ProxyChatInput.php
+@@ -27,6 +27,7 @@ final readonly class ProxyChatInput
+         public ?string $branch,
+         public ?string $commitSha,
+         public int $toolCallCount,
++        public ?string $agentTeamPolicyRevision = null,
+     ) {}
+ 
+     /** @param array<string,mixed> $validated */
+@@ -54,6 +55,7 @@ final readonly class ProxyChatInput
+             branch: self::nullableString($validated['branch'] ?? null),
+             commitSha: self::nullableString($validated['commit_sha'] ?? null),
+             toolCallCount: (int) ($validated['tool_call_count'] ?? 0),
++            agentTeamPolicyRevision: self::nullableString($validated['agent_team_policy_revision'] ?? null),
+         );
+     }
+ 
+diff --git a/app/Http/Controllers/Admin/AgentTeamConfigurationController.php b/app/Http/Controllers/Admin/AgentTeamConfigurationController.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..914632d00f126b3279a797e3782de78ec6029f60
+--- /dev/null
++++ b/app/Http/Controllers/Admin/AgentTeamConfigurationController.php
+@@ -0,0 +1,44 @@
++<?php
++
++namespace App\Http\Controllers\Admin;
++
++use App\Models\AgentProfile;
++use App\Services\AgentTeamDefaultsService;
++use App\Services\AgentTeamPolicyService;
++use Illuminate\Http\Request;
++use Illuminate\Support\Facades\Redirect;
++
++class AgentTeamConfigurationController extends AdminController
++{
++    public function prepare(Request $request, AgentTeamDefaultsService $defaults)
++    {
++        $this->ensureAdmin($request);
++        $data = $request->validate(['provider_credential_id' => ['required', 'integer']]);
++        $counts = $defaults->prepare((int) $data['provider_credential_id']);
++
++        return Redirect::route('admin.page', 'agents')->with('status', sprintf('Agententeams ergänzt: %d Modelle, %d Rollen, %d Routingeinträge. Bestehende Konfiguration bleibt erhalten.', ...array_values($counts)));
++    }
++
++    public function research(Request $request, AgentTeamDefaultsService $defaults)
++    {
++        $this->ensureAdmin($request);
++        $catalog = $defaults->refreshResearch();
++
++        return Redirect::route('admin.page', 'agents')->with('status', count($catalog['models']).' Kandidaten im öffentlichen OpenRouter-Katalog geprüft. Routing erst über „Teams ergänzen“ einrichten.');
++    }
++
++    public function update(Request $request)
++    {
++        $this->ensureAdmin($request);
++        $data = $request->validate([
++            'enabled' => ['required', 'boolean'], 'default_preset' => ['required', 'in:free,budget'], 'max_parallel' => ['required', 'integer', 'min:1', 'max:3'],
++        ]);
++        AgentProfile::updateOrCreate(['key' => AgentTeamPolicyService::POLICY_KEY], [
++            'name' => 'Luczor: lokale Steuerung und externe Spezialisten', 'type' => 'team_policy',
++            'status' => $data['enabled'] ? 'active' : 'disabled',
++            'config' => ['default_preset' => $data['default_preset'], 'max_parallel' => (int) $data['max_parallel']],
++        ]);
++
++        return Redirect::route('admin.page', 'agents')->with('status', 'Agententeam-Konfiguration gespeichert.');
++    }
++}
+diff --git a/app/Http/Controllers/Api/V1/AgentTeamPolicyController.php b/app/Http/Controllers/Api/V1/AgentTeamPolicyController.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..203c825de173a3df8b94980786b0c1df988882d2
+--- /dev/null
++++ b/app/Http/Controllers/Api/V1/AgentTeamPolicyController.php
+@@ -0,0 +1,14 @@
++<?php
++
++namespace App\Http\Controllers\Api\V1;
++
++use App\Http\Controllers\Controller;
++use App\Services\AgentTeamPolicyService;
++
++class AgentTeamPolicyController extends Controller
++{
++    public function __invoke(AgentTeamPolicyService $policy)
++    {
++        return response()->json($policy->payload())->header('Cache-Control', 'private, no-store');
++    }
++}
+diff --git a/app/Http/Controllers/Api/V1/LlmController.php b/app/Http/Controllers/Api/V1/LlmController.php
+index 3014641b713d110f4c50ffb98294bcea51f19f69..b930a3620b377bde3b87817b4a0d2af2731216e4 100644
+--- a/app/Http/Controllers/Api/V1/LlmController.php
++++ b/app/Http/Controllers/Api/V1/LlmController.php
+@@ -13,6 +13,7 @@ use App\Services\EvaluationService;
+ use App\Services\ModelRanker;
+ use App\Services\ProviderPolicyService;
+ use Illuminate\Http\Request;
++use Illuminate\Validation\ValidationException;
+ 
+ class LlmController extends Controller
+ {
+@@ -79,6 +80,11 @@ class LlmController extends Controller
+             'payload' => ['nullable', 'array'],
+         ]);
+ 
++        if (str_starts_with($llmRun->task_type, 'agent.')
++            && ! isset($data['quality_score']) && ! isset($data['test_pass_rate']) && ! isset($data['test_passed'])) {
++            throw ValidationException::withMessages(['quality_score' => 'Agent evaluations require an explicit quality estimate or actual test result; request success alone is not an evaluation.']);
++        }
++
+         if (! empty($data['agent_run_id'])) {
+             $agentRun = AgentRun::findOrFail($data['agent_run_id']);
+             $actor->assertOwned($request, $agentRun);
+diff --git a/app/Http/Requests/Api/V1/ProxyChatRequest.php b/app/Http/Requests/Api/V1/ProxyChatRequest.php
+index ec04868e3209186912eb587bb8ecaeaabafc5219..ce7927d976133c9b5321e19a18e1672af520e771 100644
+--- a/app/Http/Requests/Api/V1/ProxyChatRequest.php
++++ b/app/Http/Requests/Api/V1/ProxyChatRequest.php
+@@ -43,6 +43,7 @@ class ProxyChatRequest extends FormRequest
+             'stream' => ['nullable', 'boolean'],
+             'input_source' => ['nullable', 'string', 'in:keyboard,push_to_talk,hands_free'],
+             'task_type' => ['nullable', 'string', 'max:120'],
++            'agent_team_policy_revision' => ['nullable', 'string', 'regex:/^[a-f0-9]{64}$/'],
+             'client_id' => ['nullable', 'string', 'max:120'],
+             'project_id' => ['nullable', 'string', 'max:120'],
+             'workflow_id' => ['nullable', 'string', 'max:120'],
+@@ -84,6 +85,13 @@ class ProxyChatRequest extends FormRequest
+     public function withValidator(Validator $validator): void
+     {
+         $validator->after(function (Validator $validator): void {
++            $agentTask = str_starts_with((string) $this->input('task_type', ''), 'agent.');
++            if ($agentTask && ! $this->filled('agent_team_policy_revision')) {
++                $validator->errors()->add('agent_team_policy_revision', 'Agent specialists require the exact approved team policy revision.');
++            }
++            if ($agentTask && (! empty($this->input('tools')) || ! in_array($this->input('tool_choice'), [null, 'none'], true))) {
++                $validator->errors()->add('tools', 'Agent specialists accept text tasks only; tools remain under local Luczor control.');
++            }
+             $messages = $this->input('messages');
+             if (! is_array($messages)) {
+                 return;
+@@ -93,6 +101,9 @@ class ProxyChatRequest extends FormRequest
+                 if (! is_array($message)) {
+                     continue;
+                 }
++                if ($agentTask && (($message['role'] ?? null) === 'tool' || ! empty($message['tool_calls']))) {
++                    $validator->errors()->add("messages.$index", 'Agent specialists cannot receive executable tool history.');
++                }
+                 if (($message['role'] ?? null) === 'tool'
+                     && blank($message['tool_call_id'] ?? null)
+                     && blank($message['name'] ?? null)) {
+diff --git a/app/Services/AdminDashboardData.php b/app/Services/AdminDashboardData.php
+index e4b4bb9fccc3c920629cd48b6b76412022814aa9..dc1a10644d44465443a1e7e253f4bdb07f96c442 100644
+--- a/app/Services/AdminDashboardData.php
++++ b/app/Services/AdminDashboardData.php
+@@ -120,6 +120,8 @@ class AdminDashboardData
+                 ? EvaluationResult::with('llmRun')->latest()->limit(20)->get()
+                 : collect(),
+             'agentRuns' => $page === 'agents' ? AgentRun::withCount('tasks')->latest()->limit(30)->get() : collect(),
++            'agentTeamPolicy' => $page === 'agents' ? app(AgentTeamPolicyService::class)->payload() : [],
++            'agentModelCatalog' => $page === 'agents' ? app(AgentTeamPolicyService::class)->catalog() : [],
+             'agentEvents' => $page === 'agents' ? AuditEvent::latest()->limit(50)->get() : collect(),
+             'workflowDefinitions' => $page === 'workflows'
+                 ? WorkflowDefinition::withCount(['runs',
+diff --git a/app/Services/AgentTeamDefaultsService.php b/app/Services/AgentTeamDefaultsService.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..89d7a011b7cbe2c8cd335d9ec263fea2726827ae
+--- /dev/null
++++ b/app/Services/AgentTeamDefaultsService.php
+@@ -0,0 +1,138 @@
++<?php
++
++namespace App\Services;
++
++use App\Models\AgentProfile;
++use App\Models\ModelProfile;
++use App\Models\ModelUseCase;
++use App\Models\ModelUseCaseEntry;
++use App\Models\NetworkPolicy;
++use App\Models\ProviderCredential;
++use App\Models\ProviderPriceSnapshot;
++use Illuminate\Http\Client\ConnectionException;
++use Illuminate\Http\Client\RequestException;
++use Illuminate\Support\Carbon;
++use Illuminate\Support\Facades\DB;
++use Illuminate\Support\Facades\Http;
++use Illuminate\Support\Str;
++use Illuminate\Validation\ValidationException;
++
++final class AgentTeamDefaultsService
++{
++    public function __construct(private AgentTeamPolicyService $policy) {}
++
++    /** Public metadata only: never attach a stored provider credential to this GET. @return array<string,mixed> */
++    public function refreshResearch(): array
++    {
++        try {
++            $response = Http::connectTimeout(10)->timeout(30)->acceptJson()->get('https://openrouter.ai/api/v1/models')->throw();
++        } catch (ConnectionException|RequestException) {
++            throw ValidationException::withMessages(['research' => 'Der öffentliche OpenRouter-Katalog ist derzeit nicht erreichbar. Die gespeicherte Recherche bleibt erhalten.']);
++        }
++        $rows = $response->json('data');
++        if (! is_array($rows)) {
++            throw ValidationException::withMessages(['research' => 'OpenRouter hat keinen gültigen Modellkatalog geliefert.']);
++        }
++        $models = [];
++        foreach (config('agent_teams.models') as $baseline) {
++            $live = collect($rows)->firstWhere('id', $baseline['id']);
++            $pricing = $live['pricing'] ?? [];
++            if (! is_array($live) || ! is_numeric($pricing['prompt'] ?? null) || ! is_numeric($pricing['completion'] ?? null)
++                || ! is_numeric($live['context_length'] ?? null) || (int) $live['context_length'] < 1) {
++                continue;
++            }
++            $input = (float) $pricing['prompt'] * 1000000;
++            $output = (float) $pricing['completion'] * 1000000;
++            if ($input < 0 || $output < 0 || (str_ends_with($baseline['id'], ':free') && ($input !== 0.0 || $output !== 0.0))) {
++                continue;
++            }
++            $models[] = array_merge($baseline, ['input_per_million' => $input, 'output_per_million' => $output, 'context_window' => min(2000000, (int) $baseline['context_window'], (int) $live['context_length'])]);
++        }
++        if ($models === []) {
++            throw ValidationException::withMessages(['research' => 'Keiner der geprüften Kandidaten ist aktuell mit gültigen Preisen verfügbar.']);
++        }
++        $catalog = ['researched_at' => now()->toIso8601String(), 'source' => 'https://openrouter.ai/api/v1/models', 'models' => $models];
++        AgentProfile::updateOrCreate(['key' => AgentTeamPolicyService::CATALOG_KEY], ['name' => 'Agenten-Modellrecherche', 'type' => 'model_catalog', 'status' => 'draft', 'config' => $catalog]);
++
++        return $catalog;
++    }
++
++    /** Adds missing entries; edited or disabled profiles, chains and policies remain authoritative. @return array<string,int> */
++    public function prepare(int $credentialId): array
++    {
++        $credential = ProviderCredential::query()->whereKey($credentialId)->where('provider', 'openrouter')->where('active', true)->where('request_format', 'chat_completions')->first();
++        if (! $credential) {
++            throw ValidationException::withMessages(['provider_credential_id' => 'Bitte einen aktiven OpenRouter-Zugang mit Chat Completions wählen.']);
++        }
++        $catalog = $this->policy->catalog();
++        $researchedAt = Carbon::parse($catalog['researched_at']);
++        if ($researchedAt->lt(now()->subDays(14))) {
++            throw ValidationException::withMessages(['research' => 'Bitte zuerst den OpenRouter-Katalog neu prüfen; der Preisstand ist älter als 14 Tage.']);
++        }
++
++        return DB::transaction(function () use ($credential, $catalog, $researchedAt): array {
++            $counts = ['models_created' => 0, 'roles_created' => 0, 'entries_created' => 0];
++            foreach (['free' => 0.0, 'planning' => 0.05] as $kind => $limit) {
++                NetworkPolicy::firstOrCreate(['key' => 'agent.'.$kind], [
++                    'name' => $kind === 'free' ? 'Agenten: ausschließlich kostenlos' : 'Agenten: günstige Planung',
++                    'status' => 'active', 'connect_timeout_ms' => 10000, 'request_timeout_ms' => 90000,
++                    'max_attempts' => $kind === 'free' ? 2 : 1, 'backoff_ms' => 500,
++                    'max_cost_usd' => $limit, 'max_input_tokens' => 32000, 'max_output_tokens' => 4096,
++                    'config' => ['retry_statuses' => [0, 408, 429, 500, 502, 503, 504]],
++                ]);
++            }
++            $profiles = [];
++            foreach ($catalog['models'] as $model) {
++                $profile = ModelProfile::firstOrCreate(['slug' => 'agent-'.Str::slug($model['id'])], [
++                    'name' => $model['name'], 'provider' => 'openrouter', 'provider_credential_id' => $credential->id,
++                    'model_id' => $model['id'], 'temperature' => 0.2, 'max_tokens' => 4096,
++                    'purpose' => 'agent', 'active' => true, 'capabilities' => ['chat'], 'context_window' => $model['context_window'],
++                    'meta' => ['source' => 'agent-research-v1', 'researched_at' => $catalog['researched_at'], 'data_policy' => $model['data_policy']],
++                ]);
++                $counts['models_created'] += (int) $profile->wasRecentlyCreated;
++                $profiles[$model['id']] = $profile;
++                $price = ProviderPriceSnapshot::current('openrouter', $model['id']);
++                $refreshManagedPrice = $price?->source === 'agent-research-v1'
++                    && ($price->meta['researched_at'] ?? null) !== $catalog['researched_at'];
++                if ($price === null || $refreshManagedPrice) {
++                    if ($refreshManagedPrice) {
++                        $price->update(['valid_until' => now()]);
++                    }
++                    ProviderPriceSnapshot::create([
++                        'provider_id' => 'openrouter', 'model_id' => $model['id'], 'currency' => 'USD',
++                        'input_per_million' => $model['input_per_million'], 'output_per_million' => $model['output_per_million'],
++                        'cache_read_per_million' => 0, 'cache_write_per_million' => 0,
++                        'source' => 'agent-research-v1', 'valid_from' => now(), 'valid_until' => $researchedAt->copy()->addDays(14),
++                        'meta' => ['researched_at' => $catalog['researched_at'], 'source' => $catalog['source']],
++                    ]);
++                }
++            }
++            foreach (AgentTeamPolicyService::TASKS as $role => $taskType) {
++                $case = ModelUseCase::firstOrCreate(['slug' => 'agent-'.$role], [
++                    'name' => 'Agent: '.$role, 'active' => true, 'description' => 'Text-Spezialist; lokale Tools verbleiben unter Luczor-Kontrolle.',
++                    'policy_version' => 1, 'routing_strategy' => 'ranked', 'max_attempts' => $role === 'planning' ? 1 : 2,
++                    'max_input_tokens' => 32000, 'max_cost_usd' => $role === 'planning' ? 0.05 : 0,
++                    'network_policy_key' => $role === 'planning' ? 'agent.planning' : 'agent.free',
++                ]);
++                $newCase = $case->wasRecentlyCreated;
++                $counts['roles_created'] += (int) $newCase;
++                // A pre-existing chain may intentionally omit a model; never repopulate it.
++                if (! $newCase) {
++                    continue;
++                }
++                $candidates = collect($catalog['models'])->filter(fn (array $model): bool => in_array($role, $model['roles'], true))
++                    ->sortBy(fn (array $model): int => array_search($role, $model['roles'], true));
++                foreach ($candidates->values() as $order => $model) {
++                    ModelUseCaseEntry::create(['model_use_case_id' => $case->id, 'model_profile_id' => $profiles[$model['id']]->id, 'sort_order' => $order + 1, 'active' => true, 'notes' => 'Recherchierter Startkandidat; Qualität muss in Luczor gemessen werden.']);
++                    $counts['entries_created']++;
++                }
++            }
++            AgentProfile::firstOrCreate(['key' => AgentTeamPolicyService::POLICY_KEY], [
++                'name' => 'Luczor: lokale Steuerung und externe Spezialisten', 'type' => 'team_policy', 'status' => 'active',
++                'config' => ['default_preset' => 'free', 'max_parallel' => 2],
++            ]);
++
++            return $counts;
++        });
++    }
++}
+diff --git a/app/Services/AgentTeamPolicyService.php b/app/Services/AgentTeamPolicyService.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..541f8996d438d59f6eacc06bc934a7f2d6fd17d5
+--- /dev/null
++++ b/app/Services/AgentTeamPolicyService.php
+@@ -0,0 +1,99 @@
++<?php
++
++namespace App\Services;
++
++use App\Models\AgentProfile;
++use App\Models\ModelUseCase;
++use App\Models\NetworkPolicy;
++use App\Models\ProviderPriceSnapshot;
++
++final class AgentTeamPolicyService
++{
++    public const POLICY_KEY = 'luczor.agent-team-policy';
++
++    public const CATALOG_KEY = 'luczor.agent-model-catalog';
++
++    public const TASKS = ['planning' => 'agent.planning', 'research' => 'agent.research', 'coding' => 'agent.coding', 'review' => 'agent.review'];
++
++    /** @return array<string,mixed> */
++    public function catalog(): array
++    {
++        $saved = AgentProfile::query()->where('key', self::CATALOG_KEY)->first()?->config;
++
++        return is_array($saved) && is_array($saved['models'] ?? null) ? $saved : config('agent_teams');
++    }
++
++    /** @return array<string,mixed> */
++    public function payload(): array
++    {
++        $profile = AgentProfile::query()->where('key', self::POLICY_KEY)->first();
++        $config = is_array($profile?->config) ? $profile->config : [];
++        $default = in_array($config['default_preset'] ?? '', ['free', 'budget'], true) ? $config['default_preset'] : 'free';
++        $parallel = max(1, min(3, (int) ($config['max_parallel'] ?? 2)));
++        $catalog = $this->catalog();
++        $modelsByRole = [];
++        $bindings = [];
++        foreach (self::TASKS as $role => $taskType) {
++            $case = ModelUseCase::query()->where('slug', 'agent-'.$role)->with('entries.modelProfile.credential')->first();
++            $network = $case ? NetworkPolicy::query()->where('key', $case->network_policy_key)->first() : null;
++            $bindings[$role] = ['case' => $case?->only(['active', 'policy_version', 'routing_strategy', 'max_attempts', 'max_input_tokens', 'max_cost_usd', 'prompt_template_key', 'network_policy_key']),
++                'network' => $network?->only(['status', 'max_attempts', 'max_cost_usd', 'max_input_tokens', 'max_output_tokens', 'request_timeout_ms', 'connect_timeout_ms', 'backoff_ms', 'config']), 'entries' => []];
++            $candidates = [];
++            foreach ($case->entries ?? [] as $entry) {
++                $model = $entry->modelProfile;
++                $price = $model ? ProviderPriceSnapshot::current($model->provider, $model->model_id) : null;
++                $bindings[$role]['entries'][] = ['entry' => $entry->only(['active', 'sort_order']),
++                    'model' => $model?->only(['id', 'model_id', 'provider', 'active', 'temperature', 'max_tokens', 'context_window', 'capabilities']),
++                    'credential' => $model?->credential?->only(['id', 'provider', 'active', 'base_url', 'request_format']),
++                    'price' => $price?->only(['input_per_million', 'output_per_million', 'cache_read_per_million', 'cache_write_per_million', 'valid_from', 'valid_until'])];
++                if (! $entry->active || ! $model?->active || ! $model->credential?->active) {
++                    continue;
++                }
++                $info = collect($catalog['models'])->firstWhere('id', $model->model_id) ?? [];
++                if ($price === null) {
++                    continue;
++                }
++                $candidates[] = [
++                    'id' => $model->model_id, 'name' => $model->name, 'provider' => $model->provider,
++                    'input_per_million' => $price->input_per_million,
++                    'output_per_million' => $price->output_per_million,
++                    'data_policy' => $info['data_policy'] ?? 'Provider-Datennutzung vor Freigabe prüfen.',
++                ];
++            }
++            $networkReady = $network?->status === 'active';
++            $modelsByRole[$role] = ['task_type' => $taskType, 'candidates' => $candidates, 'ready' => $case?->active && $networkReady && $candidates !== [],
++                'max_cost_usd' => $this->tightest($case?->max_cost_usd, $network?->max_cost_usd),
++                'max_output_tokens' => $network?->max_output_tokens === null ? null : (int) $network->max_output_tokens,
++                'max_attempts' => $this->tightest($case?->max_attempts, $network?->max_attempts)];
++        }
++        $specialists = [];
++        foreach (self::TASKS as $role => $taskType) {
++            $specialists[$role] = ['target' => 'external', 'task_type' => $taskType];
++        }
++        $free = $specialists;
++        $free['planning']['target'] = 'local';
++
++        $payload = [
++            'version' => 1,
++            'enabled' => $profile?->status === 'active',
++            'default_preset' => $default,
++            'presets' => [
++                ['id' => 'free', 'label' => 'Lokale Planung + Free-Spezialisten', 'description' => 'Luczor steuert lokal. Recherche, Codeentwurf und Prüfung bearbeiten getrennte kostenlose Modelle; Tools führt Luczor lokal aus.', 'max_parallel' => $parallel, 'roles' => $free],
++                ['id' => 'budget', 'label' => 'Günstige externe Planung + Free-Spezialisten', 'description' => 'Optionales kostenpflichtiges Planungsmodell mit eigener Kostenobergrenze; Spezialisten bleiben im kostenlosen Pool.', 'max_parallel' => $parallel, 'roles' => $specialists],
++            ],
++            'models_by_role' => $modelsByRole,
++            'evaluation' => ['minimum_samples' => 5, 'requires_quality_evidence' => true, 'model_review_is_estimate' => true],
++            'researched_at' => $catalog['researched_at'],
++        ];
++        $payload['revision'] = hash('sha256', json_encode([$payload, $bindings], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION));
++
++        return $payload;
++    }
++
++    private function tightest(mixed $first, mixed $second): ?float
++    {
++        $limits = array_filter([$first, $second], fn (mixed $value): bool => is_numeric($value) && (float) $value >= 0);
++
++        return $limits === [] ? null : (float) min($limits);
++    }
++}
+diff --git a/app/Services/EvaluationService.php b/app/Services/EvaluationService.php
+index d93f1e7b42460bda99f389982210d3cb1c1b878b..06397a6c60d6046b5ee6560235bc5403a18c13e4 100644
+--- a/app/Services/EvaluationService.php
++++ b/app/Services/EvaluationService.php
+@@ -60,13 +60,13 @@ class EvaluationService
+         $quality = $this->nullableFloat($data['quality_score'] ?? null);
+         $successScore = $this->nullableFloat($data['success_score'] ?? null);
+         $testPassRate = $this->nullableFloat($data['test_pass_rate'] ?? null);
+-        $testPassed = array_key_exists('test_passed', $data)
++        $testPassed = isset($data['test_passed'])
+             ? (bool) $data['test_passed']
+             : ($testPassRate === null ? null : $testPassRate >= 1.0);
+ 
+-        $quality ??= $testPassRate ?? ($successScore ?? ($run->success ? 1.0 : 0.0));
++        $quality ??= $testPassRate ?? ($testPassed === null ? ($successScore ?? ($run->success ? 1.0 : 0.0)) : ($testPassed ? 1.0 : 0.0));
+         $statusInput = $data['status'] ?? null;
+-        $successScore ??= $statusInput === 'failed' ? 0.0 : ($run->success ? 1.0 : 0.0);
++        $successScore ??= $statusInput === 'failed' ? 0.0 : ($testPassed === null ? ($run->success ? 1.0 : 0.0) : ($testPassed ? 1.0 : 0.0));
+ 
+         $contextEfficiency = $this->nullableFloat($data['context_efficiency_score'] ?? null)
+             ?? $this->contextEfficiency($quality, (int) ($run->input_tokens ?? 0));
+diff --git a/app/Services/ProviderPolicyService.php b/app/Services/ProviderPolicyService.php
+index c33e6327031d26e684d838f6ac3b2d7a6e955a09..c0f95f672db0b4ea404c23ba8b57199deb695f67 100644
+--- a/app/Services/ProviderPolicyService.php
++++ b/app/Services/ProviderPolicyService.php
+@@ -4,6 +4,7 @@ namespace App\Services;
+ 
+ use App\Data\ProviderRoutingDecision;
+ use App\Exceptions\RoutingPolicyException;
++use App\Models\AgentProfile;
+ use App\Models\LlmExperiment;
+ use App\Models\ModelProfile;
+ use App\Models\ModelRanking;
+@@ -12,6 +13,7 @@ use App\Models\NetworkPolicy;
+ use App\Models\ProviderPriceSnapshot;
+ use App\Services\Llm\ProviderWireFormat;
+ use Illuminate\Support\Collection;
++use Illuminate\Support\Facades\DB;
+ use JsonException;
+ 
+ /** Enforces the server-owned external provider allow-list and fallback ladder. */
+@@ -244,6 +246,14 @@ class ProviderPolicyService
+ 
+     public function useCaseFor(string $taskType): ?ModelUseCase
+     {
++        if (str_starts_with($taskType, 'agent.')) {
++            if (! AgentProfile::query()->where('key', AgentTeamPolicyService::POLICY_KEY)->where('type', 'team_policy')->where('status', 'active')->exists()) {
++                return null;
++            }
++            $role = array_search($taskType, AgentTeamPolicyService::TASKS, true);
++
++            return $role === false ? null : ModelUseCase::query()->where('slug', 'agent-'.$role)->where('active', true)->first();
++        }
+         $prefix = explode('.', $taskType)[0];
+         $slug = match ($prefix) {
+             'coding' => 'coding',
+@@ -315,6 +325,17 @@ class ProviderPolicyService
+                 ->where('task_type', $taskType)
+                 ->whereIn('model_profile_id', $profiles->pluck('id'))
+                 ->where('sample_count', '>=', 5)
++                ->when(str_starts_with($taskType, 'agent.'), fn ($query) => $query->whereIn('model_profile_id',
++                    DB::table('evaluation_results as evidence')
++                        ->join('llm_runs as evaluated_run', 'evaluated_run.id', '=', 'evidence.llm_run_id')
++                        ->join('llm_attempts as evaluated_attempt', 'evaluated_attempt.llm_run_id', '=', 'evaluated_run.id')
++                        ->where('evaluated_run.task_type', $taskType)
++                        ->where('evaluated_attempt.status', 'completed')
++                        ->where(fn ($evidence) => $evidence->whereNotNull('evidence.quality_score')->orWhereNotNull('evidence.test_pass_rate'))
++                        ->groupBy('evaluated_attempt.model_profile_id')
++                        ->havingRaw('COUNT(DISTINCT evaluated_run.id) >= 5')
++                        ->select('evaluated_attempt.model_profile_id')
++                ))
+                 ->get()
+                 ->keyBy('model_profile_id');
+             if ($ranking->isEmpty()) {
+diff --git a/app/Services/Proxy/ProxyChatService.php b/app/Services/Proxy/ProxyChatService.php
+index 16b315b0e2fe63f546d1dc32a3e5631c0e917501..b92dbc77bc794c1d51e0ef55313ba5055d4998ae 100644
+--- a/app/Services/Proxy/ProxyChatService.php
++++ b/app/Services/Proxy/ProxyChatService.php
+@@ -6,6 +6,7 @@ use App\Data\Proxy\ProxyChatInput;
+ use App\Data\Proxy\ProxyResponseLimits;
+ use App\Exceptions\RoutingPolicyException;
+ use App\Http\Requests\Api\V1\ProxyChatRequest;
++use App\Services\AgentTeamPolicyService;
+ use App\Services\ApiActor;
+ use App\Services\LlmTelemetryService;
+ use App\Services\ProviderPolicyService;
+@@ -24,6 +25,10 @@ final class ProxyChatService
+ 
+     public function handle(ProxyChatRequest $request, ProxyChatInput $input): Response
+     {
++        if (str_starts_with($input->taskType, 'agent.')
++            && ! hash_equals(app(AgentTeamPolicyService::class)->payload()['revision'], $input->agentTeamPolicyRevision ?? '')) {
++            return response()->json(['message' => 'Die Agenten-Modellkonfiguration wurde seit der Freigabe geändert. Bitte das Team neu laden und freigeben.', 'code' => 'agent_team_policy_changed'], 409);
++        }
+         $admittedUserId = $request->attributes->get('proxyUserId');
+         $userId = is_int($admittedUserId) ? $admittedUserId : $this->actor->userId($request);
+ 
+diff --git a/app/Services/Proxy/ProxyPromptBuilder.php b/app/Services/Proxy/ProxyPromptBuilder.php
+index 21c2efa21f3ab5d418db25cbce0ec6930dee9f03..af5627ed77628676bdc06dab6b03f0efea9d4ab6 100644
+--- a/app/Services/Proxy/ProxyPromptBuilder.php
++++ b/app/Services/Proxy/ProxyPromptBuilder.php
+@@ -16,6 +16,11 @@ final class ProxyPromptBuilder
+     public function prepare(ProxyChatInput $input, array $meta): PreparedProxyRequest
+     {
+         $payload = $input->providerPayload();
++        if (str_starts_with($input->taskType, 'agent.')) {
++            // Some free text endpoints reject even an empty tool contract or choice=none.
++            // Nonempty/executable contracts have already been rejected by the FormRequest.
++            unset($payload['tools'], $payload['tool_choice']);
++        }
+         $prefix = 0;
+ 
+         $adminPrompt = PromptTemplate::query()
+@@ -56,9 +61,9 @@ final class ProxyPromptBuilder
+         }
+ 
+         $role = match ($useCase?->slug) {
+-            'coding' => 'coder',
+-            'planner' => 'planner',
+-            'verifier', 'vision' => 'analyst',
++            'coding', 'agent-coding' => 'coder',
++            'planner', 'agent-planning' => 'planner',
++            'verifier', 'vision', 'agent-review', 'agent-research' => 'analyst',
+             default => 'chat',
+         };
+         $roleMessages = PromptTemplate::activeRolePrompts($role)
+@@ -93,6 +98,7 @@ final class ProxyPromptBuilder
+             taskType: $input->taskType,
+             useCase: $useCase,
+             requiredCapabilities: $requiredCapabilities,
++            agentTeamPolicyRevision: $input->agentTeamPolicyRevision,
+         );
+     }
+ }
+diff --git a/app/Services/Proxy/ProxyProviderGateway.php b/app/Services/Proxy/ProxyProviderGateway.php
+index 9dbbd868396efc6139bdf25c2cdee71c3e44317e..6cee0546535705b005c35aa5f23edd58b7ea3354 100644
+--- a/app/Services/Proxy/ProxyProviderGateway.php
++++ b/app/Services/Proxy/ProxyProviderGateway.php
+@@ -9,6 +9,8 @@ use App\Data\Proxy\ProxyResponseLimits;
+ use App\Models\LlmRun;
+ use App\Models\ModelProfile;
+ use App\Models\NetworkPolicy;
++use App\Models\ProviderPriceSnapshot;
++use App\Services\AgentTeamPolicyService;
+ use App\Services\Llm\ProviderDriverRegistry;
+ use App\Services\Llm\ProviderWireFormat;
+ use App\Services\LlmTelemetryService;
+@@ -58,6 +60,10 @@ final class ProxyProviderGateway
+         $committedCostUsd = 0.0;
+ 
+         foreach ($profiles as $index => [$profile, $credential]) {
++            if (str_starts_with($prepared->taskType, 'agent.')
++                && ! hash_equals(app(AgentTeamPolicyService::class)->payload()['revision'], $prepared->agentTeamPolicyRevision ?? '')) {
++                return $this->policyFailure($run, 'agent_team_policy_changed', 409);
++            }
+             $attemptNo = $index + 1;
+             if ($attemptNo > $routing->maxAttempts) {
+                 break;
+@@ -93,6 +99,19 @@ final class ProxyProviderGateway
+             $providerPayload['model'] = $profile->model_id;
+             $providerPayload['temperature'] = $profile->temperature;
+             $providerPayload['max_tokens'] = $this->outputBudget($profile, $providerPayload, $networkPolicy);
++            if (str_starts_with($prepared->taskType, 'agent.') && $providerName === 'openrouter') {
++                $price = ProviderPriceSnapshot::current('openrouter', $profile->model_id);
++                if ($price === null) {
++                    return $this->policyFailure($run, 'routing_price_unavailable', 503);
++                }
++                // OpenRouter's endpoint price filter uses USD per million tokens.
++                // Request-priced endpoints were not part of the approved token-price estimate.
++                $providerPayload['provider'] = ['max_price' => [
++                    'prompt' => $price->input_per_million,
++                    'completion' => $price->output_per_million,
++                    'request' => 0,
++                ]];
++            }
+ 
+             $attempt = $this->telemetry->startAttempt($run, $profile, $credential, $attemptNo, [
+                 'task_type' => $prepared->taskType,
+diff --git a/config/agent_teams.php b/config/agent_teams.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..61ab5efbddc49bd25e3045d7d83cdfd71ac357b7
+--- /dev/null
++++ b/config/agent_teams.php
+@@ -0,0 +1,14 @@
++<?php
++
++// Dated research baseline; refreshable through the admin's public OpenRouter catalog check.
++return [
++    'researched_at' => '2026-09-07T00:00:00Z',
++    'source' => 'https://openrouter.ai/api/v1/models',
++    'models' => [
++        ['id' => 'cohere/north-mini-code:free', 'name' => 'North Mini Code Free', 'roles' => ['coding'], 'context_window' => 256000, 'input_per_million' => 0, 'output_per_million' => 0, 'data_policy' => 'Provider-Datennutzung vor Freigabe prüfen; Free-Angebot.', 'source' => 'https://cohere.com/blog/north-mini-code'],
++        ['id' => 'poolside/laguna-xs-2.1:free', 'name' => 'Laguna XS 2.1 Free', 'roles' => ['coding'], 'context_window' => 262144, 'input_per_million' => 0, 'output_per_million' => 0, 'data_policy' => 'Free-Endpoint kann Ein- und Ausgaben speichern und für Training verwenden.', 'source' => 'https://openrouter.ai/poolside/laguna-xs-2.1:free'],
++        ['id' => 'nvidia/nemotron-3.5-lightning:free', 'name' => 'Nemotron 3.5 Lightning Free', 'roles' => ['research', 'review'], 'context_window' => 1000000, 'input_per_million' => 0, 'output_per_million' => 0, 'data_policy' => 'Free-Endpoint kann Ein- und Ausgaben speichern und für Training verwenden.', 'source' => 'https://openrouter.ai/nvidia/nemotron-3.5-lightning:free'],
++        ['id' => 'nvidia/nemotron-3-super-120b-a12b:free', 'name' => 'Nemotron 3 Super Free', 'roles' => ['review', 'research'], 'context_window' => 262144, 'input_per_million' => 0, 'output_per_million' => 0, 'data_policy' => 'Free-Endpoint kann Ein- und Ausgaben speichern und für Training verwenden.', 'source' => 'https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free'],
++        ['id' => 'deepseek/deepseek-v4-flash-0731', 'name' => 'DeepSeek V4 Flash 0731', 'roles' => ['planning'], 'context_window' => 1048576, 'input_per_million' => 0.14, 'output_per_million' => 0.28, 'data_policy' => 'Datennutzung hängt vom gewählten Provider-Endpoint ab; vor Freigabe prüfen.', 'source' => 'https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731'],
++    ],
++];
+diff --git a/resources/views/admin/agent-teams.blade.php b/resources/views/admin/agent-teams.blade.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..99046cca190c303e8997018f6feaa8e05ad00a58
+--- /dev/null
++++ b/resources/views/admin/agent-teams.blade.php
+@@ -0,0 +1,62 @@
++<section class="luczor-card mb-6 p-5">
++    <h2 class="text-lg font-semibold">Agententeams und Modellrecherche</h2>
++    <p class="mt-2 text-sm text-slate-400">Das lokale Modell koordiniert und führt freigegebene Tools aus. Externe Modelle liefern begrenzte Recherche, Codeentwürfe und Prüfberichte. Nur ausdrücklich freigegebener Kontext verlässt den Desktop.</p>
++    <div class="mt-4 grid gap-4 lg:grid-cols-2">
++        <form method="POST" action="{{ route('dashboard.agent-teams.prepare') }}" class="space-y-3 rounded border border-slate-800 p-4">
++            @csrf
++            <label class="block text-sm" for="agent-credential">Vorhandener OpenRouter-Zugang</label>
++            <select id="agent-credential" name="provider_credential_id" class="luczor-input" required>
++                <option value="">Zugang auswählen</option>
++                @foreach($providers->where('active', true)->where('provider', 'openrouter')->where('request_format', 'chat_completions') as $credential)
++                    <option value="{{ $credential->id }}">{{ $credential->label }}</option>
++                @endforeach
++            </select>
++            <button class="luczor-btn">Teams ergänzen</button>
++            <p class="text-xs text-slate-500">Ergänzt fehlende Rollen, Modelle und Kostenregeln. Bestehende oder deaktivierte Profile und bearbeitete Routingketten bleiben erhalten. Free-Rollen haben 0 USD Kostenbudget, externe Planung höchstens 0,05 USD je Anfrage.</p>
++        </form>
++        <form method="POST" action="{{ route('dashboard.agent-teams.update') }}" class="space-y-3 rounded border border-slate-800 p-4">
++            @csrf @method('PUT')
++            <input type="hidden" name="enabled" value="0">
++            <label class="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" value="1" @checked($agentTeamPolicy['enabled'])> Externe Agententeams verfügbar</label>
++            <label class="block text-sm" for="agent-preset">Standardteam</label>
++            <select id="agent-preset" name="default_preset" class="luczor-input">
++                @foreach($agentTeamPolicy['presets'] as $preset)<option value="{{ $preset['id'] }}" @selected($agentTeamPolicy['default_preset'] === $preset['id'])>{{ $preset['label'] }}</option>@endforeach
++            </select>
++            <label class="block text-sm" for="agent-parallel">Gleichzeitige externe Aufgaben</label>
++            <input id="agent-parallel" name="max_parallel" type="number" min="1" max="3" value="{{ $agentTeamPolicy['presets'][0]['max_parallel'] }}" class="luczor-input" required>
++            <button class="luczor-btn-secondary">Team-Einstellungen speichern</button>
++        </form>
++    </div>
++    <div class="mt-4 flex flex-wrap items-center gap-3">
++        <form method="POST" action="{{ route('dashboard.agent-teams.research') }}">@csrf<button class="luczor-btn-secondary">OpenRouter-Katalog neu prüfen</button></form>
++        <span class="text-xs text-slate-400">Recherchestand: {{ $agentModelCatalog['researched_at'] }} · Preisstand 14 Tage gültig; danach neu prüfen und ergänzen.</span>
++        <a class="text-sm text-cyan-300 underline" href="{{ route('admin.page', 'models') }}">Rollenketten und Modelle bearbeiten</a>
++    </div>
++    <p class="mt-3 text-xs text-amber-200">Startkandidaten aus aktueller Recherche, noch keine nachgewiesenen Luczor-Sieger. Free-Angebote können ausfallen oder begrenzt sein; es gibt keinen automatischen Wechsel zu kostenpflichtigen Spezialisten. Free-Provider können Daten für Training verwenden. Verfügbarkeit und Preise sind zeitabhängig.</p>
++    <div class="mt-4 grid gap-3 lg:grid-cols-2">
++        @foreach($agentModelCatalog['models'] as $model)
++            <article class="min-w-0 rounded border border-slate-800 p-3 text-sm">
++                <h3 class="font-semibold text-cyan-100">{{ $model['name'] }}</h3>
++                <p class="break-all font-mono text-xs text-slate-400">{{ $model['id'] }}</p>
++                <p class="mt-2">{{ implode(', ', $model['roles']) }} · {{ number_format($model['context_window'], 0, ',', '.') }} Kontext-Tokens</p>
++                <p>{{ number_format($model['input_per_million'], 3, ',', '.') }} / {{ number_format($model['output_per_million'], 3, ',', '.') }} USD je 1 Mio. Eingabe-/Ausgabe-Tokens</p>
++                <p class="mt-2 text-xs text-slate-400">{{ $model['data_policy'] }}</p>
++                <a class="mt-2 inline-block text-xs text-cyan-300 underline" href="{{ $model['source'] }}" target="_blank" rel="noopener noreferrer">Quelle</a>
++            </article>
++        @endforeach
++    </div>
++</section>
++<section class="luczor-card mb-6 overflow-x-auto p-5">
++    <h2 class="font-semibold">Rollenvergleich aus ausgeführten Aufgaben</h2>
++    <p class="mt-2 text-sm text-slate-400">Automatische Rangfolge erst ab fünf unterschiedlichen bewerteten Aufgaben pro Modell und Rolle. Technisch erfolgreiche Antworten allein belegen keine Qualität. Modellbewertungen sind Schätzungen; eine bestandene Prüfung erfordert tatsächliche Testergebnisse.</p>
++    <table class="mt-4 min-w-full text-left text-xs">
++        <thead class="text-slate-500"><tr><th class="pr-3">Rolle / Modell</th><th class="pr-3">Versuche</th><th class="pr-3">Technischer Erfolg</th><th class="pr-3">Qualität</th><th class="pr-3">Testquote</th><th class="pr-3">Ø Latenz</th><th>USD / Erfolg</th></tr></thead>
++        <tbody>
++            @forelse($modelRankings->filter(fn ($ranking) => str_starts_with($ranking->task_type, 'agent.')) as $ranking)
++                <tr class="border-t border-slate-800"><td class="py-3 pr-3"><b>{{ $ranking->task_type }}</b><div class="break-all text-slate-400">{{ $ranking->model_id }}</div></td><td>{{ $ranking->sample_count }}</td><td>{{ number_format($ranking->success_rate * 100, 0) }}%</td><td>{{ $ranking->quality_score === null ? 'unbewertet' : number_format($ranking->quality_score * 100, 0).'%' }}</td><td>{{ $ranking->test_pass_rate === null ? 'ungeprüft' : number_format($ranking->test_pass_rate * 100, 0).'%' }}</td><td>{{ number_format($ranking->avg_latency_ms, 0, ',', '.') }} ms</td><td>{{ $ranking->cost_per_success === null ? 'unbekannt' : number_format($ranking->cost_per_success, 6, ',', '.') }}</td></tr>
++            @empty
++                <tr><td colspan="7" class="py-3 text-slate-400">Noch keine Rollenmessungen. Bis dahin gilt die recherchierte Admin-Reihenfolge.</td></tr>
++            @endforelse
++        </tbody>
++    </table>
++</section>
+diff --git a/resources/views/admin/page.blade.php b/resources/views/admin/page.blade.php
+index 7406dac6f96e0a2aca3f6130dd4622c85f545ab5..1ea618b91f7dfe86c0d4c178fc9a7ac5b3cc6570 100644
+--- a/resources/views/admin/page.blade.php
++++ b/resources/views/admin/page.blade.php
+@@ -203,6 +203,7 @@ function setChainStatus(list, message, state){
+     @elseif($page === 'workflows')
+         @include('admin.workflows')
+     @elseif($page === 'agents')
++        @include('admin.agent-teams')
+         <section class="luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Agent-Läufe</h2>
+             <table class="mt-3 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th>Ziel / Task</th><th>Status</th><th>Modell</th><th>Aufgaben</th><th>Gestartet</th></tr></thead>
+             <tbody>@forelse($agentRuns as $run)<tr class="border-t border-slate-800"><td class="py-2"><span class="text-cyan-100">{{ \Illuminate\Support\Str::limit($run->goal ?? $run->task_type, 60) }}</span><div class="text-slate-500">{{ $run->task_type }}</div></td><td>{{ $run->status }}</td><td>{{ $run->model_id ?? '—' }}</td><td>{{ $run->tasks_count }}</td><td>{{ optional($run->started_at)->format('d.m. H:i') ?? '—' }}</td></tr>@empty<tr><td colspan="5" class="py-3 text-slate-500">Noch keine Agent-Läufe.</td></tr>@endforelse</tbody></table>
+diff --git a/routes/api.php b/routes/api.php
+index a5f9b621c4e39d1bec68afca8f3eea1559b6f294..e69f1af14a4bc5bc20a9b89d9863f8e3f859e1c7 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -3,6 +3,7 @@
+ use App\Http\Controllers\Api\V1\AgentController;
+ use App\Http\Controllers\Api\V1\AgentEventController;
+ use App\Http\Controllers\Api\V1\AgentRunController;
++use App\Http\Controllers\Api\V1\AgentTeamPolicyController;
+ use App\Http\Controllers\Api\V1\AppNotificationController;
+ use App\Http\Controllers\Api\V1\BootstrapController;
+ use App\Http\Controllers\Api\V1\ContextController;
+@@ -48,6 +49,7 @@ Route::prefix('v1')->group(function () {
+     Route::get('/voice/releases/{version}/{file}', VoiceAssetController::class)
+         ->where(['version' => '[A-Za-z0-9._-]+', 'file' => '[A-Za-z0-9._-]+'])
+         ->name('api.v1.voice.asset');
++    Route::get('/agent-team-policy', AgentTeamPolicyController::class)->middleware('luczor.api:settings.read')->name('api.v1.agent-team-policy');
+     Route::get('/agents', [AgentController::class, 'index'])->middleware('luczor.api:brain.read')->name('api.v1.agents.index');
+     Route::post('/agents', [AgentController::class, 'store'])->middleware('luczor.api:brain.write')->name('api.v1.agents.store');
+     Route::post('/github/webhook', [GithubController::class, 'webhook'])->name('api.v1.github.webhook');
+diff --git a/routes/web.php b/routes/web.php
+index b4098a9ca692d6c1c0aa716df2ab403b5d1510ac..42cbae9e0838c4ebd1b0c0bd4d848c59aca0b769 100644
+--- a/routes/web.php
++++ b/routes/web.php
+@@ -1,5 +1,6 @@
+ <?php
+ 
++use App\Http\Controllers\Admin\AgentTeamConfigurationController;
+ use App\Http\Controllers\Admin\ApiKeyController;
+ use App\Http\Controllers\Admin\DashboardController;
+ use App\Http\Controllers\Admin\ModelConfigurationController;
+@@ -38,6 +39,9 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
+         Route::post('/dashboard/network-policies', [ModelConfigurationController::class, 'storeNetworkPolicy'])->name('dashboard.network-policies.store');
+         Route::post('/dashboard/llm-experiments', [ModelConfigurationController::class, 'storeLlmExperiment'])->name('dashboard.llm-experiments.store');
+         Route::post('/dashboard/agent-profiles', [ModelConfigurationController::class, 'storeAgentProfile'])->name('dashboard.agent-profiles.store');
++        Route::post('/dashboard/agent-teams/research', [AgentTeamConfigurationController::class, 'research'])->name('dashboard.agent-teams.research');
++        Route::post('/dashboard/agent-teams/prepare', [AgentTeamConfigurationController::class, 'prepare'])->name('dashboard.agent-teams.prepare');
++        Route::put('/dashboard/agent-teams', [AgentTeamConfigurationController::class, 'update'])->name('dashboard.agent-teams.update');
+ 
+         Route::post('/dashboard/personas', [PersonaSkillController::class, 'storePersona'])->name('dashboard.personas.store');
+         Route::patch('/dashboard/personas/{persona}', [PersonaSkillController::class, 'updatePersona'])->name('dashboard.personas.update');
