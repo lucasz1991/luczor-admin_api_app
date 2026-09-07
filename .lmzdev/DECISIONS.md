@@ -116,3 +116,10 @@ Record durable decisions with date, context, decision, and consequences.
 - Edits use stable record IDs so renaming never duplicates a skill or changes its global/user scope. Server proxy and desktop local inference share the actor-scoped profile contract. Hidden reasoning is not requested or fabricated; approved personality requests short observable progress and verifiable reasons.
 
 - 2026-09-07: Öffentliche lokale Sprachausgabe nutzt separate zielgebundene Zustimmung. V2-Stimmen kommen aus dem freigegebenen Serverkatalog; WAV je Satz bei Servertempo 1 und Client-Wiedergabetempo. Piper bleibt Standard; fehlende Stimme ohne stillen Ersatz. Wortposition ausdrücklich näherungsweise. Bestehende Debug-Sitzung bleibt offen.
+
+## 2026-09-07 | External specialists remain bounded by local control
+
+- Local orchestration and native execution stay in the desktop. External agent.* roles accept only explicitly approved text. The server selects models and binds every attempt to the approved team policy revision.
+- Free roles have separate zero-cost policies and OpenRouter endpoint price caps. Optional paid planning is a separate preset; no paid fallback is added to Free chains.
+- Role ranking requires five distinct evaluated tasks; HTTP success and duplicate reviews do not create quality evidence. Research baselines are candidate recommendations, not measured winners.
+

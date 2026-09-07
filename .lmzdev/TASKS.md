@@ -27,3 +27,4 @@
 | Authorized Plesk release d49abf0, production baseline and HTTPS acceptance | Codex/root + deploy_review | completed-live | 2026-09-06T12:59:13Z |
 
 - [x] 2026-09-07: Zwischenkommentare mit bestätigter lokaler TTS-Freigabe, Wortmarkierung, V2-Stimmenauswahl und Serverdeploy a00d2cb; Releasebuild/Server-/Browserchecks abgeschlossen.
+| Researched external agent teams, admin presets, revision binding and qualified role ranking | Codex/admin_model_architecture | completed-local | 2026-09-07T00:30:00Z |

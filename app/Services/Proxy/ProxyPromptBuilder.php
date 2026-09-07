@@ -98,6 +98,7 @@ final class ProxyPromptBuilder
             taskType: $input->taskType,
             useCase: $useCase,
             requiredCapabilities: $requiredCapabilities,
+            agentTeamPolicyRevision: $input->agentTeamPolicyRevision,
         );
     }
 }

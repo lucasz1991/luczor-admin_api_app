@@ -27,6 +27,7 @@ final readonly class ProxyChatInput
         public ?string $branch,
         public ?string $commitSha,
         public int $toolCallCount,
+        public ?string $agentTeamPolicyRevision = null,
     ) {}
 
     /** @param array<string,mixed> $validated */
@@ -54,6 +55,7 @@ final readonly class ProxyChatInput
             branch: self::nullableString($validated['branch'] ?? null),
             commitSha: self::nullableString($validated['commit_sha'] ?? null),
             toolCallCount: (int) ($validated['tool_call_count'] ?? 0),
+            agentTeamPolicyRevision: self::nullableString($validated['agent_team_policy_revision'] ?? null),
         );
     }
 

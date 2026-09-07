@@ -9,6 +9,8 @@ use App\Models\ModelUseCaseEntry;
 use App\Models\NetworkPolicy;
 use App\Models\ProviderCredential;
 use App\Models\ProviderPriceSnapshot;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -22,7 +24,11 @@ final class AgentTeamDefaultsService
     /** Public metadata only: never attach a stored provider credential to this GET. @return array<string,mixed> */
     public function refreshResearch(): array
     {
-        $response = Http::connectTimeout(10)->timeout(30)->acceptJson()->get('https://openrouter.ai/api/v1/models')->throw();
+        try {
+            $response = Http::connectTimeout(10)->timeout(30)->acceptJson()->get('https://openrouter.ai/api/v1/models')->throw();
+        } catch (ConnectionException|RequestException) {
+            throw ValidationException::withMessages(['research' => 'Der öffentliche OpenRouter-Katalog ist derzeit nicht erreichbar. Die gespeicherte Recherche bleibt erhalten.']);
+        }
         $rows = $response->json('data');
         if (! is_array($rows)) {
             throw ValidationException::withMessages(['research' => 'OpenRouter hat keinen gültigen Modellkatalog geliefert.']);
@@ -40,7 +46,7 @@ final class AgentTeamDefaultsService
             if ($input < 0 || $output < 0 || (str_ends_with($baseline['id'], ':free') && ($input !== 0.0 || $output !== 0.0))) {
                 continue;
             }
-            $models[] = array_merge($baseline, ['input_per_million' => $input, 'output_per_million' => $output, 'context_window' => min(2000000, (int) $live['context_length'])]);
+            $models[] = array_merge($baseline, ['input_per_million' => $input, 'output_per_million' => $output, 'context_window' => min(2000000, (int) $baseline['context_window'], (int) $live['context_length'])]);
         }
         if ($models === []) {
             throw ValidationException::withMessages(['research' => 'Keiner der geprüften Kandidaten ist aktuell mit gültigen Preisen verfügbar.']);

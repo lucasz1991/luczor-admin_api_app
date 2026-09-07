@@ -18,12 +18,16 @@ use App\Models\User;
 use App\Services\AgentTeamDefaultsService;
 use App\Services\AgentTeamPolicyService;
 use App\Services\EvaluationService;
+use App\Services\ProviderHttpClientFactory;
 use App\Services\ProviderPolicyService;
 use App\Services\Proxy\ProxyPromptBuilder;
+use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Mockery;
 use Tests\TestCase;
 
 class AgentTeamPolicyTest extends TestCase
@@ -117,6 +121,17 @@ class AgentTeamPolicyTest extends TestCase
         $this->assertDatabaseCount('model_profiles', 0);
     }
 
+    public function test_unavailable_public_catalog_preserves_the_last_research_and_shows_a_form_error(): void
+    {
+        $catalog = config('agent_teams');
+        AgentProfile::create(['key' => AgentTeamPolicyService::CATALOG_KEY, 'name' => 'Research', 'type' => 'model_catalog', 'status' => 'draft', 'config' => $catalog]);
+        Http::fake(['openrouter.ai/api/v1/models' => Http::response([], 503)]);
+        $admin = User::factory()->create(['role' => 'admin', 'email_verified_at' => now()]);
+        $this->actingAs($admin)->from(route('admin.page', 'agents'))->post(route('dashboard.agent-teams.research'))
+            ->assertRedirect(route('admin.page', 'agents'))->assertSessionHasErrors('research');
+        $this->assertSame($catalog, app(AgentTeamPolicyService::class)->catalog());
+    }
+
     public function test_agent_proxy_rejects_tools_and_executable_history_before_any_provider_call(): void
     {
         $this->credential();
@@ -136,6 +151,75 @@ class AgentTeamPolicyTest extends TestCase
         $prepared = app(ProxyPromptBuilder::class)->prepare($input, []);
         $this->assertArrayNotHasKey('tools', $prepared->payload);
         $this->assertArrayNotHasKey('tool_choice', $prepared->payload);
+    }
+
+    public function test_policy_revision_binds_cost_limits_models_and_provider_changes(): void
+    {
+        $credential = $this->credential();
+        app(AgentTeamDefaultsService::class)->prepare($credential->id);
+        $service = app(AgentTeamPolicyService::class);
+        $before = $service->payload();
+        $this->assertSame($before['revision'], $service->payload()['revision']);
+        $this->assertEquals(0.05, $before['models_by_role']['planning']['max_cost_usd']);
+        $this->assertSame(4096, $before['models_by_role']['planning']['max_output_tokens']);
+        NetworkPolicy::where('key', 'agent.planning')->update(['max_cost_usd' => 0.1]);
+        $changed = $service->payload()['revision'];
+        $this->assertNotSame($before['revision'], $changed);
+        $credential->update(['base_url' => 'https://openrouter.ai/api/changed']);
+        $this->assertNotSame($changed, $service->payload()['revision']);
+    }
+
+    public function test_stale_or_missing_policy_revision_never_dispatches_a_provider_request(): void
+    {
+        app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);
+        $base = ['task_type' => 'agent.coding', 'messages' => [['role' => 'user', 'content' => 'Entwurf']]];
+        $token = $this->token(['proxy.use']);
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', $base)->assertUnprocessable()->assertJsonValidationErrors('agent_team_policy_revision');
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/proxy/chat', $base + ['agent_team_policy_revision' => str_repeat('0', 64)])
+            ->assertStatus(409)->assertJsonPath('code', 'agent_team_policy_changed');
+        $this->assertDatabaseCount('llm_attempts', 0);
+    }
+
+    public function test_free_specialist_proxy_sends_a_text_only_price_capped_provider_request(): void
+    {
+        app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->withArgs(function (string $method, string $url, array $options): bool {
+            $this->assertSame('cohere/north-mini-code:free', $options['json']['model']);
+            $this->assertArrayNotHasKey('tools', $options['json']);
+            $this->assertArrayNotHasKey('tool_choice', $options['json']);
+            $this->assertEquals(['prompt' => 0, 'completion' => 0, 'request' => 0], $options['json']['provider']['max_price']);
+            $this->assertSame(4096, $options['json']['max_tokens']);
+
+            return true;
+        })->andReturn(new Response(200, ['Content-Type' => 'application/json'], json_encode(['choices' => [['message' => ['role' => 'assistant', 'content' => 'Entwurf'], 'finish_reason' => 'stop']], 'usage' => ['prompt_tokens' => 12, 'completion_tokens' => 3]])));
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+        $this->withHeader('X-Api-Key', $this->token(['proxy.use']))->postJson('/api/v1/proxy/chat', [
+            'task_type' => 'agent.coding', 'agent_team_policy_revision' => app(AgentTeamPolicyService::class)->payload()['revision'],
+            'messages' => [['role' => 'user', 'content' => 'Entwurf']], 'tools' => [], 'tool_choice' => 'none',
+        ])->assertOk()->assertHeader('X-Luczor-Request-Id');
+        $this->assertDatabaseHas('llm_runs', ['task_type' => 'agent.coding', 'model_id' => 'cohere/north-mini-code:free']);
+    }
+
+    public function test_changed_policy_between_free_fallbacks_prevents_the_second_dispatch(): void
+    {
+        app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->once()->andReturnUsing(function (): Response {
+            NetworkPolicy::where('key', 'agent.free')->update(['max_output_tokens' => 1000]);
+
+            return new Response(429, ['Content-Type' => 'application/json'], '{"error":"limited"}');
+        });
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->once()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+        $this->withHeader('X-Api-Key', $this->token(['proxy.use']))->postJson('/api/v1/proxy/chat', [
+            'task_type' => 'agent.coding', 'agent_team_policy_revision' => app(AgentTeamPolicyService::class)->payload()['revision'],
+            'messages' => [['role' => 'user', 'content' => 'Entwurf']],
+        ])->assertStatus(409)->assertJsonPath('code', 'agent_team_policy_changed');
+        $this->assertDatabaseCount('llm_attempts', 1);
     }
 
     public function test_ranked_selection_requires_five_distinct_evaluations_not_http_success_or_duplicate_reviews(): void

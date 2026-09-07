@@ -6,6 +6,7 @@ use App\Data\Proxy\ProxyChatInput;
 use App\Data\Proxy\ProxyResponseLimits;
 use App\Exceptions\RoutingPolicyException;
 use App\Http\Requests\Api\V1\ProxyChatRequest;
+use App\Services\AgentTeamPolicyService;
 use App\Services\ApiActor;
 use App\Services\LlmTelemetryService;
 use App\Services\ProviderPolicyService;
@@ -24,6 +25,10 @@ final class ProxyChatService
 
     public function handle(ProxyChatRequest $request, ProxyChatInput $input): Response
     {
+        if (str_starts_with($input->taskType, 'agent.')
+            && ! hash_equals(app(AgentTeamPolicyService::class)->payload()['revision'], $input->agentTeamPolicyRevision ?? '')) {
+            return response()->json(['message' => 'Die Agenten-Modellkonfiguration wurde seit der Freigabe geändert. Bitte das Team neu laden und freigeben.', 'code' => 'agent_team_policy_changed'], 409);
+        }
         $admittedUserId = $request->attributes->get('proxyUserId');
         $userId = is_int($admittedUserId) ? $admittedUserId : $this->actor->userId($request);
 

@@ -43,6 +43,7 @@ class ProxyChatRequest extends FormRequest
             'stream' => ['nullable', 'boolean'],
             'input_source' => ['nullable', 'string', 'in:keyboard,push_to_talk,hands_free'],
             'task_type' => ['nullable', 'string', 'max:120'],
+            'agent_team_policy_revision' => ['nullable', 'string', 'regex:/^[a-f0-9]{64}$/'],
             'client_id' => ['nullable', 'string', 'max:120'],
             'project_id' => ['nullable', 'string', 'max:120'],
             'workflow_id' => ['nullable', 'string', 'max:120'],
@@ -85,7 +86,10 @@ class ProxyChatRequest extends FormRequest
     {
         $validator->after(function (Validator $validator): void {
             $agentTask = str_starts_with((string) $this->input('task_type', ''), 'agent.');
-            if ($agentTask && ($this->filled('tools') || ! in_array($this->input('tool_choice'), [null, 'none'], true))) {
+            if ($agentTask && ! $this->filled('agent_team_policy_revision')) {
+                $validator->errors()->add('agent_team_policy_revision', 'Agent specialists require the exact approved team policy revision.');
+            }
+            if ($agentTask && (! empty($this->input('tools')) || ! in_array($this->input('tool_choice'), [null, 'none'], true))) {
                 $validator->errors()->add('tools', 'Agent specialists accept text tasks only; tools remain under local Luczor control.');
             }
             $messages = $this->input('messages');

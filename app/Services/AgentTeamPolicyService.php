@@ -32,16 +32,24 @@ final class AgentTeamPolicyService
         $parallel = max(1, min(3, (int) ($config['max_parallel'] ?? 2)));
         $catalog = $this->catalog();
         $modelsByRole = [];
+        $bindings = [];
         foreach (self::TASKS as $role => $taskType) {
             $case = ModelUseCase::query()->where('slug', 'agent-'.$role)->with('entries.modelProfile.credential')->first();
+            $network = $case ? NetworkPolicy::query()->where('key', $case->network_policy_key)->first() : null;
+            $bindings[$role] = ['case' => $case?->only(['active', 'policy_version', 'routing_strategy', 'max_attempts', 'max_input_tokens', 'max_cost_usd', 'prompt_template_key', 'network_policy_key']),
+                'network' => $network?->only(['status', 'max_attempts', 'max_cost_usd', 'max_input_tokens', 'max_output_tokens', 'request_timeout_ms', 'connect_timeout_ms', 'backoff_ms', 'config']), 'entries' => []];
             $candidates = [];
             foreach ($case->entries ?? [] as $entry) {
                 $model = $entry->modelProfile;
+                $price = $model ? ProviderPriceSnapshot::current($model->provider, $model->model_id) : null;
+                $bindings[$role]['entries'][] = ['entry' => $entry->only(['active', 'sort_order']),
+                    'model' => $model?->only(['id', 'model_id', 'provider', 'active', 'temperature', 'max_tokens', 'context_window', 'capabilities']),
+                    'credential' => $model?->credential?->only(['id', 'provider', 'active', 'base_url', 'request_format']),
+                    'price' => $price?->only(['input_per_million', 'output_per_million', 'cache_read_per_million', 'cache_write_per_million', 'valid_from', 'valid_until'])];
                 if (! $entry->active || ! $model?->active || ! $model->credential?->active) {
                     continue;
                 }
                 $info = collect($catalog['models'])->firstWhere('id', $model->model_id) ?? [];
-                $price = ProviderPriceSnapshot::current($model->provider, $model->model_id);
                 if ($price === null) {
                     continue;
                 }
@@ -52,8 +60,11 @@ final class AgentTeamPolicyService
                     'data_policy' => $info['data_policy'] ?? 'Provider-Datennutzung vor Freigabe prüfen.',
                 ];
             }
-            $networkReady = $case && NetworkPolicy::query()->where('key', $case->network_policy_key)->where('status', 'active')->exists();
-            $modelsByRole[$role] = ['task_type' => $taskType, 'candidates' => $candidates, 'ready' => $case?->active && $networkReady && $candidates !== []];
+            $networkReady = $network?->status === 'active';
+            $modelsByRole[$role] = ['task_type' => $taskType, 'candidates' => $candidates, 'ready' => $case?->active && $networkReady && $candidates !== [],
+                'max_cost_usd' => $this->tightest($case?->max_cost_usd, $network?->max_cost_usd),
+                'max_output_tokens' => $network?->max_output_tokens === null ? null : (int) $network->max_output_tokens,
+                'max_attempts' => $this->tightest($case?->max_attempts, $network?->max_attempts)];
         }
         $specialists = [];
         foreach (self::TASKS as $role => $taskType) {
@@ -62,7 +73,7 @@ final class AgentTeamPolicyService
         $free = $specialists;
         $free['planning']['target'] = 'local';
 
-        return [
+        $payload = [
             'version' => 1,
             'enabled' => $profile?->status === 'active',
             'default_preset' => $default,
@@ -74,5 +85,15 @@ final class AgentTeamPolicyService
             'evaluation' => ['minimum_samples' => 5, 'requires_quality_evidence' => true, 'model_review_is_estimate' => true],
             'researched_at' => $catalog['researched_at'],
         ];
+        $payload['revision'] = hash('sha256', json_encode([$payload, $bindings], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION));
+
+        return $payload;
+    }
+
+    private function tightest(mixed $first, mixed $second): ?float
+    {
+        $limits = array_filter([$first, $second], fn (mixed $value): bool => is_numeric($value) && (float) $value >= 0);
+
+        return $limits === [] ? null : (float) min($limits);
     }
 }

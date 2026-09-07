@@ -9,6 +9,8 @@ use App\Data\Proxy\ProxyResponseLimits;
 use App\Models\LlmRun;
 use App\Models\ModelProfile;
 use App\Models\NetworkPolicy;
+use App\Models\ProviderPriceSnapshot;
+use App\Services\AgentTeamPolicyService;
 use App\Services\Llm\ProviderDriverRegistry;
 use App\Services\Llm\ProviderWireFormat;
 use App\Services\LlmTelemetryService;
@@ -58,6 +60,10 @@ final class ProxyProviderGateway
         $committedCostUsd = 0.0;
 
         foreach ($profiles as $index => [$profile, $credential]) {
+            if (str_starts_with($prepared->taskType, 'agent.')
+                && ! hash_equals(app(AgentTeamPolicyService::class)->payload()['revision'], $prepared->agentTeamPolicyRevision ?? '')) {
+                return $this->policyFailure($run, 'agent_team_policy_changed', 409);
+            }
             $attemptNo = $index + 1;
             if ($attemptNo > $routing->maxAttempts) {
                 break;
@@ -93,6 +99,19 @@ final class ProxyProviderGateway
             $providerPayload['model'] = $profile->model_id;
             $providerPayload['temperature'] = $profile->temperature;
             $providerPayload['max_tokens'] = $this->outputBudget($profile, $providerPayload, $networkPolicy);
+            if (str_starts_with($prepared->taskType, 'agent.') && $providerName === 'openrouter') {
+                $price = ProviderPriceSnapshot::current('openrouter', $profile->model_id);
+                if ($price === null) {
+                    return $this->policyFailure($run, 'routing_price_unavailable', 503);
+                }
+                // OpenRouter's endpoint price filter uses USD per million tokens.
+                // Request-priced endpoints were not part of the approved token-price estimate.
+                $providerPayload['provider'] = ['max_price' => [
+                    'prompt' => $price->input_per_million,
+                    'completion' => $price->output_per_million,
+                    'request' => 0,
+                ]];
+            }
 
             $attempt = $this->telemetry->startAttempt($run, $profile, $credential, $attemptNo, [
                 'task_type' => $prepared->taskType,

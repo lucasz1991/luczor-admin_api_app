@@ -83,3 +83,14 @@
 - 1083 Frontendtests plus 2 zusätzliche Settings-Regressionen (7 Settings-Tests im Nachlauf), 508 Backendtests/3444 Assertions, Typecheck/Lint/Format/Pint/gezieltes PHPStan bestanden. Browser mit echter Audiodatei bei Desktop/320px geprüft; keine neue native Modell-/Mikrofonabnahme.
 - Release ohne Bundle: E:/projekte/luczor/app/src-tauri/target/release/tauri-app.exe, 14590464 Bytes, SHA256 8CE0F4E164B47C7C4FA91349176688CE92C04001412DCBE969786DDD805EB232. Laufende Debug-App PID95888 erhalten. Prüftabs und eigener Vite1444 geschlossen.
 - Bericht: app/.lmzdev/artifacts/reports/2026-09-07-commentary-read-aloud.md; Bedienung: app/docs/assistant-profile-and-streaming.md. Kein offenes Arbeitspaket dieser Erweiterung; Nutzer muss zum neuen Release wechseln.
+
+## 2026-09-07T00:30:00Z | Codex/admin_model_architecture -> root | completed-local
+
+- Implemented researched agent-team presets, public policy discovery, role-specific proxy routing, admin configuration/research preview and idempotent setup. Default free: local planner plus Free coding/research/review; optional budget planner DeepSeek V4 Flash 0731. No schema migration.
+- Policy revision binds role models, prices, data notices, provider destination/config and budgets; required agent_team_policy_revision checked before admission and every provider attempt. External agent requests are text-only; no native tool contracts or tool history. OpenRouter endpoint max_price is bound to the server snapshot, with zero per-request fees.
+- Adaptive ranking requires five distinct evaluated tasks per role/model. HTTP success and duplicate evaluations do not qualify alone. Nullable test results remain unknown; actual failed tests are not inferred as quality success.
+- Verified: complete Laravel suite 525 tests / 3546 assertions; final focused suite after catalog outage handling 49 tests / 316 assertions (18 new team tests included). Full PHPStan and Pint passed, followed by focused PHPStan/Pint for the last metadata change. Admin Vite production build and git diff --check passed.
+- Browser: isolated synthetic in-memory SQLite admin preview, keyboard preset selection, numeric setting and pointer save interception; desktop and 390px mobile layout inspected, no document overflow. The fixture makes no persistent writes. Preview tab, viewport override and own port9031 server cleaned up. Only fixture favicon404 observed.
+- Existing HEAD advanced externally to 9595c8f during implementation; this agent did not commit or undo it. Revision/provider hardening is still an additive dirty delta above that commit.
+- No live server changes, migration, provider inference, paid requests, credentials inspection, native app restart or deployment. Deployment/actual endpoint and model acceptance remains with root/user.
+- Main report: docs/agent-teams.md; tests/Feature/AgentTeamPolicyTest.php. Source ownership released after this handoff.

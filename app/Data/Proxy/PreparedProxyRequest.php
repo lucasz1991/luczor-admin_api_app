@@ -17,5 +17,6 @@ final readonly class PreparedProxyRequest
         public string $taskType,
         public ?ModelUseCase $useCase,
         public array $requiredCapabilities,
+        public ?string $agentTeamPolicyRevision = null,
     ) {}
 }
