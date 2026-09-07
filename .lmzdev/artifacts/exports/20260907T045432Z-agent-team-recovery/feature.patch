@@ -1,0 +1,298 @@
+diff --git a/app/Http/Controllers/Api/V1/ConversationController.php b/app/Http/Controllers/Api/V1/ConversationController.php
+index eff7ac68f935c5fa99d35a100088c0da9cea7b64..6eda7717bdcac278e7eba422f60a639adcee40f2 100644
+--- a/app/Http/Controllers/Api/V1/ConversationController.php
++++ b/app/Http/Controllers/Api/V1/ConversationController.php
+@@ -15,36 +15,92 @@ class ConversationController extends Controller
+     {
+         $data = $request->validate([
+             'project_id' => ['nullable', 'string', 'max:190'],
++            'external_id' => ['nullable', 'uuid'],
+         ]);
+ 
+         $query = Conversation::where('user_id', $request->user()->id)->whereNull('archived_at');
+         if (! empty($data['project_id'])) {
+             $project = app(ApiActor::class)->project($request, $data['project_id']);
+-            $query->where('project_ref_id', $project?->id);
++            $project ? $query->where('project_ref_id', $project->id) : $query->whereRaw('1 = 0');
++        }
++        if (! empty($data['external_id'])) {
++            $query->where('external_id', $data['external_id']);
+         }
+ 
+-        return response()->json(['data' => $query->orderByDesc('last_message_at')->limit(200)->get()]);
++        return response()->json([
++            'data' => $query->orderByDesc('last_message_at')->limit(200)->get(),
++            'meta' => [
++                'conversation_create_idempotency' => 'external_id_v1',
++                'filters' => ['external_id' => $data['external_id'] ?? null],
++            ],
++        ]);
+     }
+ 
+     public function store(Request $request, ApiActor $actor)
+     {
+         $data = $request->validate([
++            'external_id' => ['nullable', 'uuid'],
+             'title' => ['nullable', 'string', 'max:200'],
+             'project_id' => ['nullable', 'string', 'max:190'],
+             'client_id' => ['nullable', 'string', 'max:120'],
+         ]);
+ 
++        $externalId = (string) ($data['external_id'] ?? Str::uuid());
++        $existing = Conversation::where('user_id', $request->user()->id)
++            ->where('external_id', $externalId)
++            ->first();
++        if ($existing) {
++            return response()->json([
++                'data' => ['external_id' => $existing->external_id],
++                'meta' => ['replayed' => true],
++            ]);
++        }
++
+         $project = $actor->project($request, $data['project_id'] ?? null);
++        if (! empty($data['project_id']) && ! $project) {
++            abort(422, 'The selected project_id is invalid.');
++        }
++
++        $conversation = Conversation::firstOrCreate(
++            ['user_id' => $request->user()->id, 'external_id' => $externalId],
++            [
++                'client_id' => $data['client_id'] ?? 'server',
++                'project_ref_id' => $project?->id,
++                'title' => $data['title'] ?? null,
++                'last_message_at' => now(),
++            ]
++        );
++
++        return response()->json([
++            'data' => ['external_id' => $conversation->external_id],
++            'meta' => ['replayed' => ! $conversation->wasRecentlyCreated],
++        ], $conversation->wasRecentlyCreated ? 201 : 200);
++    }
+ 
+-        $conversation = Conversation::create([
+-            'user_id' => $request->user()->id,
+-            'client_id' => $data['client_id'] ?? 'server',
+-            'external_id' => (string) Str::uuid(),
+-            'project_ref_id' => $project?->id,
+-            'title' => $data['title'] ?? null,
+-            'last_message_at' => now(),
++    /** Verify an ambiguous write without exposing conversation content. */
++    public function verifyCreate(Request $request, ApiActor $actor)
++    {
++        $data = $request->validate([
++            'external_id' => ['required', 'uuid'],
++            'project_id' => ['nullable', 'string', 'max:190'],
+         ]);
+ 
+-        return response()->json(['data' => $conversation], 201);
++        $query = Conversation::where('user_id', $request->user()->id)
++            ->where('external_id', $data['external_id']);
++        if (! empty($data['project_id'])) {
++            $project = $actor->project($request, $data['project_id']);
++            $project ? $query->where('project_ref_id', $project->id) : $query->whereRaw('1 = 0');
++        }
++
++        return response()->json([
++            'data' => [
++                'external_id' => $data['external_id'],
++                'exists' => $query->exists(),
++            ],
++            'meta' => [
++                'conversation_create_idempotency' => 'external_id_v1',
++                'filters' => ['external_id' => $data['external_id']],
++            ],
++        ]);
+     }
+ }
+diff --git a/app/Http/Controllers/Api/V1/ProjectController.php b/app/Http/Controllers/Api/V1/ProjectController.php
+index 27743aee6cd3d99cca6e7387d6b97d4e462597e1..5bae7bcc04e44d204fc2bb16b2db7784f5111846 100644
+--- a/app/Http/Controllers/Api/V1/ProjectController.php
++++ b/app/Http/Controllers/Api/V1/ProjectController.php
+@@ -32,7 +32,7 @@ class ProjectController extends Controller
+         $ownerId = $request->user()?->isAdmin() && ! empty($data['user_id'])
+             ? (int) $data['user_id']
+             : $actor->userId($request);
+-        $project = Project::updateOrCreate(
++        $project = Project::firstOrCreate(
+             ['user_id' => $ownerId, 'external_id' => $data['external_id']],
+             ['name' => $data['name'], 'status' => $data['status'] ?? 'active', 'meta' => $data['meta'] ?? null]
+         );
+@@ -42,7 +42,10 @@ class ProjectController extends Controller
+             'payload' => ['external_id' => $project->external_id, 'owner_user_id' => $ownerId],
+         ]);
+ 
+-        return response()->json(['data' => $project], 201);
++        return response()->json([
++            'data' => $project,
++            'meta' => ['replayed' => ! $project->wasRecentlyCreated],
++        ], $project->wasRecentlyCreated ? 201 : 200);
+     }
+ 
+     public function show(Request $request, Project $project, ApiActor $actor)
+diff --git a/app/Http/Controllers/Api/V1/TaskController.php b/app/Http/Controllers/Api/V1/TaskController.php
+index 8f9f49c18e44ab86646235d9732b63416d103b41..0300181654b7dfe7c8064cccc5a1922c6c49506a 100644
+--- a/app/Http/Controllers/Api/V1/TaskController.php
++++ b/app/Http/Controllers/Api/V1/TaskController.php
+@@ -17,6 +17,7 @@ class TaskController extends Controller
+             'status' => ['nullable', 'string', 'in:open,in_progress,done,cancelled'],
+             'project_id' => ['nullable', 'string', 'max:190'],
+             'conversation_id' => ['nullable', 'string', 'max:190'],
++            'external_id' => ['nullable', 'uuid'],
+         ]);
+ 
+         $query = Task::where('user_id', $request->user()->id);
+@@ -28,15 +29,30 @@ class TaskController extends Controller
+         }
+         if (! empty($data['project_id'])) {
+             $project = app(ApiActor::class)->project($request, $data['project_id']);
+-            $query->where('project_ref_id', $project?->id);
++            if ($project) {
++                $query->where('project_ref_id', $project->id);
++            } else {
++                // An unknown project filter must not match unassigned tasks.
++                $query->whereRaw('1 = 0');
++            }
++        }
++        if (! empty($data['external_id'])) {
++            $query->where('external_id', $data['external_id']);
+         }
+ 
+-        return response()->json(['data' => $query->orderByDesc('id')->limit(200)->get()]);
++        return response()->json([
++            'data' => $query->orderByDesc('id')->limit(200)->get(),
++            'meta' => [
++                'task_create_idempotency' => 'external_id_v1',
++                'filters' => ['external_id' => $data['external_id'] ?? null],
++            ],
++        ]);
+     }
+ 
+     public function store(Request $request, ApiActor $actor)
+     {
+         $data = $request->validate([
++            'external_id' => ['nullable', 'uuid'],
+             'title' => ['required', 'string', 'max:200'],
+             'description' => ['nullable', 'string', 'max:4000'],
+             'priority' => ['nullable', 'string', 'in:low,normal,high'],
+@@ -46,22 +62,70 @@ class TaskController extends Controller
+             'client_id' => ['nullable', 'string', 'max:120'],
+         ]);
+ 
++        $externalId = (string) ($data['external_id'] ?? Str::uuid());
++        $existing = Task::where('user_id', $request->user()->id)
++            ->where('external_id', $externalId)
++            ->first();
++        if ($existing) {
++            return response()->json([
++                'data' => ['external_id' => $existing->external_id],
++                'meta' => ['replayed' => true],
++            ]);
++        }
++
+         $project = $actor->project($request, $data['project_id'] ?? null);
++        if (! empty($data['project_id']) && ! $project) {
++            abort(422, 'The selected project_id is invalid.');
++        }
++
++        $task = Task::firstOrCreate(
++            ['user_id' => $request->user()->id, 'external_id' => $externalId],
++            [
++                'client_id' => $data['client_id'] ?? 'server',
++                'title' => $data['title'],
++                'description' => $data['description'] ?? null,
++                'status' => 'open',
++                'priority' => $data['priority'] ?? 'normal',
++                'project_ref_id' => $project?->id,
++                'conversation_id' => $data['conversation_id'] ?? null,
++                'due_at' => $data['due_at'] ?? null,
++            ]
++        );
++
++        return response()->json([
++            'data' => ['external_id' => $task->external_id],
++            'meta' => ['replayed' => ! $task->wasRecentlyCreated],
++        ], $task->wasRecentlyCreated ? 201 : 200);
++    }
+ 
+-        $task = Task::create([
+-            'user_id' => $request->user()->id,
+-            'client_id' => $data['client_id'] ?? 'server',
+-            'external_id' => (string) Str::uuid(),
+-            'title' => $data['title'],
+-            'description' => $data['description'] ?? null,
+-            'status' => 'open',
+-            'priority' => $data['priority'] ?? 'normal',
+-            'project_ref_id' => $project?->id,
+-            'conversation_id' => $data['conversation_id'] ?? null,
+-            'due_at' => $data['due_at'] ?? null,
++    /**
++     * Recover an ambiguous create for write-only device keys without exposing
++     * the task body. The UUID and optional project remain account scoped.
++     */
++    public function verifyCreate(Request $request, ApiActor $actor)
++    {
++        $data = $request->validate([
++            'external_id' => ['required', 'uuid'],
++            'project_id' => ['nullable', 'string', 'max:190'],
+         ]);
+ 
+-        return response()->json(['data' => $task], 201);
++        $query = Task::where('user_id', $request->user()->id)
++            ->where('external_id', $data['external_id']);
++        if (! empty($data['project_id'])) {
++            $project = $actor->project($request, $data['project_id']);
++            $project ? $query->where('project_ref_id', $project->id) : $query->whereRaw('1 = 0');
++        }
++
++        return response()->json([
++            'data' => [
++                'external_id' => $data['external_id'],
++                'exists' => $query->exists(),
++            ],
++            'meta' => [
++                'task_create_idempotency' => 'external_id_v1',
++                'filters' => ['external_id' => $data['external_id']],
++            ],
++        ]);
+     }
+ 
+     public function update(Request $request, string $externalId, ApiActor $actor)
+@@ -79,7 +143,15 @@ class TaskController extends Controller
+         ]);
+ 
+         if (array_key_exists('project_id', $data)) {
+-            $task->project_ref_id = $actor->project($request, $data['project_id'])?->id;
++            if ($data['project_id'] === null || $data['project_id'] === '') {
++                $task->project_ref_id = null;
++            } else {
++                $project = $actor->project($request, $data['project_id']);
++                if (! $project) {
++                    abort(422, 'The selected project_id is invalid.');
++                }
++                $task->project_ref_id = $project->id;
++            }
+         }
+         foreach (['title', 'description', 'status', 'priority', 'conversation_id'] as $field) {
+             if (array_key_exists($field, $data) && $data[$field] !== null) {
+diff --git a/routes/api.php b/routes/api.php
+index e69f1af14a4bc5bc20a9b89d9863f8e3f859e1c7..dc186b55d03ffda1f3a9e82fd41033aa84ac10f6 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -129,12 +129,16 @@ Route::prefix('v1')->group(function () {
+         ->middleware('luczor.api:brain.read')->name('api.v1.tasks.index');
+     Route::post('/tasks', [TaskController::class, 'store'])
+         ->middleware('luczor.api:brain.write')->name('api.v1.tasks.store');
++    Route::post('/tasks/verify-create', [TaskController::class, 'verifyCreate'])
++        ->middleware('luczor.api:brain.write')->name('api.v1.tasks.verify-create');
+     Route::patch('/tasks/{externalId}', [TaskController::class, 'update'])
+         ->middleware('luczor.api:brain.write')->name('api.v1.tasks.update');
+     Route::get('/conversations', [ConversationController::class, 'index'])
+         ->middleware('luczor.api:brain.read')->name('api.v1.conversations.index');
+     Route::post('/conversations', [ConversationController::class, 'store'])
+         ->middleware('luczor.api:brain.write')->name('api.v1.conversations.store');
++    Route::post('/conversations/verify-create', [ConversationController::class, 'verifyCreate'])
++        ->middleware('luczor.api:brain.write')->name('api.v1.conversations.verify-create');
+ 
+     Route::get('/mcp/tools', [McpController::class, 'tools'])
+         ->middleware('luczor.api:brain.read')->name('api.v1.mcp.tools');

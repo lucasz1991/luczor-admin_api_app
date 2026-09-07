@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "20260907T045432Z",
+  "baseline_commit": "46e734527a85ce47cd8b2c53e02a1327aaed6845",
+  "production_deployed": false,
+  "database_migration_required": false,
+  "files": [
+    {
+      "path": "app/Http/Controllers/Api/V1/ConversationController.php",
+      "category": "overlay",
+      "bytes": 3936,
+      "sha256": "cd28ea2de0192d93ee33f4df00bb4e09acd7c4f7d3a0fcc5173141f925c7dffd",
+      "baseline_sha256": "dbd60c891883564e7d5516089ad6b7d6530795ff3dbc27b6e3783eba408fed9c"
+    },
+    {
+      "path": "app/Http/Controllers/Api/V1/ProjectController.php",
+      "category": "overlay",
+      "bytes": 2858,
+      "sha256": "21c1cde24e93493e21b6071d7cd4e48f9ba7e49bbc6addacaa5f67e397d48ec6",
+      "baseline_sha256": "58510302e1f209c5680f7bed947f2f6d310249afdc773e4550091a2dde003ef5"
+    },
+    {
+      "path": "app/Http/Controllers/Api/V1/TaskController.php",
+      "category": "overlay",
+      "bytes": 6665,
+      "sha256": "a9491b072885387a994aead556e31c09e9cb97faa3185e5639a4c07125eb4370",
+      "baseline_sha256": "8bcddb11631e10847caf4ff9f229145f62eb5c4588fb06fe4b65f45a8955c7f6"
+    },
+    {
+      "path": "routes/api.php",
+      "category": "overlay",
+      "bytes": 16835,
+      "sha256": "e0463316acb2db6f5cd4d0413cf660676800fd19fe204ee107a6051c4cf0fe2f",
+      "baseline_sha256": "726e99cd8c8a1d70fe9ec055d082df1afd80f11b5e13e973128a28a14b1537b6"
+    },
+    {
+      "path": "tests/Feature/ConversationIdempotencyApiTest.php",
+      "category": "review",
+      "bytes": 3334,
+      "sha256": "da35962c281a2bbb19913826ae32403a5ecb81b9da0a94865bb02cc582a627a7",
+      "baseline_sha256": null
+    },
+    {
+      "path": "tests/Feature/TaskIdempotencyApiTest.php",
+      "category": "review",
+      "bytes": 8769,
+      "sha256": "3723fab4a3b27464793882b4a124249b9b29f2c6405afb11dea67867d11d61b0",
+      "baseline_sha256": null
+    }
+  ]
+}
