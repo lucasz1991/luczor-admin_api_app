@@ -1,34 +1,14 @@
 <x-guest-layout>
-    <h1 class="text-xl font-semibold text-white">Einloggen</h1>
-    <p class="mt-1 text-sm text-slate-400">Melde dich an, um Luczor-API, Modelle und Sync-Archive zu verwalten.</p>
-
-    @if (session('status'))
-        <div class="mt-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100">{{ session('status') }}</div>
-    @endif
-
-    <form class="mt-6 space-y-4" method="POST" action="{{ route('login') }}">
+    <p class="ui-kicker">Willkommen zurück</p>
+    <h1 class="mt-3 text-3xl font-semibold tracking-tight">Dein Luczor wartet.</h1>
+    <p class="mt-3 text-sm leading-6 text-slate-400">Ein Konto für deine Geräte, Gespräche und Erinnerungen.</p>
+    @if(session('status'))<p class="ui-notice mt-5" role="status">{{ session('status') }}</p>@endif
+    <form class="mt-7 space-y-5" method="POST" action="{{ route('login') }}">
         @csrf
-        <div>
-            <label class="text-sm text-slate-200" for="email">E-Mail</label>
-            <input class="luczor-input" id="email" name="email" type="email" value="{{ old('email') }}" required autofocus autocomplete="username">
-            @error('email') <p class="mt-1 text-sm text-rose-300">{{ $message }}</p> @enderror
-        </div>
-        <div>
-            <div class="flex items-center justify-between">
-                <label class="text-sm text-slate-200" for="password">Passwort</label>
-                <a class="text-sm text-cyan-200 hover:text-cyan-100" href="{{ route('password.request') }}">Vergessen?</a>
-            </div>
-            <input class="luczor-input" id="password" name="password" type="password" required autocomplete="current-password">
-            @error('password') <p class="mt-1 text-sm text-rose-300">{{ $message }}</p> @enderror
-        </div>
-        <label class="flex items-center gap-2 text-sm text-slate-300">
-            <input class="rounded border-slate-700 bg-slate-950 text-cyan-400" type="checkbox" name="remember">
-            Angemeldet bleiben
-        </label>
-        <button class="luczor-btn w-full" type="submit">Einloggen</button>
-        <p class="text-center text-sm text-slate-400">
-            Noch kein Konto?
-            <a class="text-cyan-200 hover:text-cyan-100" href="{{ route('register') }}">Registrieren</a>
-        </p>
+        <div><label class="ui-label" for="email">E-Mail</label><x-ui.input id="email" name="email" type="email" :value="old('email')" required autofocus autocomplete="username" aria-describedby="email-error" />@error('email')<p id="email-error" role="alert" class="mt-2 text-sm text-rose-300">{{ $message }}</p>@enderror</div>
+        <div><div class="flex items-center justify-between gap-3"><label class="ui-label" for="password">Passwort</label><a class="text-sm text-cyan-200 hover:text-cyan-100" href="{{ route('password.request') }}">Vergessen?</a></div><x-ui.input id="password" name="password" type="password" required autocomplete="current-password" />@error('password')<p role="alert" class="mt-2 text-sm text-rose-300">{{ $message }}</p>@enderror</div>
+        <label class="flex items-center gap-3 text-sm text-slate-300"><input type="checkbox" name="remember">Angemeldet bleiben</label>
+        <x-ui.button class="w-full" type="submit">Einloggen</x-ui.button>
+        <p class="text-center text-sm text-slate-400">Noch kein Konto? <a class="text-cyan-200 hover:text-cyan-100" href="{{ route('register') }}">Registrieren</a></p>
     </form>
 </x-guest-layout>

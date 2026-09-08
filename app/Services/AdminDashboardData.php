@@ -34,8 +34,8 @@ use App\Models\Skill;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class AdminDashboardData
@@ -91,7 +91,7 @@ class AdminDashboardData
             'networkPolicies' => $isAdmin ? NetworkPolicy::query()->orderBy('key')->get() : collect(),
             'llmExperiments' => $isAdmin ? LlmExperiment::query()->latest()->get() : collect(),
             'agentProfiles' => $isAdmin ? AgentProfile::query()->orderBy('type')->get() : collect(),
-            'devices' => $isAdmin ? Device::query()->with('user')->latest('last_seen_at')->get() : collect(),
+            'devices' => Device::query()->with('user')->when(! $isAdmin, fn ($query) => $query->where('user_id', $user->id))->latest('last_seen_at')->get(),
             'debugRequests' => $isAdmin ? DeviceDebugRequest::query()->with('device')->latest()->limit(50)->get() : collect(),
         ];
     }

@@ -4,7 +4,7 @@
     $initials = collect(preg_split('/\s+/u', trim($user->name)))->filter()->take(2)->map(fn($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('');
     $online = $lastSeen && \Illuminate\Support\Carbon::parse($lastSeen)->isAfter(now()->subMinutes(2));
 @endphp
-<section class="overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 sm:p-6" aria-label="Benutzeridentität">
+<x-ui.panel aria-label="Benutzeridentität">
     <div class="grid gap-5 sm:grid-cols-2 sm:gap-8">
         <div class="flex min-w-0 items-center gap-4">
             <span class="relative shrink-0">
@@ -21,11 +21,11 @@
                 </div>
             </div>
         </div>
-        <dl class="grid gap-3 border-t border-slate-700/60 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0">
+        <dl class="grid gap-3 pt-2 text-sm sm:pl-8 sm:pt-0">
             <div class="flex justify-between gap-4"><dt class="text-slate-400">Mitglied seit</dt><dd class="font-medium">{{ $user->created_at?->format('d.m.Y') ?? '–' }}</dd></div>
             <div class="flex justify-between gap-4"><dt class="text-slate-400">Benutzer-ID</dt><dd class="font-mono text-xs">#{{ $user->id }}</dd></div>
             <div class="flex justify-between gap-4"><dt class="text-slate-400">Geräte / Projekte</dt><dd class="font-medium">{{ $user->devices_count ?? 0 }} / {{ $user->projects_count ?? 0 }}</dd></div>
             @if($lastSeen)<div class="flex justify-between gap-4"><dt class="text-slate-400">Letztes Gerätesignal</dt><dd class="text-right">{{ \Illuminate\Support\Carbon::parse($lastSeen)->format('d.m.Y H:i') }}</dd></div>@endif
         </dl>
     </div>
-</section>
+</x-ui.panel>

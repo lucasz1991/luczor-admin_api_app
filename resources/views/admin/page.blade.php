@@ -18,6 +18,11 @@
     [$adminTitle, $adminDescription] = $adminPages[$page];
 @endphp
 <x-app-layout>
+    @if($page === 'workflows')
+        @if(session('status'))<div class="ui-notice ui-notice--success" role="status">{{ session('status') }}</div>@endif
+        @if($errors->any())<div class="ui-notice ui-notice--danger" role="alert">{{ $errors->first() }}</div>@endif
+        @include('admin.workflows')
+    @else
     <x-ui.page :title="$adminTitle" eyebrow="Administration" :description="$adminDescription">
         @if(in_array($page, ['overview', 'models', 'settings'], true))
             <x-slot:actions><x-ui.button href="{{ route('admin.local-models') }}" variant="secondary">Lokale Modelle</x-ui.button></x-slot:actions>
@@ -27,4 +32,5 @@
         {{-- Controller validates this page against the same fixed administration allowlist. --}}
         @include('admin.pages.'.$page)
     </x-ui.page>
+    @endif
 </x-app-layout>

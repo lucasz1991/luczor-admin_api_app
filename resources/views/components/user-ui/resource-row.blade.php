@@ -1,0 +1,3 @@
+{{-- Shared selectable resource row for RailTime-style account and workspace lists. --}}
+@props(['selected' => false])
+<button type="button" aria-pressed="{{ $selected ? 'true' : 'false' }}" {{ $attributes->class(['ui-resource-row w-full rounded-2xl p-4 text-left ring-1 transition-[background-color,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-50', 'bg-cyan-400/[0.06] ring-cyan-300/40' => $selected, 'bg-white/[0.025] ring-white/10 hover:bg-white/[0.045]' => !$selected]) }}>{{ $slot }}</button>

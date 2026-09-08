@@ -3,7 +3,7 @@
     $networkScopes = $networkMemories->pluck('scope')->filter()->unique()->sort()->values();
 @endphp
 
-<section class="memory-network" data-memory-network-3d aria-labelledby="memory-network-title">
+<x-ui.panel class="memory-network" data-memory-network-3d aria-labelledby="memory-network-title">
     <script type="application/json" data-memory-network-payload>@json($memoryGraph['memories'] ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)</script>
 
     <div class="memory-network__heading">
@@ -140,4 +140,4 @@
             </div>
         </details>
     @endif
-</section>
+</x-ui.panel>

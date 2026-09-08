@@ -127,3 +127,6 @@ Record durable decisions with date, context, decision, and consequences.
 ## 2026-09-08 | RailTime-Benutzeroberflächen für Luczor
 - Bestehende RailTime-Filter-/Profilmodule werden gezielt auf Luczor-Kontodaten und Layout adaptiert. Personal-, Lohn-, Teams- und Fotosysteme werden ohne entsprechenden Luczor-Datenvertrag nicht importiert.
 - HTTP und Livewire verwenden einen gemeinsamen Administrator-User-Service; bestehende Adminrollen sind nicht editierbar. Eigene Identität verwendet weiterhin Fortify mit E-Mail-Neuverifikation; Kostenauswertung zählt fehlende Kostenmeldungen separat.
+## 2026-09-08 | Account UI tabs preserve server ownership
+- Device/profile presentation uses common client-side tabs; administrative profile sections retain server-side selectTab because the PHP module owns which selected-user data is rendered.
+- Existing RailTime-derived user-ui page/badge names remain compatibility adapters to the common component system. Livewire/auth/device submission contracts stay unchanged.

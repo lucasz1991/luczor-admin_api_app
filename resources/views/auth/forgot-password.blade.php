@@ -1,18 +1,12 @@
 <x-guest-layout>
-    <h1 class="text-xl font-semibold text-white">Passwort zuruecksetzen</h1>
-    <p class="mt-1 text-sm text-slate-400">Du bekommst einen Reset-Link an deine E-Mail-Adresse.</p>
-
-    @if (session('status'))
-        <div class="mt-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100">{{ session('status') }}</div>
-    @endif
-
-    <form class="mt-6 space-y-4" method="POST" action="{{ route('password.email') }}">
+    <p class="ui-kicker">Wieder Zugang erhalten</p>
+    <h1 class="mt-3 text-3xl font-semibold tracking-tight">Passwort vergessen?</h1>
+    <p class="mt-3 text-sm leading-6 text-slate-400">Wir senden dir einen Link, mit dem du ein neues Passwort festlegen kannst.</p>
+    @if(session('status'))<p class="ui-notice mt-5" role="status">{{ session('status') }}</p>@endif
+    <form class="mt-7 space-y-5" method="POST" action="{{ route('password.email') }}">
         @csrf
-        <div>
-            <label class="text-sm text-slate-200" for="email">E-Mail</label>
-            <input class="luczor-input" id="email" name="email" type="email" value="{{ old('email') }}" required autofocus>
-            @error('email') <p class="mt-1 text-sm text-rose-300">{{ $message }}</p> @enderror
-        </div>
-        <button class="luczor-btn w-full" type="submit">Reset-Link senden</button>
+        <div><label class="ui-label" for="email">E-Mail</label><x-ui.input id="email" name="email" type="email" :value="old('email')" required autofocus autocomplete="username" />@error('email')<p role="alert" class="mt-2 text-sm text-rose-300">{{ $message }}</p>@enderror</div>
+        <x-ui.button class="w-full" type="submit">Link zum Zurücksetzen senden</x-ui.button>
+        <a class="block text-center text-sm text-cyan-200" href="{{ route('login') }}">Zurück zur Anmeldung</a>
     </form>
 </x-guest-layout>

@@ -99,3 +99,6 @@
 - RailTime-basierte Livewire-Benutzerliste, administratives Benutzerprofil und eigenes Fortify-Profil implementiert. Gemeinsamer User-Service schützt Adminrollen/aktive Konten und protokolliert Änderungen ohne private Nutzdaten.
 - Verifiziert:13 fokussierte Tests/82 Assertions, eigene8/55 nach deutscher Pagination; scoped PHPStan, Pint und Diff-Check. Visuelle Prüfung im isolierten Preview bei Root; keine produktive Datenänderung.
 - Bericht artifacts/reports/2026-09-08-user-views.md; Quell-Ownership zurückgegeben.
+## 2026-09-08 | Account/Auth UI component redesign
+- Account devices, pairing, profiles, admin user list and workspace/auth views now share the common UI components. Workspace opens on the conversation and separates chats/devices in tabs; profile password errors select security.
+- 23 focused feature tests / 152 assertions passed. Browser/asset integration belongs to root. Report artifacts/reports/2026-09-08-account-auth-ui-components.md. Source ownership released.

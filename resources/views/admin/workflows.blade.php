@@ -21,6 +21,7 @@
     };
 @endphp
 
+<x-ui.page title="Workflows" eyebrow="Automatisierung" description="Abläufe organisieren, sicher erproben und ihre Ergebnisse nachvollziehen.">
 @if ($workflowPreviewRun)
     @include('admin.workflows.run-preview')
 @elseif ($workflowEditing)
@@ -28,3 +29,5 @@
 @else
     @include('admin.workflows.overview')
 @endif
+
+</x-ui.page>

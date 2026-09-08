@@ -1,18 +1,16 @@
-    {{-- ══════════════════════ ÜBERSICHT (Liste) ══════════════════════ --}}
-    @php
-        $wfActive = $workflowDefinitions->where('status', 'active')->count();
-        $wfRunsTotal = $workflowDefinitions->sum('runs_count');
-    @endphp
-    <div class="mb-4 flex flex-wrap items-center gap-1.5 text-[11px]">
-        <span class="rounded-md bg-slate-400/10 px-2 py-1 text-slate-300"><span class="opacity-75">Workflows</span> <b class="tabular-nums">{{ $workflowDefinitions->count() }}</b></span>
-        <span class="rounded-md bg-emerald-400/10 px-2 py-1 text-emerald-200"><span class="opacity-75">Aktiv</span> <b class="tabular-nums">{{ $wfActive }}</b></span>
-        <span class="rounded-md bg-slate-400/10 px-2 py-1 text-slate-300"><span class="opacity-75">Läufe</span> <b class="tabular-nums">{{ $wfRunsTotal }}</b></span>
-        <span class="rounded-md bg-amber-400/10 px-2 py-1 text-amber-200"><span class="opacity-75">Task-Typen</span> <b class="tabular-nums">{{ count($taskCatalog) }}</b></span>
-    </div>
-
-    <section class="luczor-card overflow-visible p-5">
-        <div class="flex items-center justify-between gap-3"><h2 class="font-semibold">Workflows</h2>
-            <span class="text-xs text-slate-500">Board öffnen zum Bearbeiten mit Listen, Tasks &amp; Routen</span></div>
+@php
+    $wfActive = $workflowDefinitions->where('status', 'active')->count();
+    $wfRunsTotal = $workflowDefinitions->sum('runs_count');
+@endphp
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <x-ui.stat label="Workflows" :value="$workflowDefinitions->count()" hint="Gespeicherte Abläufe" />
+    <x-ui.stat label="Aktiv" :value="$wfActive" hint="Für neue Läufe freigegeben" />
+    <x-ui.stat label="Läufe" :value="$wfRunsTotal" hint="Bisher gestartete Ausführungen" />
+    <x-ui.stat label="Task-Typen" :value="count($taskCatalog)" hint="In der Task-Bibliothek" />
+</div>
+<x-ui.tabs id="workflow-overview" :tabs="['workflows' => 'Workflows', 'runs' => 'Letzte Läufe', 'create' => 'Erstellen & Vorlagen', 'library' => 'Task-Bibliothek']" :active="$errors->any() ? 'create' : 'workflows'" :force-active="$errors->any()">
+<x-ui.tab-panel name="workflows">
+<x-ui.panel title="Gespeicherte Workflows" description="Öffne ein Board, um Listen, Aufgaben und Routen zu bearbeiten.">
         <div class="mt-4 overflow-x-auto">
         <table class="min-w-full text-left text-sm"><thead class="text-xs uppercase text-slate-500"><tr><th class="pb-2">Workflow</th><th class="pb-2">Daten</th><th class="pb-2">Status</th><th class="pb-2">v</th><th class="pb-2"></th></tr></thead>
         <tbody class="divide-y divide-slate-800">
@@ -41,7 +39,7 @@
                 <td class="py-2.5 pr-3 text-slate-400">{{ $wf->version }}</td>
                 <td class="py-2.5">
                     <div class="flex items-center justify-end gap-2">
-                        <a class="luczor-btn-secondary !px-3 !py-1.5 text-xs" href="{{ route('admin.page', ['page' => 'workflows', 'wf' => $wf->id]) }}">Board</a>
+                        <x-ui.button variant="secondary" class="!px-3 !py-1.5 text-xs" href="{{ route('admin.page', ['page' => 'workflows', 'wf' => $wf->id]) }}">Board</x-ui.button>
                         <form method="POST" action="{{ route('dashboard.workflows.start', $wf) }}">@csrf<button class="luczor-btn-secondary !px-3 !py-1.5 text-xs" @if($wf->status !== 'active') disabled title="Workflow ist deaktiviert" @endif>Start</button></form>
                         <details class="relative">
                             <summary class="cursor-pointer list-none rounded border border-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-800" aria-label="Aktionen für {{ $wf->name }}">⋮</summary>
@@ -53,7 +51,7 @@
                                 @endunless
                                 <a class="block rounded px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-400/10" href="{{ route('dashboard.workflows.export', $wf) }}">Export (JSON)</a>
                                 @unless($wf->is_edit_locked)
-                                    <form class="border-t border-slate-800 pt-1" method="POST" action="{{ route('dashboard.workflows.destroy', $wf) }}" onsubmit="return confirm('Workflow „{{ $wf->name }}" wirklich löschen?');">@csrf @method('DELETE')<button class="block w-full rounded px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-400/10">Löschen</button></form>
+                                    <form class="border-t border-slate-800 pt-1" method="POST" action="{{ route('dashboard.workflows.destroy', $wf) }}" onsubmit="return confirm('Diesen Workflow wirklich löschen?');">@csrf @method('DELETE')<button class="block w-full rounded px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-400/10">Löschen</button></form>
                                 @endunless
                             </div>
                         </details>
@@ -61,36 +59,42 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="5" class="py-4 text-slate-500">Noch keine Workflows — unten anlegen oder importieren.</td></tr>
+            <tr><td colspan="5" class="py-4 text-slate-500">Noch keine Workflows — im Tab „Erstellen“ anlegen oder importieren.</td></tr>
         @endforelse
         </tbody></table>
         </div>
-    </section>
-
-    <div class="mt-6 grid gap-6 lg:grid-cols-2">
-        <section class="luczor-card p-5"><h2 class="font-semibold">Neuer Workflow</h2>
+    </x-ui.panel>
+</x-ui.tab-panel>
+<x-ui.tab-panel name="runs">
+<x-ui.panel class="mt-4" title="Letzte Läufe">
+        <table class="mt-4 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th class="pb-1">Workflow</th><th class="pb-1">Status</th><th class="pb-1">Dauer</th><th class="pb-1">Gestartet</th><th class="pb-1"></th></tr></thead>
+        <tbody>@forelse($workflowRuns as $run)<tr class="border-t border-slate-800">
+            <td class="py-2 text-cyan-100">{{ $run->definition?->name ?? '—' }}</td>
+            <td><span class="rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 {{ $wfStatusBadge($run->status) }}">{{ $wfStatusLabel($run->status) }}</span></td>
+            <td>{{ $run->duration_ms ? round($run->duration_ms / 1000, 1).' s' : '—' }}</td>
+            <td>{{ optional($run->started_at)->format('d.m. H:i') ?? '—' }}</td>
+            <td class="text-right"><a class="text-cyan-200 hover:text-cyan-100" href="{{ route('admin.page', ['page' => 'workflows', 'run' => $run->id]) }}">Ansehen →</a></td>
+        </tr>@empty<tr><td colspan="5" class="py-3 text-slate-500">Noch keine Läufe.</td></tr>@endforelse</tbody></table>
+    </x-ui.panel>
+</x-ui.tab-panel>
+<x-ui.tab-panel name="create">
+<x-ui.panel class="mt-4" title="Neuer Workflow">
             <p class="mt-1 text-xs text-slate-500">Legt einen Start-Workflow an — danach im Board mit Listen &amp; Tasks ausbauen.</p>
             <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.workflows.store') }}">@csrf
-                <input class="luczor-input" name="name" placeholder="Name" required maxlength="160">
+                <x-ui.input class="luczor-input" name="name" placeholder="Name" aria-label="Workflow-Name" required maxlength="160" />
                 <details><summary class="cursor-pointer text-xs text-slate-500">JSON-Definition (optional, Experten)</summary>
-                    <textarea class="luczor-input mt-2 font-mono text-xs" name="definition_json" rows="6">{"lists":[{"key":"liste-1","name":"Ablauf"}],"steps":[{"key":"start","type":"manual","payload":{"title":"Start","list":"liste-1"},"routes":{"success":{"type":"end"}}}]}</textarea>
+                    <x-ui.textarea class="luczor-input mt-2 font-mono text-xs" name="definition_json" aria-label="Workflow-Definition als JSON" rows="6">{"lists":[{"key":"liste-1","name":"Ablauf"}],"steps":[{"key":"start","type":"manual","payload":{"title":"Start","list":"liste-1"},"routes":{"success":{"type":"end"}}}]}</x-ui.textarea>
                 </details>
-                <button class="luczor-btn">Anlegen &amp; validieren</button>
+                <x-ui.button variant="primary" type="submit">Anlegen &amp; validieren</x-ui.button>
             </form>
             <form class="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4" method="POST" action="{{ route('dashboard.workflows.import') }}" enctype="multipart/form-data">@csrf
-                <input class="luczor-input" type="file" name="file" accept="application/json,.json" required>
-                <button class="luczor-btn-secondary shrink-0">Import</button>
+                <x-ui.input class="luczor-input" type="file" name="file" aria-label="Workflow-JSON importieren" accept="application/json,.json" required />
+                <x-ui.button variant="secondary" class="shrink-0" type="submit">Import</x-ui.button>
             </form>
-        </section>
-        <section class="luczor-card p-5"><h2 class="font-semibold">Freigegebene Task-Bibliothek</h2>
-            <p class="mt-1 text-xs text-slate-500">Nur diese Task-Keys sind in Definitionen erlaubt — im Board per Drag &amp; Drop verfügbar.</p>
-            <div class="mt-3 flex flex-wrap gap-2">@foreach($taskCatalog as $task)<span class="rounded border border-slate-800 px-2 py-1 text-xs {{ $task['allowed_in_definition'] ? 'text-cyan-100' : 'text-slate-500' }}" title="{{ $task['runner'] }} · {{ $task['kind'] }}{{ $task['allowed_in_definition'] ? '' : ' (geplant)' }}">{{ $task['key'] }}</span>@endforeach</div>
-        </section>
-    </div>
-
-    <section class="mt-6 luczor-card p-5"><h2 class="font-semibold">Vorlagen</h2>
+        </x-ui.panel>
+<x-ui.panel class="mt-4" title="Vorlagen">
         <p class="mt-1 text-xs text-slate-500">Katalog-hydrierte Start-Workflows — anlegen und im Board anpassen.</p>
-        <div class="mt-3 grid gap-3 md:grid-cols-3">
+        <div class="mt-3 grid gap-3 md:grid-cols-2">
             @foreach($workflowTemplates as $tplKey => $tpl)
                 <div class="flex flex-col rounded border border-slate-800 p-4">
                     <b class="text-cyan-100">{{ $tpl['name'] }}</b>
@@ -102,21 +106,17 @@
                     </div>
                     <form class="mt-3" method="POST" action="{{ route('dashboard.workflows.template') }}">@csrf
                         <input type="hidden" name="template" value="{{ $tplKey }}">
-                        <button class="luczor-btn-secondary w-full !px-3 !py-1.5 text-xs">Anlegen &amp; im Board öffnen</button>
+                        <x-ui.button variant="secondary" class="w-full !px-3 !py-1.5 text-xs" type="submit">Anlegen &amp; im Board öffnen</x-ui.button>
                     </form>
                 </div>
             @endforeach
         </div>
-    </section>
-
-    <section class="mt-6 luczor-card overflow-x-auto p-5"><h2 class="font-semibold">Letzte Läufe</h2>
-        <table class="mt-4 min-w-full text-left text-xs"><thead class="text-slate-500"><tr><th class="pb-1">Workflow</th><th class="pb-1">Status</th><th class="pb-1">Dauer</th><th class="pb-1">Gestartet</th><th class="pb-1"></th></tr></thead>
-        <tbody>@forelse($workflowRuns as $run)<tr class="border-t border-slate-800">
-            <td class="py-2 text-cyan-100">{{ $run->definition?->name ?? '—' }}</td>
-            <td><span class="rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 {{ $wfStatusBadge($run->status) }}">{{ $wfStatusLabel($run->status) }}</span></td>
-            <td>{{ $run->duration_ms ? round($run->duration_ms / 1000, 1).' s' : '—' }}</td>
-            <td>{{ optional($run->started_at)->format('d.m. H:i') ?? '—' }}</td>
-            <td class="text-right"><a class="text-cyan-200 hover:text-cyan-100" href="{{ route('admin.page', ['page' => 'workflows', 'run' => $run->id]) }}">Ansehen →</a></td>
-        </tr>@empty<tr><td colspan="5" class="py-3 text-slate-500">Noch keine Läufe.</td></tr>@endforelse</tbody></table>
-    </section>
-
+    </x-ui.panel>
+</x-ui.tab-panel>
+<x-ui.tab-panel name="library">
+<x-ui.panel class="mt-4" title="Freigegebene Task-Bibliothek">
+            <p class="mt-1 text-xs text-slate-500">Nur diese Task-Keys sind in Definitionen erlaubt — im Board per Drag &amp; Drop verfügbar.</p>
+            <div class="mt-3 flex flex-wrap gap-2">@foreach($taskCatalog as $task)<span class="rounded border border-slate-800 px-2 py-1 text-xs {{ $task['allowed_in_definition'] ? 'text-cyan-100' : 'text-slate-500' }}" title="{{ $task['runner'] }} · {{ $task['kind'] }}{{ $task['allowed_in_definition'] ? '' : ' (geplant)' }}">{{ $task['key'] }}</span>@endforeach</div>
+        </x-ui.panel>
+</x-ui.tab-panel>
+</x-ui.tabs>

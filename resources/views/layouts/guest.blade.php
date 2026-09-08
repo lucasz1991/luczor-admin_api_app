@@ -8,17 +8,19 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 </head>
-<body class="min-h-screen bg-luczor-bg text-luczor-text antialiased">
-    <main class="flex min-h-screen items-center justify-center px-4 py-10">
-        <div class="w-full max-w-md">
-            <div class="mb-8 text-center">
-                <x-application-logo class="justify-center" />
-                <p class="mt-3 text-sm text-slate-400">Admin API, Modellsteuerung und Brain-Sync fuer Luczor.</p>
-            </div>
-            <div class="luczor-card p-6">
+<body class="antialiased">
+    <main class="ui-guest ui-enter">
+        <section class="ui-guest__story">
+            <x-application-logo />
+            <h1>Dein Raum.<br>Deine Möglichkeiten.</h1>
+            <p>Projekte, Erinnerungen und deine Geräte. Ein gemeinsamer Arbeitsbereich mit Luczor.</p>
+        </section>
+        <div class="ui-guest__form">
+            <x-ui.panel>
                 {{ $slot ?? '' }}
                 @yield('content')
-            </div>
+            </x-ui.panel>
+            <p class="ui-guest__footer">Luczor · Persönlicher Workspace</p>
         </div>
     </main>
     @livewireScriptConfig

@@ -9,28 +9,15 @@
     $syncArchiveTotal = array_sum($archiveCounts ?? []);
 @endphp
 
-<div class="memory-archive-page">
-    <section class="memory-archive-hero" aria-labelledby="memory-archive-title">
-        <div class="memory-archive-hero__copy">
-            <div class="memory-eyebrow"><span aria-hidden="true"></span> Luczor Memory Atlas</div>
-            <h2 id="memory-archive-title">Das operative Gedächtnis als räumliches Netzwerk.</h2>
-            <p>
-                Erkunden Sie die wichtigsten kanonischen Memories in einer interaktiven 3D-Perspektive.
-                Projekt-, Typ- und Scope-Verbindungen sind Metadaten-Kanten; durchgezogene Versionskanten
-                stammen direkt aus <code>supersedes_id</code>.
-            </p>
-        </div>
-        <dl class="memory-archive-hero__metrics" aria-label="Memory-Netzwerk Kennzahlen">
-            <div><dt>Kanonische Memories</dt><dd>{{ number_format($memoryGraph['total'] ?? 0, 0, ',', '.') }}</dd></div>
-            <div><dt>Im Modell</dt><dd>{{ number_format($memoryGraph['visible'] ?? 0, 0, ',', '.') }}</dd></div>
-            <div><dt>Projekt-Hubs</dt><dd>{{ number_format($memoryGraph['projects'] ?? 0, 0, ',', '.') }}</dd></div>
-            <div><dt>Echte Versionskanten</dt><dd>{{ number_format($memoryGraph['version_edges'] ?? 0, 0, ',', '.') }}</dd></div>
-        </dl>
-    </section>
-
-    @include('admin.memory-graph')
-
-    <section class="memory-archive-section" aria-labelledby="memory-distribution-title">
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <x-ui.stat label="Kanonische Memories" :value="number_format($memoryGraph['total'] ?? 0, 0, ',', '.')" />
+    <x-ui.stat label="Im Modell" :value="number_format($memoryGraph['visible'] ?? 0, 0, ',', '.')" />
+    <x-ui.stat label="Projekt-Hubs" :value="number_format($memoryGraph['projects'] ?? 0, 0, ',', '.')" />
+    <x-ui.stat label="Echte Versionskanten" :value="number_format($memoryGraph['version_edges'] ?? 0, 0, ',', '.')" />
+</div>
+<x-ui.tabs id="admin-memory" :tabs="['network' => 'Memory-Netzwerk', 'distribution' => 'Verteilung', 'archive' => 'Sync-Archiv']" active="network">
+    <x-ui.tab-panel name="network">@include('admin.memory-graph')</x-ui.tab-panel>
+    <x-ui.tab-panel name="distribution">    <x-ui.panel class="memory-archive-section" aria-labelledby="memory-distribution-title">
         <div class="memory-section-heading">
             <div>
                 <div class="memory-eyebrow"><span aria-hidden="true"></span> Verteilung</div>
@@ -62,9 +49,10 @@
                 </article>
             @endforeach
         </div>
-    </section>
+    </x-ui.panel>
 
-    <section class="memory-archive-section memory-sync-archive" aria-labelledby="memory-sync-title">
+</x-ui.tab-panel>
+    <x-ui.tab-panel name="archive">    <x-ui.panel class="memory-archive-section memory-sync-archive" aria-labelledby="memory-sync-title">
         <div class="memory-section-heading">
             <div>
                 <div class="memory-eyebrow"><span aria-hidden="true"></span> Separater Datenbestand</div>
@@ -84,5 +72,6 @@
                 </div>
             @endforeach
         </dl>
-    </section>
-</div>
+    </x-ui.panel>
+</x-ui.tab-panel>
+</x-ui.tabs>

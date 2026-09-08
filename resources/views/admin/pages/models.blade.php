@@ -6,7 +6,10 @@
                     <article class="ui-record">
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <div class="min-w-0"><h3 class="font-semibold text-slate-100">{{ $profile->name }}</h3><p class="mt-1 break-all font-mono text-xs text-slate-400">{{ $profile->model_id }}</p></div>
-                            <div class="flex items-center gap-2"><x-ui.badge>{{ $profile->purpose }}</x-ui.badge><x-ui.badge :tone="$profile->active ? 'success' : 'neutral'">{{ $profile->active ? 'aktiv' : 'aus' }}</x-ui.badge></div>
+                            <div class="flex items-center gap-2">
+<x-ui.badge>{{ $profile->purpose }}</x-ui.badge>
+<x-ui.badge :tone="$profile->active ? 'success' : 'neutral'">{{ $profile->active ? 'aktiv' : 'aus' }}</x-ui.badge>
+</div>
                         </div>
                         <details class="ui-disclosure mt-4">
                             <summary>Profil bearbeiten</summary>
@@ -16,8 +19,10 @@
                                 <x-ui.button type="submit">Änderungen speichern</x-ui.button>
                             </form>
                             <div class="mt-5 flex flex-wrap items-center gap-3">
-                                <form method="POST" action="{{ route('dashboard.model-profiles.toggle', $profile) }}">@csrf<x-ui.button type="submit" variant="secondary">{{ $profile->active ? 'Deaktivieren' : 'Aktivieren' }}</x-ui.button></form>
-                                <form method="POST" action="{{ route('dashboard.model-profiles.destroy', $profile) }}">@csrf @method('DELETE')<x-ui.button type="submit" variant="danger">Löschen</x-ui.button></form>
+                                <form method="POST" action="{{ route('dashboard.model-profiles.toggle', $profile) }}">@csrf<x-ui.button type="submit" variant="secondary">{{ $profile->active ? 'Deaktivieren' : 'Aktivieren' }}</x-ui.button>
+</form>
+                                <form method="POST" action="{{ route('dashboard.model-profiles.destroy', $profile) }}">@csrf @method('DELETE')<x-ui.button type="submit" variant="danger">Löschen</x-ui.button>
+</form>
                             </div>
                         </details>
                     </article>

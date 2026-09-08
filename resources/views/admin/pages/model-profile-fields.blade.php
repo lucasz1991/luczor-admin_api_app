@@ -14,5 +14,6 @@
     <label class="ui-field">Maximale Antwort-Tokens<x-ui.input name="max_tokens" :value="$profile?->max_tokens ?? 2200" type="number" min="1" /></label>
     <label class="ui-field">Zweck<x-ui.input name="purpose" :value="$profile?->purpose ?? 'chat'" /></label>
     <label class="ui-field">Kontextfenster (Tokens)<x-ui.input name="context_window" type="number" min="1" max="2000000" :value="$profile?->context_window" placeholder="Optional" /></label>
-    <label class="ui-field sm:col-span-2">Fähigkeiten als JSON<x-ui.textarea class="font-mono text-sm" name="capabilities" rows="2">{{ json_encode($profile?->capabilities ?? ['chat']) }}</x-ui.textarea></label>
+    <label class="ui-field sm:col-span-2">Fähigkeiten als JSON<x-ui.textarea class="font-mono text-sm" name="capabilities" rows="2">{{ json_encode($profile ? ($profile->capabilities ?? []) : ['chat']) }}</x-ui.textarea>
+</label>
 </div>

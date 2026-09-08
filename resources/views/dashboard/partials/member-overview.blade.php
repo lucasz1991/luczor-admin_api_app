@@ -7,12 +7,12 @@
 
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <x-ui.stat label="Verknüpfte Geräte" :value="$devices->count()" hint="In deinem Benutzerkonto" />
-        <x-ui.stat label="Synchronisierte Projekte" :value="$userProjects->count()" hint="Aus deinen Geräten" />
+        <x-ui.stat label="Projekte im Überblick" :value="$userProjects->count()" hint="Bis zu 8 zuletzt synchronisierte Projekte" />
         <x-ui.stat label="Archivierte Einträge" :value="array_sum($archiveCounts)" hint="Deine gespeicherten Daten" />
         <x-ui.stat label="Aktive Verbindungen" :value="$apiKeys->filter(fn ($key) => $key->active && ! $key->isExpired())->count()" hint="Gültige Gerätezugänge" />
     </div>
 
-    <x-ui.tabs id="member-dashboard" :tabs="['overview' => 'Übersicht', 'projects' => 'Projekte & Aktivität', 'connect' => 'Gerät verbinden']" :active="$errors->any() ? 'connect' : 'overview'">
+    <x-ui.tabs id="member-dashboard" :tabs="['overview' => 'Übersicht', 'projects' => 'Projekte & Aktivität', 'connect' => 'Gerät verbinden']" :active="$errors->any() ? 'connect' : 'overview'" :force-active="$errors->any()">
         <x-ui.tab-panel name="overview">
             <div class="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
                 <x-ui.panel title="Ein Workspace für deine Geräte" description="Besprich einen Auftrag, wähle das passende Gerät und verfolge die Antworten im Webchat.">

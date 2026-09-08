@@ -1,19 +1,25 @@
 <x-ui.panel title="Fallback-Ketten">
             <form class="mt-4 grid gap-3 md:grid-cols-4" method="POST" action="{{ route('dashboard.model-use-case-entries.store') }}">
                 @csrf
-                <x-ui.select aria-label="Anwendungsfall" name="model_use_case_id">
+                <label class="ui-field">Anwendungsfall
+<x-ui.select name="model_use_case_id">
                     @foreach($modelUseCases as $case)<option value="{{ $case->id }}">{{ $case->name }}</option>@endforeach
                 </x-ui.select>
-                <x-ui.select aria-label="Modellprofil" name="model_profile_id">
+</label>
+                <label class="ui-field">Modellprofil
+<x-ui.select name="model_profile_id">
                     @foreach($modelProfiles as $profile)<option value="{{ $profile->id }}">{{ $profile->name }}</option>@endforeach
                 </x-ui.select>
-                <x-ui.input class="" name="sort_order" type="number" value="1" aria-label="Position in der Kette" />
-                <x-ui.button class="" type="submit" variant="primary">Zur Kette</x-ui.button>
+</label>
+                <label class="ui-field">Position
+<x-ui.input name="sort_order" type="number" value="1" />
+</label>
+                <x-ui.button type="submit" variant="primary">Zur Kette</x-ui.button>
             </form>
 
             <div class="mt-5 grid gap-4 lg:grid-cols-2">
                 @foreach($modelUseCases as $case)
-                    <div class="rounded border border-slate-800 p-4" data-chain-card>
+                    <div class="ui-record" data-chain-card>
                         <div class="flex items-center justify-between gap-3">
                             <b class="text-cyan-100">{{ $case->name }}</b>
                             <div class="flex items-center gap-2 text-xs">
@@ -35,7 +41,7 @@
                                         <span class="rounded-full px-2 py-0.5 text-xs {{ $entry->active ? 'bg-emerald-400/10 text-emerald-200' : 'bg-slate-700/50 text-slate-400' }}">{{ $entry->active ? 'aktiv' : 'inaktiv' }}</span>
                                         <details class="relative" data-entry-actions>
                                             <summary class="cursor-pointer list-none rounded px-2 py-1 text-lg leading-none text-cyan-200 hover:bg-cyan-400/10" aria-label="Aktionen für {{ $entry->modelProfile?->name }}">⋮</summary>
-                                            <div class="absolute right-0 z-20 mt-1 w-52 rounded border border-slate-700 bg-slate-950 p-1 text-left shadow-lg">
+                                            <div class="absolute right-0 z-20 mt-1 w-52 rounded border border-slate-700 bg-slate-950 p-1 text-left ">
                                                 <form method="POST" action="{{ route('dashboard.model-use-case-entries.toggle', $entry) }}">
                                                     @csrf
                                                     <button class="block w-full rounded px-3 py-2 text-left text-xs text-cyan-100 hover:bg-cyan-400/10" type="submit">{{ $entry->active ? 'Deaktivieren' : 'Aktivieren' }}</button>

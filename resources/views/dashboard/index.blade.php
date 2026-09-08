@@ -32,13 +32,13 @@
                     <x-ui.button variant="secondary" :href="route('account.workspace')">Mein Workspace</x-ui.button>
                     <x-ui.button :href="route('admin.users.index')">Benutzer verwalten</x-ui.button>
                 </x-slot:actions>
-                <x-ui.tabs id="admin-dashboard" :tabs="['overview' => 'Überblick', 'configuration' => 'Konfiguration']" :active="$errors->any() ? 'configuration' : 'overview'">
+                <x-ui.tabs id="admin-dashboard" :tabs="['overview' => 'Überblick', 'configuration' => 'Konfiguration']" :active="$errors->any() ? 'configuration' : 'overview'" :force-active="$errors->any()">
                     <x-ui.tab-panel name="overview">
                         @include('dashboard.partials.admin-command-center')
                     </x-ui.tab-panel>
                     <x-ui.tab-panel name="configuration">
                         <div data-dashboard-action="advanced-configuration">
-                            <x-ui.tabs id="dashboard-configuration" :tabs="$toolGroups" :active="$openAdminToolGroup">
+                            <x-ui.tabs id="dashboard-configuration" :tabs="$toolGroups" :active="$openAdminToolGroup" :force-active="$errors->any()">
                                 @foreach ($toolGroups as $group => $label)
                                     <x-ui.tab-panel :name="$group">
                                         @include('dashboard.partials.configuration-'.$group)

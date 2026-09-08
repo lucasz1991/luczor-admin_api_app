@@ -5,21 +5,31 @@ export function createTabs({ id, initial, names, forceActive = false }) {
         openTab: String(initial),
         names: names.map(String),
         invalidHandler: null,
+        invalidBatchPending: false,
+        invalidResetTimer: null,
         init() {
             try {
                 const remembered = sessionStorage.getItem(`luczor.tabs:${location.pathname}:${id}`);
                 if (!forceActive && this.names.includes(remembered)) this.openTab = remembered;
             } catch { /* Storage is optional; tabs remain operable. */ }
-            this.invalidHandler = event => this.openContainingPanel(event.target);
+            this.invalidHandler = event => {
+                if (this.invalidBatchPending) return;
+                this.invalidBatchPending = true;
+                this.openContainingPanel(event.target);
+                // Browsers can drain microtasks between native invalid callbacks.
+                // Keep the first invalid panel selected for the whole validation task.
+                this.invalidResetTimer = setTimeout(() => { this.invalidBatchPending = false; }, 0);
+            };
             this.$root.addEventListener('invalid', this.invalidHandler, true);
             this.$nextTick(() => {
-                this.openHash();
+                if (!forceActive) this.openHash();
                 const error = this.$root.querySelector('[aria-invalid="true"], [data-validation-error]');
                 if (error) this.openContainingPanel(error);
             });
         },
         destroy() {
             this.$root.removeEventListener('invalid', this.invalidHandler, true);
+            clearTimeout(this.invalidResetTimer);
         },
         selectTab(name, focus = false) {
             if (!this.names.includes(String(name))) return;
