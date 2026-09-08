@@ -326,7 +326,7 @@ final class LocalModelManifestService
         return [
             'min_total_ram_bytes' => $this->nullablePositiveInteger($policy['min_total_ram_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
             'min_available_ram_bytes' => $this->nullablePositiveInteger($policy['min_available_ram_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
-            'min_vram_bytes' => $this->nullablePositiveInteger($policy['min_vram_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
+            'min_vram_bytes' => $this->schemaVersion() === 2 && ($policy['min_vram_bytes'] ?? null) === 0 ? 0 : $this->nullablePositiveInteger($policy['min_vram_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
             'min_storage_free_bytes' => $this->nullablePositiveInteger($policy['min_storage_free_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
             'max_startup_seconds' => $this->nullablePositiveInteger($policy['max_startup_seconds'] ?? null, 'local_model_capacity_policy_invalid'),
             'benchmark_thresholds' => $benchmarks === null ? null : [

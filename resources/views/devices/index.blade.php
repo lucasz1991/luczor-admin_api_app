@@ -1,6 +1,7 @@
 <x-app-layout>
     <x-slot name="header"><h1 class="text-xl font-semibold">Meine Geräte & Kosten</h1></x-slot>
     <div class="mx-auto max-w-6xl space-y-6 p-6">
+        <h1 class="text-2xl font-semibold">Meine Geräte & Kosten</h1>
         <p>Jedes Gerät verwendet seinen eigenen Schlüssel und kann selbstständig arbeiten. Das Master-Gerät darf zusätzlich Aufträge an deine anderen Geräte verteilen.</p>
         @if(session('status'))<p role="status">{{ session('status') }}</p>@endif
         @if($errors->any())<p role="alert">{{ $errors->first() }}</p>@endif

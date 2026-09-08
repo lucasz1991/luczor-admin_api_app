@@ -24,7 +24,11 @@ class LocalModelTierController extends AdminController
     public function update(Request $request, LocalModelTierService $tiers, LocalModelManifestService $manifest)
     {
         $this->ensureAdmin($request);
-        $data = $request->validate(['revision' => ['required', 'integer', 'min:0'], 'models' => ['required', 'array', 'size:5'], 'models.*' => ['required', 'json', 'max:20000'], 'publish' => ['nullable', 'boolean']]);
+        $data = $request->validate(['revision' => ['required', 'integer', 'min:0'], 'models' => ['required', 'array', 'size:5'], 'models.*' => ['required', 'json', 'max:20000'], 'publish' => ['nullable', 'boolean'],
+            'profiles' => ['sometimes', 'array', 'size:5'], 'profiles.*.name' => ['required', 'string', 'max:160'],
+            'profiles.*.enabled' => ['required', 'boolean'], 'profiles.*.context' => ['required', 'integer', 'min:512', 'max:2000000'],
+            'profiles.*.total_ram' => ['required', 'numeric', 'min:1', 'max:1024'], 'profiles.*.free_ram' => ['required', 'numeric', 'min:0.5', 'max:1024'],
+            'profiles.*.vram' => ['required', 'numeric', 'min:0', 'max:1024']]);
 
         return DB::transaction(function () use ($request, $data, $tiers, $manifest) {
             // The owner row serializes the first creation too.
@@ -34,6 +38,18 @@ class LocalModelTierController extends AdminController
             abort_unless((int) $data['revision'] === $catalog->revision, 409, 'Die Modellkonfiguration wurde inzwischen geändert. Bitte neu laden.');
             $draft = $catalog->draft;
             $models = array_map(fn ($json) => json_decode($json, true, 32, JSON_THROW_ON_ERROR), $data['models']);
+            if (collect($models)->contains(fn ($model) => ! is_array($model) || array_is_list($model))) {
+                throw ValidationException::withMessages(['models' => 'Jede Modellstufe muss ein JSON-Objekt enthalten.']);
+            }
+            foreach (($data['profiles'] ?? []) as $index => $profile) {
+                abort_unless(isset($models[$index]), 422);
+                $models[$index]['display_name'] = $profile['name'];
+                $models[$index]['enabled'] = (bool) $profile['enabled'];
+                $models[$index]['context_limit'] = (int) $profile['context'];
+                $models[$index]['capacity_policy']['min_total_ram_bytes'] = (int) round($profile['total_ram'] * 1024 ** 3);
+                $models[$index]['capacity_policy']['min_available_ram_bytes'] = (int) round($profile['free_ram'] * 1024 ** 3);
+                $models[$index]['capacity_policy']['min_vram_bytes'] = (int) round($profile['vram'] * 1024 ** 3);
+            }
             if (array_column($models, 'id') !== array_column($draft['models'], 'id')) {
                 throw ValidationException::withMessages(['models' => 'Die Modell-IDs der fünf Stufen müssen erhalten bleiben.']);
             }
@@ -51,7 +67,11 @@ class LocalModelTierController extends AdminController
                 if (! collect($models)->contains(fn ($model) => $model['enabled'] === true)) {
                     throw ValidationException::withMessages(['models' => 'Mindestens ein vollständig konfiguriertes Modell muss aktiv sein.']);
                 }
-                $manifest->validateCatalog($draft, true);
+                try {
+                    $manifest->validateCatalog($draft, true);
+                } catch (LocalModelManifestConfigurationException $error) {
+                    throw ValidationException::withMessages(['models' => 'Der Katalog konnte nicht signiert werden: '.$error->getMessage()]);
+                }
                 $updates['published'] = $draft;
             }
             $catalog->update($updates);
