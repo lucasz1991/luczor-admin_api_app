@@ -8,5 +8,5 @@ class WorkflowOperation extends Model
 {
     protected $fillable = ['user_id', 'operation_id', 'action', 'request_hash', 'status', 'response'];
 
-    protected $casts = ['response' => 'array'];
+    protected $casts = ['response' => 'encrypted:array'];
 }

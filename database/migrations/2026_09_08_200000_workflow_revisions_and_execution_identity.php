@@ -42,7 +42,7 @@ return new class extends Migration
             $table->string('action', 40);
             $table->char('request_hash', 64);
             $table->string('status', 20)->default('completed');
-            $table->json('response');
+            $table->longText('response');
             $table->timestamps();
             $table->unique(['user_id', 'operation_id']);
         });

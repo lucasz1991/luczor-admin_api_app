@@ -88,6 +88,17 @@ class DeviceToolPolicy
                 'run' => (string) ($workflow['run'] ?? ''),
                 'step_id' => (int) ($workflow['step_id'] ?? 0),
                 'step_key' => (string) ($workflow['step_key'] ?? ''),
+                'execution_id' => (string) ($workflow['execution_id'] ?? ''),
+                'definition_id' => (int) ($workflow['definition_id'] ?? 0),
+                'revision' => (int) ($workflow['revision'] ?? 1),
+                'child_definition_id' => (int) ($workflow['child_definition_id'] ?? 0),
+                'child_revision' => (int) ($workflow['child_revision'] ?? 1),
+                'project_id' => $workflow['project_id'] ?? null,
+                'device_id' => (string) ($workflow['device_id'] ?? ''),
+                'file_scope' => $workflow['file_scope'] ?? 'legacy',
+                'workspace_root_id' => $workflow['workspace_root_id'] ?? null,
+                'automatic' => (bool) ($workflow['automatic'] ?? false),
+                'grant' => is_array($workflow['grant'] ?? null) ? $workflow['grant'] : null,
             ],
         ];
     }

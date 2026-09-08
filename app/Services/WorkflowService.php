@@ -44,14 +44,17 @@ class WorkflowService
             $projectId = isset($executionContext['project_id'])
                 ? $authoring->projectId((int) $definition->user_id, $executionContext['project_id']) : $definition->project_id;
             abort_if($definition->project_id !== null && (int) $definition->project_id !== $projectId, 422, 'Workflow project cannot be changed at execution.');
+            $isChild = isset($executionContext['_snapshot']);
             $snapshot = $executionContext['_snapshot'] ?? $authoring->snapshot($definition, (int) $definition->user_id, $projectId);
             unset($executionContext['_snapshot']);
             $steps = $this->assertDefinition($snapshot['definition']);
             $executionContext['project_id'] = $projectId ? Project::findOrFail($projectId)->external_id : null;
+            $executionContext['root_workflow_definition_id'] ??= $definition->id;
+            $executionContext['root_workflow_revision'] ??= $snapshot['version'];
             if (! empty($executionContext['device_id'])) {
                 abort_unless(Device::where('user_id', $definition->user_id)->where('device_id', $executionContext['device_id'])->whereNull('revoked_at')->exists(), 422, 'The selected device is invalid.');
             }
-            if (($executionContext['automatic'] ?? false) && ! $sandbox) {
+            if (($executionContext['automatic'] ?? false) && ! $sandbox && ! $isChild) {
                 $executionContext['grant'] = app(AutomationGrantService::class)->authorizeRun($definition, $snapshot, $executionContext);
             }
             $run = WorkflowRun::create([

@@ -11,6 +11,7 @@ use App\Models\WebWorkspaceChat;
 use App\Models\WorkflowStep;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -123,6 +124,12 @@ class DeviceJobService
      */
     public function createForWorkflow(WorkflowStep $step, Device $device, array $params): DeviceJob
     {
+        return DB::transaction(function () use ($step, $device, $params) {
+        $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
+        abort_unless($step->run->status === 'running' && $step->status === 'running', 409, 'Workflow step is no longer running.');
+        if ($step->execution_id && ($existing = DeviceJob::where('workflow_execution_id', $step->execution_id)->first())) {
+            return $existing;
+        }
         $tools = app(DeviceToolPolicy::class);
         $signer = app(DeviceJobSigner::class);
         $audit = app(AuditLogger::class);
@@ -131,19 +138,31 @@ class DeviceJobService
         abort_if($device->revoked_at, 409, 'The target device is revoked.');
 
         $run = $step->run;
+        $context = $run->context['_execution'] ?? [];
         $payload = $tools->normalize('workflow.task', [
             'task_key' => $step->type,
             'params' => $params,
-            'workflow' => ['run' => $run->public_id, 'step_id' => $step->id, 'step_key' => $step->step_key],
+            'workflow' => [
+                'run' => $run->public_id, 'step_id' => $step->id, 'step_key' => $step->step_key,
+                'execution_id' => $step->execution_id, 'definition_id' => $context['root_workflow_definition_id'] ?? $run->workflow_definition_id,
+                'revision' => $context['root_workflow_revision'] ?? $run->definition_snapshot['version'] ?? 1,
+                'child_definition_id' => $run->workflow_definition_id, 'child_revision' => $run->definition_snapshot['version'] ?? 1,
+                'project_id' => $context['project_id'] ?? $device->project?->external_id,
+                'device_id' => $device->device_id,
+                'file_scope' => $params['file_scope'] ?? 'legacy', 'workspace_root_id' => $params['workspace_root_id'] ?? null,
+                'automatic' => (bool) ($context['automatic'] ?? false), 'grant' => $context['grant'] ?? null,
+            ],
         ]);
         $risk = $tools->risk('workflow.task', $payload);
-        $requiresApproval = $tools->requiresLocalApproval((int) $device->user_id, $run->project_id, $device, 'workflow.task');
+        $requiresApproval = ! empty($context['automatic']) && ! empty($context['grant'])
+            ? false : $tools->requiresLocalApproval((int) $device->user_id, $run->project_id, $device, 'workflow.task');
         $job = DeviceJob::create([
             'public_id' => (string) Str::uuid(),
             'user_id' => (int) $device->user_id,
             'project_id' => $run->project_id,
             'device_id' => $device->id,
             'agent_run_id' => $run->agent_run_id,
+            'workflow_execution_id' => $step->execution_id,
             'tool_profile' => 'workflow.task',
             'status' => $requiresApproval ? 'approval_required' : 'queued',
             'risk_level' => $risk,
@@ -154,6 +173,7 @@ class DeviceJobService
             'payload_hash' => app(AuditLogger::class)->hash($payload),
         ]);
         $job->update(['signature' => $signer->sign($job)]);
+        $step->update(['external_run_type' => 'device_job', 'external_run_id' => $job->public_id]);
         if (config('queue.default') !== 'sync') {
             DeviceJobCreated::dispatch($job->fresh(['device']));
         }
@@ -173,6 +193,7 @@ class DeviceJobService
         ]);
 
         return $job->fresh(['device']);
+        });
     }
 
     private function notifyDeviceJob(DeviceJob $job, Device $device, bool $requiresApproval): void
