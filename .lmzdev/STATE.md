@@ -109,3 +109,18 @@
 - Vollsuite 569 Tests/3932 Assertions; abschließend Navigation 8 Tests/72 Assertions und Tab-JavaScript 5 Tests grün. Scoped Pint, Blade-Kompilierung, Diff-Check und finaler Vite-Build mit Node22.22.0 bestanden. Echte lokale Browserprüfung Desktop/390px mit isolierten Beispieldaten.
 - Bericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-complete-web-ui-components.md; Komponentenreferenz admin_api_app/docs/ui-components.md. Vorschau9032 bleibt verfügbar. Kein Serverdeploy, kein neuer Desktopbuild und keine echte Modell-/Mehrgeräteabnahme dieses UI-Auftrags.
 - Source-Ownership aller Teilagenten zurückgegeben. Externe Zwischencommits und vorhandene Änderungen erhalten; kein eigener Commit. Frühere persönliche Datenzuordnung und produktiver Rollout bleiben separat offen.
+
+## 2026-09-08 | Codex/backend_team_gpu | completed-local
+- Team-Policy meldet konkrete Rollenblockaden über den tatsächlichen lesenden Routingprüfer; Free-Preset ist unabhängig von optionaler externer Planung.
+- Teilkataloge erzeugen keine leeren Rollen; ausdrückliche Adminoption ergänzt nur leere aktive Ketten. Bestehende und deaktivierte Konfiguration bleibt erhalten.
+- Signierte Runtime unterstützt optionale backend/files mit strikten Bibliotheksnamen/Hashes; fehlende Felder erhalten Legacy-Signaturbytes.
+- Verifiziert:48 fokussierte Tests/427 Assertions, abschließend22 Teamtests/132,2 UI-Kompositionstests/61, scoped PHPStan/Pint/Diff-Check bestanden.
+- Bericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-backend-agent-readiness-gpu-contract.md. Keine echten Provideranfragen, Aktivierung oder Veröffentlichung. Quellen freigegeben; Desktop/Browser/Hardwareintegration bei Root.
+
+## 2026-09-08 | Codex/root | Agententeam-Recovery und GPU completed-local
+- Gateway erneuert abgelaufene Bereitschaft ausschließlich am passenden residenten Modell, ohne Kaltstart oder Client-Verlängerung. Scope, Abbruch, Cooldown und signierte Grenzen bleiben erhalten.
+- Teilteams, konkreter Rollenstatus, Vorgängerübergaben und echte Rundenzählung umgesetzt; Projektdateiwerkzeuge ohne Ordnerbindung gesperrt. Neuer begrenzter lesender Windows-Systemdiagnosecollector integriert.
+- CUDA-/Vulkan-/Metal-Auswahl nach geprüftem Runtimegerät, VRAM-Fit, begrenzter CPU-Fallback und gemessener Berechnungsstatus. Die bestehende RTX3090 war bereits in Benutzung; kein CPU-only-Befund und kein gemessener Geschwindigkeitsgewinn.
+- 1312 Frontendtests, 142 Rusttests plus1bestehendignoriert, fokussiert48Backendtests/427Assertions und22Teamtests/132Assertions bestanden. Backendvollsuite578bestanden/5bestehendeWindows-POSIX-Schlüsseltestsfehlgeschlagen/4001Assertions; nicht pauschal grün. Statische Gates und Builds bestanden.
+- Release: app/src-tauri/target/release/tauri-app.exe,14809600Bytes,SHA256 F23CE4F71525E0F68D58C60417EBD304C2DDC43EB545D6DFD0E8CA28E5473E0A. Nicht gestartet; Nutzer-App unverändert. Neuer GPU-Smoke vor Modellstart wegen bestehender Nutzer-Runtime gestoppt. Kein Serverdeploy und kein vollständiger neuer nativer Agentenlauf.
+- Hauptbericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-agent-teams-gpu.md; Build-JSON daneben. Bedienung app/docs/agent-teams-and-gpu.md. Root und alle Teilagenten geben Source-Ownership frei. Kein eigener Commit; vorhandene Zwischencommits erhalten.

@@ -318,3 +318,14 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Vollsuite 569 Tests/3932 Assertions; abschließend Navigation 8 Tests/72 Assertions und Tab-JavaScript 5 Tests grün. Scoped Pint, Blade-Kompilierung, Diff-Check und finaler Vite-Build mit Node22.22.0 bestanden. Echte lokale Browserprüfung Desktop/390px mit isolierten Beispieldaten.
 - Bericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-complete-web-ui-components.md; Komponentenreferenz admin_api_app/docs/ui-components.md. Vorschau9032 bleibt verfügbar. Kein Serverdeploy, kein neuer Desktopbuild und keine echte Modell-/Mehrgeräteabnahme dieses UI-Auftrags.
 - Source-Ownership aller Teilagenten zurückgegeben. Externe Zwischencommits und vorhandene Änderungen erhalten; kein eigener Commit. Frühere persönliche Datenzuordnung und produktiver Rollout bleiben separat offen.
+
+## 2026-09-08T10:59:54Z | Codex/backend_team_gpu -> all | status
+
+- Message: Started: agent-team policy and GPU catalog readiness diagnosis
+
+## 2026-09-08 | Codex/backend_team_gpu | completed-local
+- Team-Policy meldet konkrete Rollenblockaden über den tatsächlichen lesenden Routingprüfer; Free-Preset ist unabhängig von optionaler externer Planung.
+- Teilkataloge erzeugen keine leeren Rollen; ausdrückliche Adminoption ergänzt nur leere aktive Ketten. Bestehende und deaktivierte Konfiguration bleibt erhalten.
+- Signierte Runtime unterstützt optionale backend/files mit strikten Bibliotheksnamen/Hashes; fehlende Felder erhalten Legacy-Signaturbytes.
+- Verifiziert:48 fokussierte Tests/427 Assertions, abschließend22 Teamtests/132,2 UI-Kompositionstests/61, scoped PHPStan/Pint/Diff-Check bestanden.
+- Bericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-backend-agent-readiness-gpu-contract.md. Keine echten Provideranfragen, Aktivierung oder Veröffentlichung. Quellen freigegeben; Desktop/Browser/Hardwareintegration bei Root.

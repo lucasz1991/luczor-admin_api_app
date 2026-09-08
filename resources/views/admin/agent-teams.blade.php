@@ -10,6 +10,7 @@
                     <option value="{{ $credential->id }}">{{ $credential->label }}</option>
                 @endforeach
             </x-ui.select>
+            <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="fill_empty_routes" value="1" class="mt-1"> Leere aktive Rollenketten erneut befüllen</label>
             <x-ui.button type="submit" variant="primary">Teams ergänzen</x-ui.button>
             <p class="text-xs text-slate-500">Ergänzt fehlende Rollen, Modelle und Kostenregeln. Bestehende oder deaktivierte Profile und bearbeitete Routingketten bleiben erhalten. Free-Rollen haben 0 USD Kostenbudget, externe Planung höchstens 0,05 USD je Anfrage.</p>
         </form>
@@ -26,4 +27,18 @@
             <x-ui.button type="submit" variant="secondary">Team-Einstellungen speichern</x-ui.button>
         </form>
     </div>
+</x-ui.panel>
+<x-ui.panel title="Einrichtungsstatus je Rolle" description="Prüft Rollen, Zugänge, Preise und Routingregeln. Die Verfügbarkeit eines Providers wird erst beim tatsächlichen Auftrag geprüft.">
+    <div class="grid gap-3 md:grid-cols-2">
+        @foreach(['planning' => 'Planung', 'research' => 'Recherche', 'coding' => 'Codeentwurf', 'review' => 'Prüfung'] as $role => $label)
+            @php($rolePolicy = $agentTeamPolicy['models_by_role'][$role])
+            <article class="ui-record space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-semibold">{{ $label }}</h3><x-ui.badge :tone="$rolePolicy['ready'] ? 'success' : 'warning'">{{ $rolePolicy['ready'] ? 'Konfiguriert' : 'Einrichtung offen' }}</x-ui.badge></div>
+                @if($role === 'planning')<p class="text-xs text-slate-400">Im Free-Team übernimmt das lokale Modell die Planung.</p>@endif
+                @if($rolePolicy['reason'])<p class="text-sm text-amber-200">{{ $rolePolicy['reason'] }}</p>@endif
+                <p class="text-xs text-slate-400">{{ count($rolePolicy['candidates']) }} aktive Kandidaten mit gültigem Preisstand</p>
+            </article>
+        @endforeach
+    </div>
+    <a class="mt-4 inline-block text-sm text-cyan-300 underline" href="{{ route('admin.page', 'models') }}">Modelle und Rollenketten bearbeiten</a>
 </x-ui.panel>

@@ -314,13 +314,37 @@ final class LocalModelManifestService
             throw new LocalModelManifestConfigurationException('local_model_runtime_context_invalid');
         }
 
-        return [
+        $result = [
             'id' => $this->enum($runtime['id'] ?? null, ['llama.cpp'], 'local_model_runtime_id_invalid'),
             'version' => $this->requiredIdentifier($runtime['version'] ?? null, 'local_model_runtime_version_invalid'),
             'sha256' => $this->requiredHash($runtime['sha256'] ?? null, 'local_model_runtime_hash_invalid'),
             'min_context_tokens' => $minimum,
             'max_context_tokens' => $maximum,
         ];
+        // Optional extensions keep existing signed manifests byte-compatible when omitted.
+        if (array_key_exists('backend', $runtime)) {
+            $result['backend'] = $this->enum($runtime['backend'], ['cpu', 'cuda', 'vulkan', 'metal', 'auto'], 'local_model_runtime_backend_invalid');
+        }
+        if (array_key_exists('files', $runtime)) {
+            $files = $runtime['files'];
+            if (! is_array($files) || ! array_is_list($files) || count($files) > 128) {
+                throw new LocalModelManifestConfigurationException('local_model_runtime_files_invalid');
+            }
+            $seen = [];
+            $result['files'] = [];
+            foreach ($files as $file) {
+                $name = is_array($file) ? ($file['name'] ?? null) : null;
+                if (! is_string($name) || strlen($name) > 160
+                    || preg_match('/\A[A-Za-z0-9][A-Za-z0-9._+\-]*\.(dll|so|dylib)\z/i', $name) !== 1
+                    || isset($seen[strtolower($name)])) {
+                    throw new LocalModelManifestConfigurationException('local_model_runtime_files_invalid');
+                }
+                $seen[strtolower($name)] = true;
+                $result['files'][] = ['name' => $name, 'sha256' => $this->requiredHash($file['sha256'] ?? null, 'local_model_runtime_file_hash_invalid')];
+            }
+        }
+
+        return $result;
     }
 
     /** @return array<string,mixed> */

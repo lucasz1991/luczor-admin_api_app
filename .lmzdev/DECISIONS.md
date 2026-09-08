@@ -136,3 +136,8 @@ Record durable decisions with date, context, decision, and consequences.
 - Zentrale Designwerte in admin_api_app/resources/css/ui-system.css, wiederverwendbare Blade-Komponenten unter components/ui; Spezialeditoren über Kompatibilitätsklassen angleichen.
 - Ein Formular bleibt auch über mehrere Tabs atomar vollständig. Erster nativer Validierungsfehler öffnet das richtige Panel synchron; Timer hält Auswahl über Microtask-Checkpoints stabil. Serverfehler überschreiben gespeicherte Auswahl.
 - Übersichtliche Themen-Tabs, eindeutige Dashboard-Fragmente, Tastaturbedienung und mobile Aktionsumbrüche sind gemeinsame Komponentenverträge. Lokaler Browser-/Buildnachweis ist keine Produktions- oder Tauri-Abnahme.
+
+## 2026-09-08 | Agentenbereitschaft und GPU-Vertrag
+- Konfigurierte externe Rollen sind von lokaler Modellbereitschaft und tatsächlicher Providerverfügbarkeit getrennt. Routingprüfer/Readiness teilen Kosten-, Format- und Netzwerkregeln; Discovery nimmt keine Datenmutation vor.
+- Die Reparatur leerer aktiver Rollenketten verlangt eine eigene explizite Adminauswahl und erhält deaktivierte/befüllte Ketten. Teilverfügbare Kataloge legen fehlende Rollen erst mit Kandidaten an.
+- GPU-Backend/Bibliothekspins bleiben optionale signierte Runtimefelder, damit alte kanonische Bytes erhalten bleiben. Ein Backendwunsch ersetzt keine reale GPU-Offload-Messung.

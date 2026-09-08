@@ -58,7 +58,7 @@ final class AgentTeamDefaultsService
     }
 
     /** Adds missing entries; edited or disabled profiles, chains and policies remain authoritative. @return array<string,int> */
-    public function prepare(int $credentialId): array
+    public function prepare(int $credentialId, bool $fillEmptyRoutes = false): array
     {
         $credential = ProviderCredential::query()->whereKey($credentialId)->where('provider', 'openrouter')->where('active', true)->where('request_format', 'chat_completions')->first();
         if (! $credential) {
@@ -70,7 +70,7 @@ final class AgentTeamDefaultsService
             throw ValidationException::withMessages(['research' => 'Bitte zuerst den OpenRouter-Katalog neu prüfen; der Preisstand ist älter als 14 Tage.']);
         }
 
-        return DB::transaction(function () use ($credential, $catalog, $researchedAt): array {
+        return DB::transaction(function () use ($credential, $catalog, $researchedAt, $fillEmptyRoutes): array {
             $counts = ['models_created' => 0, 'roles_created' => 0, 'entries_created' => 0];
             foreach (['free' => 0.0, 'planning' => 0.05] as $kind => $limit) {
                 NetworkPolicy::firstOrCreate(['key' => 'agent.'.$kind], [
@@ -108,6 +108,12 @@ final class AgentTeamDefaultsService
                 }
             }
             foreach (AgentTeamPolicyService::TASKS as $role => $taskType) {
+                $candidates = collect($catalog['models'])->filter(fn (array $model): bool => in_array($role, $model['roles'], true))
+                    ->sortBy(fn (array $model): int => array_search($role, $model['roles'], true));
+                // A partial public catalog must not create empty chains that later look configured.
+                if ($candidates->isEmpty()) {
+                    continue;
+                }
                 $case = ModelUseCase::firstOrCreate(['slug' => 'agent-'.$role], [
                     'name' => 'Agent: '.$role, 'active' => true, 'description' => 'Text-Spezialist; lokale Tools verbleiben unter Luczor-Kontrolle.',
                     'policy_version' => 1, 'routing_strategy' => 'ranked', 'max_attempts' => $role === 'planning' ? 1 : 2,
@@ -116,12 +122,10 @@ final class AgentTeamDefaultsService
                 ]);
                 $newCase = $case->wasRecentlyCreated;
                 $counts['roles_created'] += (int) $newCase;
-                // A pre-existing chain may intentionally omit a model; never repopulate it.
-                if (! $newCase) {
+                // Refill only when explicitly requested, and never alter disabled or populated chains.
+                if (! $newCase && (! $fillEmptyRoutes || ! $case->active || $case->entries()->exists())) {
                     continue;
                 }
-                $candidates = collect($catalog['models'])->filter(fn (array $model): bool => in_array($role, $model['roles'], true))
-                    ->sortBy(fn (array $model): int => array_search($role, $model['roles'], true));
                 foreach ($candidates->values() as $order => $model) {
                     ModelUseCaseEntry::create(['model_use_case_id' => $case->id, 'model_profile_id' => $profiles[$model['id']]->id, 'sort_order' => $order + 1, 'active' => true, 'notes' => 'Recherchierter Startkandidat; Qualität muss in Luczor gemessen werden.']);
                     $counts['entries_created']++;

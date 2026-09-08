@@ -407,6 +407,50 @@ class LocalModelManifestTest extends TestCase
             ->assertJsonPath('code', 'local_model_benchmark_policy_invalid');
     }
 
+    public function test_gpu_backend_and_runtime_library_pins_are_preserved_and_signed(): void
+    {
+        $payload = $this->fixtureCase('explicit_experiment');
+        $payload['models'][0]['runtime']['backend'] = 'cuda';
+        $payload['models'][0]['runtime']['files'] = [['name' => 'ggml-cuda.dll', 'sha256' => str_repeat('a', 64)]];
+        $this->configurePayload($payload);
+        $service = app(LocalModelManifestService::class);
+        $envelope = $service->envelope();
+        $this->assertSame($payload['models'][0]['runtime'], $envelope['payload']['models'][0]['runtime']);
+        $publicKey = openssl_pkey_get_public((string) config('local_models.testing_public_key'));
+        $signature = base64_decode($envelope['signature'], true);
+        $this->assertSame(1, openssl_verify($service->canonicalJson($envelope['payload']), $signature, $publicKey, OPENSSL_ALGO_SHA256));
+        $tampered = $envelope['payload'];
+        $tampered['models'][0]['runtime']['files'][0]['sha256'] = str_repeat('b', 64);
+        $this->assertSame(0, openssl_verify($service->canonicalJson($tampered), $signature, $publicKey, OPENSSL_ALGO_SHA256));
+        $this->assertArrayNotHasKey('backend', $envelope['payload']['models'][1]['runtime']);
+        $this->assertArrayNotHasKey('files', $envelope['payload']['models'][1]['runtime']);
+    }
+
+    public function test_runtime_extension_rejects_untrusted_library_paths_duplicates_and_unknown_backends(): void
+    {
+        $baseline = $this->fixtureCase('explicit_experiment');
+        $this->configurePayload($baseline);
+        $files = fn (string $name): array => [['name' => $name, 'sha256' => str_repeat('a', 64)]];
+        $invalid = [
+            ['backend' => 'unchecked'], ['backend' => null],
+            ['files' => $files('../ggml-cuda.dll')], ['files' => $files('C:\\ggml-cuda.dll')],
+            ['files' => $files('ggml-cuda.exe')], ['files' => $files('ggml-cuda.dll:stream')],
+            ['files' => array_merge($files('ggml-cuda.dll'), $files('GGML-CUDA.DLL'))],
+            ['files' => [['name' => 'ggml-cuda.dll', 'sha256' => 'invalid']]],
+            ['files' => ['name' => 'ggml-cuda.dll']], ['files' => array_fill(0, 129, $files('ggml-cuda.dll')[0])],
+        ];
+        foreach ($invalid as $extension) {
+            $catalog = $baseline;
+            $catalog['models'][0]['runtime'] = array_merge($catalog['models'][0]['runtime'], $extension);
+            try {
+                app(LocalModelManifestService::class)->validateCatalog($catalog);
+                $this->fail('An invalid runtime extension must not be signed.');
+            } catch (LocalModelManifestConfigurationException $exception) {
+                $this->assertStringStartsWith('local_model_runtime_', $exception->reasonCode);
+            }
+        }
+    }
+
     /** @return array<string,mixed> */
     private function assertManifestCase(string $case): array
     {

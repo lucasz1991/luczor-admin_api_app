@@ -75,6 +75,78 @@ class AgentTeamPolicyTest extends TestCase
         $this->assertEquals(1, NetworkPolicy::where('key', 'agent.free')->value('max_attempts'));
     }
 
+    public function test_partial_research_does_not_create_empty_roles_and_later_preparation_adds_them(): void
+    {
+        $catalog = config('agent_teams');
+        $partial = $catalog;
+        $partial['models'] = [$catalog['models'][0]];
+        $research = AgentProfile::create(['key' => AgentTeamPolicyService::CATALOG_KEY, 'name' => 'Research', 'type' => 'model_catalog', 'status' => 'draft', 'config' => $partial]);
+        $credential = $this->credential();
+        $service = app(AgentTeamDefaultsService::class);
+        $this->assertSame(1, $service->prepare($credential->id)['roles_created']);
+        $this->assertDatabaseMissing('model_use_cases', ['slug' => 'agent-research']);
+        $this->assertSame('routing_use_case_unavailable', app(AgentTeamPolicyService::class)->payload()['models_by_role']['research']['reason_code']);
+        $research->update(['config' => $catalog]);
+        $this->assertSame(3, $service->prepare($credential->id)['roles_created']);
+        $this->assertTrue(app(AgentTeamPolicyService::class)->payload()['presets'][0]['ready']);
+    }
+
+    public function test_only_explicit_repair_fills_empty_active_routes_and_disabled_routes_stay_disabled(): void
+    {
+        $credential = $this->credential();
+        $service = app(AgentTeamDefaultsService::class);
+        $service->prepare($credential->id);
+        $coding = ModelUseCase::where('slug', 'agent-coding')->firstOrFail();
+        $research = ModelUseCase::where('slug', 'agent-research')->firstOrFail();
+        $coding->entries()->delete();
+        $research->entries()->delete();
+        $research->update(['active' => false]);
+        $this->assertSame(0, $service->prepare($credential->id)['entries_created']);
+        $admin = User::factory()->create(['role' => 'admin', 'email_verified_at' => now()]);
+        $this->actingAs($admin)->post(route('dashboard.agent-teams.prepare'), [
+            'provider_credential_id' => $credential->id, 'fill_empty_routes' => true,
+        ])->assertRedirect();
+        $this->assertSame(2, $coding->entries()->count());
+        $this->assertSame(0, $research->entries()->count());
+        $this->assertFalse($research->fresh()->active);
+        $this->assertSame(0, $service->prepare($credential->id, true)['entries_created']);
+    }
+
+    public function test_readiness_explains_configuration_without_provider_requests(): void
+    {
+        Http::preventStrayRequests();
+        $service = app(AgentTeamPolicyService::class);
+        $this->assertSame('agent_team_not_configured', $service->payload()['models_by_role']['coding']['reason_code']);
+        $credential = $this->credential();
+        app(AgentTeamDefaultsService::class)->prepare($credential->id);
+        $this->assertTrue($service->payload()['models_by_role']['coding']['ready']);
+        $credential->update(['request_format' => 'responses']);
+        $unready = $service->payload();
+        $this->assertFalse($unready['presets'][0]['ready']);
+        $this->assertSame('routing_credential_incompatible', $unready['models_by_role']['coding']['reason_code']);
+        $this->assertSame([], $unready['models_by_role']['coding']['candidates']);
+        $credential->update(['request_format' => 'chat_completions']);
+        NetworkPolicy::where('key', 'agent.free')->update(['config' => []]);
+        $this->assertSame('routing_network_policy_retry_statuses_invalid', $service->payload()['models_by_role']['coding']['reason_code']);
+        AgentProfile::where('key', AgentTeamPolicyService::POLICY_KEY)->update(['status' => 'disabled']);
+        $this->assertSame('agent_team_disabled', $service->payload()['models_by_role']['coding']['reason_code']);
+        $this->assertDatabaseCount('llm_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_free_preset_does_not_depend_on_optional_external_planning(): void
+    {
+        app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);
+        ModelUseCase::where('slug', 'agent-planning')->update(['active' => false]);
+        $policy = app(AgentTeamPolicyService::class)->payload();
+        $this->assertTrue($policy['presets'][0]['ready']);
+        $this->assertFalse($policy['presets'][1]['ready']);
+        $this->assertSame(['planning'], $policy['presets'][1]['unavailable_roles']);
+        $this->assertSame('agent_role_disabled', $policy['models_by_role']['planning']['reason_code']);
+        $this->travel(15)->days();
+        $this->assertSame('routing_price_unavailable', app(AgentTeamPolicyService::class)->payload()['models_by_role']['coding']['reason_code']);
+    }
+
     public function test_roles_have_distinct_routing_and_never_use_paid_fallback_for_free_specialists(): void
     {
         app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);

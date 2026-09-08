@@ -54,6 +54,7 @@
                                 </div>
                                 <details class="ui-disclosure">
                                     <summary>Modelldatei, Runtime, Lizenz und Prüfnachweise bearbeiten</summary>
+                                    <p class="mt-4 text-sm text-slate-400">GPU-Beschleunigung benötigt einen passenden llama.cpp-Build. Optional legt <code>runtime.backend</code> die Variante fest: <code>auto</code>, <code>cuda</code> (NVIDIA), <code>vulkan</code>, <code>metal</code> oder <code>cpu</code>. Begleitbibliotheken können unter <code>runtime.files</code> mit Dateiname und SHA-256 verifiziert werden. Der Desktop meldet die tatsächlich genutzte Beschleunigung.</p>
                                     <label class="ui-field mt-5">Modell, Kontext, RAM/VRAM-Grenzen und verifizierte Dateien
                                         <x-ui.textarea class="font-mono text-xs" name="models[]" rows="20" required>{{ old('models.'.$index, json_encode($model, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) }}</x-ui.textarea>
                                     </label>

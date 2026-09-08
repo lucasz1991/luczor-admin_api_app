@@ -10,6 +10,10 @@ Unter **Agenten & Ereignisse** gibt es die Modellrecherche und Team-Einstellunge
 2. **Teams ergänzen** verknüpft fehlende Modelle mit einem bereits vorhandenen aktiven OpenRouter-Zugang. Bestehende Modelle, deaktivierte Profile, bearbeitete Rollenketten und Netzwerkregeln werden erhalten. Das Verfahren erzeugt keine Credentials und benötigt keine neue Datenbankmigration.
 3. **Team-Einstellungen speichern** wählt das Standardteam und begrenzt parallele externe Aufgaben auf 1–3. Die Desktop-Freigaben und die signierte lokale Modellrichtlinie gelten zusätzlich.
 
+Der **Einrichtungsstatus je Rolle** zeigt fehlende Rollenketten, deaktivierte Teams/Rollen, inkompatible Zugänge, abgelaufene Preise und ungültige Netzwerk- oder Budgetregeln einzeln. Die Prüfung führt keine Provideranfrage aus. „Konfiguriert“ beschreibt die serverseitige Routingfähigkeit für eine kleine Textanfrage; tatsächliche Verfügbarkeit und auftragsabhängige Limits werden beim Auftrag geprüft. Das Free-Team hängt nicht von der optionalen externen Planungsrolle ab.
+
+Ein unvollständiger öffentlicher Katalog erzeugt nur Rollen mit verfügbaren Kandidaten. Ein späteres „Teams ergänzen“ legt dann die zuvor fehlenden Rollen an. Für ältere bereits leere aktive Rollenketten gibt es die explizite Option **Leere aktive Rollenketten erneut befüllen**. Sie erhält deaktivierte Rollen, vorhandene Einträge und sonstige Einstellungen; ohne diese Option bleiben auch absichtlich leere Ketten erhalten.
+
 Neue Installationen erhalten `free`: lokale Planung, getrennte kostenlose Modelle für Recherche, Codeentwurf und Prüfung. `budget` ergänzt optional externe Planung. Das lokale Kontrollmodell wird durch die bestehende signierte Desktop-Richtlinie bestimmt.
 
 | Rolle | Startmodell | Fallback | Standardbudget |
@@ -28,6 +32,8 @@ Quellen: [öffentlicher Modellkatalog](https://openrouter.ai/api/v1/models), [No
 ## API und unveränderte Freigabe
 
 `GET /api/v1/agent-team-policy` benötigt `settings.read` und liefert unmittelbar `{version, revision, enabled, default_preset, presets, models_by_role, evaluation, researched_at}`. `revision` ist ein SHA-256-Hash der relevanten öffentlichen und serverinternen Routingkonfiguration, ohne Credentials auszugeben. Je Rolle werden Kandidaten, Datenhinweise, Preise, Bereitschaft, Kostenlimit, Ausgabelimit und maximale Versuche geliefert.
+
+Zusätzlich liefern Rollen `reason_code` und `reason` (jeweils null bei erfolgreicher Konfigurationsprüfung). Presets melden `ready` und `unavailable_roles`, wobei nur ihre externen Rollen berücksichtigt werden. Auch diese Werte sind Bestandteil der Revision. Discovery bleibt lesend; fehlende Konfiguration wird nicht durch einen App-Abruf aktiviert.
 
 Für `POST /api/v1/proxy/chat` mit `task_type=agent.planning|agent.research|agent.coding|agent.review` ist `agent_team_policy_revision` erforderlich. Die App bindet diese Revision an den freigegebenen Auftrag. Der Server prüft sie vor der Verarbeitung und erneut vor jedem Provider-Versuch. Eine zwischenzeitlich geänderte Modell-, Preis-, Provider- oder Budgetkonfiguration liefert HTTP 409 mit `code=agent_team_policy_changed`; dafür ist eine neue Freigabe nötig. Eine fehlende Revision oder ein ausführbarer Tool-Vertrag wird mit HTTP 422 abgewiesen. Unbekannte `agent.*`-Rollen fallen niemals auf die allgemeine Chat-Route zurück. Deaktivierte Agententeams werden serverseitig gesperrt.
 

@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\RoutingPolicyException;
 use App\Models\AgentProfile;
 use App\Models\ModelUseCase;
 use App\Models\NetworkPolicy;
 use App\Models\ProviderPriceSnapshot;
+use App\Services\Llm\ProviderWireFormat;
 
 final class AgentTeamPolicyService
 {
@@ -46,7 +48,8 @@ final class AgentTeamPolicyService
                     'model' => $model?->only(['id', 'model_id', 'provider', 'active', 'temperature', 'max_tokens', 'context_window', 'capabilities']),
                     'credential' => $model?->credential?->only(['id', 'provider', 'active', 'base_url', 'request_format']),
                     'price' => $price?->only(['input_per_million', 'output_per_million', 'cache_read_per_million', 'cache_write_per_million', 'valid_from', 'valid_until'])];
-                if (! $entry->active || ! $model?->active || ! $model->credential?->active) {
+                if (! $entry->active || ! $model?->active || ! $model->credential
+                    || ! ProviderWireFormat::isCompatible($model, $model->credential)) {
                     continue;
                 }
                 $info = collect($catalog['models'])->firstWhere('id', $model->model_id) ?? [];
@@ -60,8 +63,9 @@ final class AgentTeamPolicyService
                     'data_policy' => $info['data_policy'] ?? 'Provider-Datennutzung vor Freigabe prüfen.',
                 ];
             }
-            $networkReady = $network?->status === 'active';
-            $modelsByRole[$role] = ['task_type' => $taskType, 'candidates' => $candidates, 'ready' => $case?->active && $networkReady && $candidates !== [],
+            $reasonCode = $this->readinessReason($profile, $case, $taskType);
+            $modelsByRole[$role] = ['task_type' => $taskType, 'candidates' => $candidates, 'ready' => $reasonCode === null,
+                'reason_code' => $reasonCode, 'reason' => $this->readinessMessage($reasonCode),
                 'max_cost_usd' => $this->tightest($case?->max_cost_usd, $network?->max_cost_usd),
                 'max_output_tokens' => $network?->max_output_tokens === null ? null : (int) $network->max_output_tokens,
                 'max_attempts' => $this->tightest($case?->max_attempts, $network?->max_attempts)];
@@ -72,14 +76,16 @@ final class AgentTeamPolicyService
         }
         $free = $specialists;
         $free['planning']['target'] = 'local';
+        $freeUnavailable = array_values(array_filter(['research', 'coding', 'review'], fn (string $role): bool => ! $modelsByRole[$role]['ready']));
+        $budgetUnavailable = array_values(array_filter(array_keys(self::TASKS), fn (string $role): bool => ! $modelsByRole[$role]['ready']));
 
         $payload = [
             'version' => 1,
-            'enabled' => $profile?->status === 'active',
+            'enabled' => $profile?->type === 'team_policy' && $profile->status === 'active',
             'default_preset' => $default,
             'presets' => [
-                ['id' => 'free', 'label' => 'Lokale Planung + Free-Spezialisten', 'description' => 'Luczor steuert lokal. Recherche, Codeentwurf und Prüfung bearbeiten getrennte kostenlose Modelle; Tools führt Luczor lokal aus.', 'max_parallel' => $parallel, 'roles' => $free],
-                ['id' => 'budget', 'label' => 'Günstige externe Planung + Free-Spezialisten', 'description' => 'Optionales kostenpflichtiges Planungsmodell mit eigener Kostenobergrenze; Spezialisten bleiben im kostenlosen Pool.', 'max_parallel' => $parallel, 'roles' => $specialists],
+                ['id' => 'free', 'label' => 'Lokale Planung + Free-Spezialisten', 'description' => 'Luczor steuert lokal. Recherche, Codeentwurf und Prüfung bearbeiten getrennte kostenlose Modelle; Tools führt Luczor lokal aus.', 'max_parallel' => $parallel, 'roles' => $free, 'ready' => $freeUnavailable === [], 'unavailable_roles' => $freeUnavailable],
+                ['id' => 'budget', 'label' => 'Günstige externe Planung + Free-Spezialisten', 'description' => 'Optionales kostenpflichtiges Planungsmodell mit eigener Kostenobergrenze; Spezialisten bleiben im kostenlosen Pool.', 'max_parallel' => $parallel, 'roles' => $specialists, 'ready' => $budgetUnavailable === [], 'unavailable_roles' => $budgetUnavailable],
             ],
             'models_by_role' => $modelsByRole,
             'evaluation' => ['minimum_samples' => 5, 'requires_quality_evidence' => true, 'model_review_is_estimate' => true],
@@ -88,6 +94,51 @@ final class AgentTeamPolicyService
         $payload['revision'] = hash('sha256', json_encode([$payload, $bindings], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION));
 
         return $payload;
+    }
+
+    /** Configuration preflight only; no network request and no inference or availability claim. */
+    private function readinessReason(?AgentProfile $profile, ?ModelUseCase $case, string $taskType): ?string
+    {
+        if (! $profile || $profile->type !== 'team_policy') {
+            return 'agent_team_not_configured';
+        }
+        if ($profile->status !== 'active') {
+            return 'agent_team_disabled';
+        }
+        if (! $case) {
+            return 'routing_use_case_unavailable';
+        }
+        if (! $case->active) {
+            return 'agent_role_disabled';
+        }
+        try {
+            app(ProviderPolicyService::class)->resolve($taskType, [], [
+                'messages' => [['role' => 'user', 'content' => 'Konfigurationsprüfung']],
+            ]);
+        } catch (RoutingPolicyException $exception) {
+            return $exception->reasonCode;
+        }
+
+        return null;
+    }
+
+    private function readinessMessage(?string $reason): ?string
+    {
+        return match ($reason) {
+            null => null,
+            'agent_team_not_configured' => 'Die Agententeam-Konfiguration fehlt. Im Admin einen OpenRouter-Zugang wählen und Teams ergänzen.',
+            'agent_team_disabled' => 'Externe Agententeams sind im Admin deaktiviert.',
+            'agent_role_disabled' => 'Die Rollenroute ist im Admin deaktiviert.',
+            'routing_use_case_unavailable' => 'Für diese Rolle fehlt eine Modellroute. Katalog prüfen und Teams ergänzen.',
+            'routing_no_candidates' => 'Die Rollenroute hat keine aktiven Modelle. Rollenketten prüfen oder leere aktive Ketten ergänzen.',
+            'routing_credential_incompatible' => 'Kein kompatibler aktiver Provider-Zugang ist für diese Rolle hinterlegt.',
+            'routing_price_unavailable' => 'Für die Rollenmodelle fehlen gültige Preise. Katalog neu prüfen und Teams ergänzen.',
+            'routing_network_policy_unavailable', 'routing_network_policy_retry_statuses_invalid' => 'Die Netzwerkrichtlinie dieser Rolle fehlt, ist deaktiviert oder ungültig.',
+            'routing_budget_exceeded', 'routing_budget_policy_invalid' => 'Die Kosten- oder Tokenlimits dieser Rolle sind ungültig oder reichen nicht für die konfigurierten Modelle.',
+            'routing_capability_unavailable' => 'Die Rollenmodelle unterstützen den benötigten Chat-Vertrag nicht.',
+            'routing_context_window_exceeded' => 'Das Ausgabelimit passt nicht in das Kontextfenster der Rollenmodelle.',
+            default => 'Die Rollenroute ist noch nicht ausführbar. Modelle und Routingregeln im Admin prüfen.',
+        };
     }
 
     private function tightest(mixed $first, mixed $second): ?float

@@ -13,8 +13,8 @@ class AgentTeamConfigurationController extends AdminController
     public function prepare(Request $request, AgentTeamDefaultsService $defaults)
     {
         $this->ensureAdmin($request);
-        $data = $request->validate(['provider_credential_id' => ['required', 'integer']]);
-        $counts = $defaults->prepare((int) $data['provider_credential_id']);
+        $data = $request->validate(['provider_credential_id' => ['required', 'integer'], 'fill_empty_routes' => ['sometimes', 'boolean']]);
+        $counts = $defaults->prepare((int) $data['provider_credential_id'], (bool) ($data['fill_empty_routes'] ?? false));
 
         return Redirect::route('admin.page', 'agents')->with('status', sprintf('Agententeams ergänzt: %d Modelle, %d Rollen, %d Routingeinträge. Bestehende Konfiguration bleibt erhalten.', ...array_values($counts)));
     }

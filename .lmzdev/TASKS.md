@@ -34,3 +34,13 @@
 | Unified UI account/auth Blade surfaces | Codex/account_auth_redesign | completed-local | 2026-09-08 |
 
 - [x] 2026-09-08 | Codex/root: Komplettes Laravel-Web-UI mit RailTime-adaptierten Komponenten, einheitlichem Design und Themen-Tabs lokal umgesetzt; Tests, Build und Browserprüfung abgeschlossen. Bericht artifacts/reports/2026-09-08-complete-web-ui-components.md im Root-Protokoll.
+
+- [x] 2026-09-08 | Codex/backend_team_gpu: Agententeam-Readiness, explizite Reparatur leerer Rollen und optionale GPU-Runtime-Signaturfelder (completed-local).
+
+## 2026-09-08 | Codex/root | Agententeam/GPU Abschluss
+- [x] Root: residente Lease-Erneuerung, TS-Vertrag, gemessener GPU-Status, Integration und Release lokal abgeschlossen.
+- [x] agent_team_recovery: Teilteams, Projektbindung, Runden, Diagnosecollector und Tests abgeschlossen; Ownership zurück.
+- [x] gpu_runtime: geprüfte Backendauswahl, Begleitdateipins, Offloadmessung, native Tests und Clippy abgeschlossen; Ownership zurück.
+- [x] backend_team_gpu: Routingbereitschaft, explizite Rollenreparatur, Runtimevertrag und Adminanzeige abgeschlossen; Ownership zurück.
+- [ ] Auslieferungsabnahme: neue EXE nach Nutzer-Chatende starten, echten langen Agenten-/GPU-Lauf prüfen. Produktionsbackend und externe Rollen noch nicht ausgerollt.
+- [ ] Separater vorhandener Backendbefund: Windows-Unterstützung der ManagedLocalModelKey-Pfad-/Rechteprüfung sicher klären; fünf Baseline-Tests bleiben rot. Keine Sicherheitsprüfung abgeschwächt.
