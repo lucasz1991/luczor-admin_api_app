@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Jobs\ExecuteWorkflowStep;
 use App\Jobs\MonitorWorkflowStep;
 use App\Models\DeviceJob;
+use App\Models\Device;
+use App\Models\Project;
 use App\Models\Setting;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
@@ -33,23 +35,37 @@ class WorkflowService
     }
 
     /** @param array<string,mixed> $definition */
-    public function createRun(WorkflowDefinition $definition, array $input = [], ?int $agentRunId = null, bool $sandbox = false): WorkflowRun
+    public function createRun(WorkflowDefinition $definition, array $input = [], ?int $agentRunId = null, bool $sandbox = false, array $executionContext = []): WorkflowRun
     {
-        $steps = $this->assertDefinition($definition->definition ?? []);
-        // P27 — a server-wide sandbox setting forces every run into sandbox mode;
-        // an explicit per-run flag can only add to that, never override it off.
         $sandbox = $sandbox || Setting::getValue('sandbox_enabled', false) === true;
-
-        return DB::transaction(function () use ($definition, $input, $agentRunId, $steps, $sandbox) {
+        return DB::transaction(function () use ($definition, $input, $agentRunId, $sandbox, $executionContext) {
+            $definition = WorkflowDefinition::query()->lockForUpdate()->findOrFail($definition->id);
+            $authoring = app(WorkflowAuthoringService::class);
+            $projectId = isset($executionContext['project_id'])
+                ? $authoring->projectId((int) $definition->user_id, $executionContext['project_id']) : $definition->project_id;
+            abort_if($definition->project_id !== null && (int) $definition->project_id !== $projectId, 422, 'Workflow project cannot be changed at execution.');
+            $snapshot = $executionContext['_snapshot'] ?? $authoring->snapshot($definition, (int) $definition->user_id, $projectId);
+            unset($executionContext['_snapshot']);
+            $steps = $this->assertDefinition($snapshot['definition']);
+            $executionContext['project_id'] = $projectId ? Project::findOrFail($projectId)->external_id : null;
+            if (! empty($executionContext['device_id'])) {
+                abort_unless(Device::where('user_id', $definition->user_id)->where('device_id', $executionContext['device_id'])->whereNull('revoked_at')->exists(), 422, 'The selected device is invalid.');
+            }
+            if (($executionContext['automatic'] ?? false) && ! $sandbox) {
+                $executionContext['grant'] = app(AutomationGrantService::class)->authorizeRun($definition, $snapshot, $executionContext);
+            }
             $run = WorkflowRun::create([
                 'public_id' => (string) Str::uuid(),
                 'user_id' => $definition->user_id,
-                'project_id' => $definition->project_id,
+                'project_id' => $projectId,
                 'workflow_definition_id' => $definition->id,
                 'agent_run_id' => $agentRunId,
                 'status' => 'queued',
                 'sandbox' => $sandbox,
                 'input' => $input,
+                'workflow_revision_id' => $snapshot['revision_id'],
+                'definition_snapshot' => $snapshot,
+                'context' => ['_execution' => $executionContext],
             ]);
             foreach ($steps as $position => $step) {
                 $run->steps()->create([
@@ -63,6 +79,7 @@ class WorkflowService
                     'payload' => $step['payload'],
                     'status' => 'queued',
                     'available_at' => now(),
+                    'execution_id' => (string) Str::uuid(),
                 ]);
             }
 
@@ -75,7 +92,7 @@ class WorkflowService
         $readyStepIds = [];
         $result = DB::transaction(function () use ($run, &$readyStepIds) {
             $run = WorkflowRun::query()->lockForUpdate()->findOrFail($run->id);
-            if (in_array($run->status, ['cancelled', 'completed', 'failed'], true)) {
+            if (in_array($run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true)) {
                 return $run;
             }
             if (! $run->started_at) {
@@ -83,17 +100,34 @@ class WorkflowService
             }
 
             $steps = $run->steps()->orderBy('position')->get();
+            foreach ($steps->where('status', 'waiting_for_device') as $waiting) {
+                $deviceId = $waiting->payload['device_id'] ?? $run->context['_execution']['device_id'] ?? null;
+                $query = Device::where('user_id', $run->user_id)->whereNull('revoked_at')->whereIn('status', ['online', 'busy']);
+                if ($deviceId) {
+                    $query->where('device_id', $deviceId);
+                }
+                if ($deviceId && $query->exists()) {
+                    $waiting->update(['status' => 'queued', 'error' => null, 'available_at' => now()]);
+                }
+            }
+            $terminal = $steps->whereIn('status', ['completed', 'skipped'])->pluck('step_key')->all();
             $completed = $steps->where('status', 'completed')->pluck('step_key')->all();
             foreach ($steps->where('status', 'queued') as $step) {
                 if ($step->available_at?->isFuture()) {
                     continue;
                 }
                 $dependencies = $step->depends_on ?? [];
-                if (array_diff($dependencies, $completed) !== []) {
+                if (array_diff($dependencies, $terminal) !== []) {
                     continue;
                 }
+                if ($dependencies !== [] && array_intersect($dependencies, $completed) === []) {
+                    $step->update(['status' => 'skipped', 'finished_at' => now()]);
+                    $terminal[] = $step->step_key;
+                    continue;
+                }
+                $standingGrant = ($run->context['_execution']['automatic'] ?? false) && ! empty($run->context['_execution']['grant']);
                 $step->update([
-                    'status' => $step->requires_approval || $step->type === 'approval' ? 'awaiting_approval' : 'ready',
+                    'status' => (($step->requires_approval && ! $step->approved_at && ! $standingGrant) || $step->type === 'approval') ? 'awaiting_approval' : 'ready',
                 ]);
             }
 
@@ -105,7 +139,7 @@ class WorkflowService
                 ->filter(fn (WorkflowStep $step) => $step->status === 'ready' && WorkflowTaskCatalog::isAutoDispatch($step->type))
                 ->pluck('id')
                 ->all();
-            if ($fresh->isNotEmpty() && $fresh->every(fn (WorkflowStep $step) => $step->status === 'completed')) {
+            if ($fresh->isNotEmpty() && $fresh->every(fn (WorkflowStep $step) => in_array($step->status, ['completed', 'skipped'], true))) {
                 $run->update(['status' => 'completed', 'finished_at' => now(), 'duration_ms' => $this->runDurationMs($run)]);
             } elseif ($fresh->contains(fn (WorkflowStep $step) => $step->status === 'failed' && $step->attempts >= $step->max_attempts)) {
                 $run->update(['status' => 'failed', 'finished_at' => now(), 'duration_ms' => $this->runDurationMs($run)]);
@@ -114,7 +148,7 @@ class WorkflowService
             return $run->fresh(['steps', 'definition']);
         });
         foreach ($readyStepIds as $stepId) {
-            ExecuteWorkflowStep::dispatch($stepId);
+            ExecuteWorkflowStep::dispatch($stepId)->afterCommit();
         }
 
         // P14 — when a child run terminates, poke the parent run so its nested
@@ -131,6 +165,13 @@ class WorkflowService
 
     public function complete(WorkflowStep $step, array $output = []): WorkflowRun
     {
+        $step->refresh();
+        abort_if(in_array($step->run->status, ['cancelled', 'cancelling'], true), 409, 'Workflow was cancelled.');
+        if ($step->status === 'completed') {
+            abort_unless($step->output === $output, 409, 'Conflicting workflow result.');
+
+            return $step->run->fresh(['steps']);
+        }
         abort_unless(in_array($step->status, ['ready', 'running', 'awaiting_approval'], true), 409, 'Workflow step is not ready.');
         $step->update([
             'status' => 'completed', 'output' => $output, 'finished_at' => now(), 'error' => null,
@@ -146,8 +187,32 @@ class WorkflowService
         return $result;
     }
 
+    public function approve(WorkflowStep $step, int $userId): WorkflowRun
+    {
+        return DB::transaction(function () use ($step, $userId) {
+            $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
+            abort_unless((int) $step->user_id === $userId, 404);
+            abort_unless($step->run->status === 'running', 409, 'Workflow is not running.');
+            if ($step->approved_at) {
+                return $step->run->fresh(['steps']);
+            }
+            abort_unless($step->status === 'awaiting_approval', 409, 'Step is not awaiting approval.');
+            $step->update(['approved_at' => now()]);
+            if (in_array($step->type, ['approval', 'manual'], true)) {
+                return $this->complete($step, ['approved' => true, 'approved_by' => $userId]);
+            }
+            $step->update(['status' => 'ready']);
+
+            return $this->advance($step->run);
+        });
+    }
+
     public function fail(WorkflowStep $step, string $error, string $outcome = 'failed'): WorkflowRun
     {
+        $step->refresh();
+        if (in_array($step->run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true)) {
+            return $step->run;
+        }
         abort_unless(in_array($step->status, ['ready', 'running'], true), 409, 'Workflow step is not running.');
         $attempts = $step->attempts + 1;
         $retry = $attempts < $step->max_attempts;
@@ -187,27 +252,26 @@ class WorkflowService
      */
     public function startChildWorkflow(WorkflowStep $parentStep): WorkflowRun
     {
-        $childId = (int) ($parentStep->payload['workflow_definition_id'] ?? 0);
-        $childDef = WorkflowDefinition::findOrFail($childId);
-        $parentRun = $parentStep->run;
-        $parentDef = $parentRun->definition;
-
-        abort_if(
-            $parentDef && ($childDef->id === $parentDef->id || $childDef->includesDefinition($parentDef->id)),
-            422,
-            'Nested workflow cycle detected.'
-        );
-
-        if ($parentStep->status !== 'running') {
+        return DB::transaction(function () use ($parentStep) {
+            $parentStep = WorkflowStep::query()->lockForUpdate()->findOrFail($parentStep->id);
+            $parentRun = $parentStep->run;
+            abort_unless($parentRun->status === 'running', 409, 'Parent workflow is not running.');
+            if ($child = WorkflowRun::where('parent_execution_id', $parentStep->execution_id)->first()) {
+                return $child;
+            }
+            $payload = $parentStep->resolved_payload ?? $parentStep->payload;
+            $childDef = WorkflowDefinition::findOrFail((int) ($payload['workflow_definition_id'] ?? 0));
+            $snapshot = $parentRun->definition_snapshot['children'][$parentStep->step_key]
+                ?? app(WorkflowAuthoringService::class)->snapshot($childDef, (int) $parentRun->user_id, $parentRun->project_id, [$parentRun->workflow_definition_id]);
+            $context = $parentRun->context['_execution'] ?? [];
+            $context['_snapshot'] = $snapshot;
             $parentStep->update(['status' => 'running', 'started_at' => $parentStep->started_at ?? now()]);
-        }
+            $child = $this->createRun($childDef, is_array($payload['input'] ?? null) ? $payload['input'] : [], $parentRun->agent_run_id, $parentRun->sandbox, $context);
+            $child->update(['parent_workflow_run_id' => $parentRun->id, 'parent_workflow_step_id' => $parentStep->id, 'parent_execution_id' => $parentStep->execution_id]);
+            $this->advance($child);
 
-        $input = is_array($parentStep->payload['input'] ?? null) ? $parentStep->payload['input'] : [];
-        $child = $this->createRun($childDef, $input, $parentRun->agent_run_id);
-        $child->update(['parent_workflow_run_id' => $parentRun->id, 'parent_workflow_step_id' => $parentStep->id]);
-        $this->advance($child->fresh());
-
-        return $child->fresh();
+            return $child->fresh();
+        });
     }
 
     /**
@@ -264,9 +328,10 @@ class WorkflowService
                 $this->fail($step->fresh(), 'device_job_missing');
                 $synced++;
             } elseif ($job->status === 'completed') {
-                $this->complete($step->fresh(), ['device_job' => $job->public_id, 'result' => $job->result ?? []]);
+                $result = $job->result ?? [];
+                $this->complete($step->fresh(), array_merge($result, ['device_job' => $job->public_id, 'result' => $result]));
                 $synced++;
-            } elseif (in_array($job->status, ['failed', 'rejected'], true)) {
+            } elseif (in_array($job->status, ['failed', 'rejected', 'cancelled'], true)) {
                 $this->fail($step->fresh(), mb_substr('device_job_'.$job->status.($job->error ? ': '.$job->error : ''), 0, 8000));
                 $synced++;
             } elseif ($job->expires_at?->isPast()) {
@@ -373,6 +438,14 @@ class WorkflowService
         }
 
         $targetKey = (string) ($route['step_key'] ?? '');
+        if ($step->type === 'condition' && in_array($outcome, ['true', 'false'], true)) {
+            $other = $routes[$outcome === 'true' ? 'false' : 'true'] ?? null;
+            if (($other['type'] ?? '') === 'step' && $other['step_key'] !== $targetKey) {
+                $selected = $this->descendants($run, $targetKey);
+                $unselected = array_diff($this->descendants($run, $other['step_key']), $selected);
+                $run->steps()->whereIn('step_key', $unselected)->whereIn('status', ['queued', 'ready'])->update(['status' => 'skipped', 'finished_at' => now()]);
+            }
+        }
         $limit = max(1, (int) ($route['max_iterations'] ?? 2));
         $output = is_array($run->output) ? $run->output : [];
         $hits = is_array($output['_route_hits'] ?? null) ? $output['_route_hits'] : [];
@@ -392,10 +465,11 @@ class WorkflowService
 
         $target = $run->steps()->where('step_key', $targetKey)->first();
         if ($target) {
-            $target->update([
+            $revisit = in_array($target->status, ['completed', 'skipped', 'failed'], true);
+            $target->update(array_merge([
                 'status' => 'queued', 'attempts' => 0, 'output' => null, 'error' => null,
                 'available_at' => now(), 'started_at' => null, 'finished_at' => null,
-            ]);
+            ], $revisit ? ['execution_id' => (string) Str::uuid(), 'execution_sequence' => $target->execution_sequence + 1, 'resolved_payload' => null, 'approved_at' => null, 'external_run_type' => null, 'external_run_id' => null] : []));
         }
 
         return $this->advance($run);
@@ -406,8 +480,16 @@ class WorkflowService
         $result = DB::transaction(function () use ($run) {
             $run = WorkflowRun::query()->lockForUpdate()->findOrFail($run->id);
             if (! in_array($run->status, ['completed', 'failed', 'cancelled'], true)) {
-                $run->update(['status' => 'cancelled', 'finished_at' => now()]);
-                $run->steps()->whereIn('status', ['queued', 'ready', 'awaiting_approval', 'running'])->update([
+                foreach (WorkflowRun::where('parent_workflow_run_id', $run->id)->get() as $child) {
+                    $this->cancel($child);
+                }
+                $jobIds = $run->steps()->where('external_run_type', 'device_job')->pluck('external_run_id');
+                DeviceJob::whereIn('public_id', $jobIds)->whereIn('status', ['queued', 'approval_required'])->update(['status' => 'cancelled', 'cancel_requested_at' => now(), 'finished_at' => now()]);
+                DeviceJob::whereIn('public_id', $jobIds)->where('status', 'running')->update(['cancel_requested_at' => now()]);
+                $pending = DeviceJob::whereIn('public_id', $jobIds)->where('status', 'running')->exists()
+                    || WorkflowRun::where('parent_workflow_run_id', $run->id)->where('status', 'cancelling')->exists();
+                $run->update(['status' => $pending ? 'cancelling' : 'cancelled', 'finished_at' => $pending ? null : now()]);
+                $run->steps()->whereIn('status', ['queued', 'ready', 'awaiting_approval', 'waiting_for_device', 'running'])->update([
                     'status' => 'cancelled', 'finished_at' => now(),
                 ]);
             }
@@ -422,6 +504,37 @@ class WorkflowService
     private function notifyTerminalRun(WorkflowRun $run): void
     {
         $this->runNotifier->notifyTerminal($run);
+        if (in_array($run->status, ['completed', 'failed', 'cancelled'], true) && class_exists(WorkflowEventService::class)) {
+            app(WorkflowEventService::class)->recordWorkflowTerminal($run);
+        }
+    }
+
+    /** Reconcile a cancellation after the bound device acknowledges stopping. */
+    public function settleCancellation(WorkflowRun $run): void
+    {
+        if ($run->status !== 'cancelling') {
+            return;
+        }
+        $this->cancel($run);
+        if ($run->parent_workflow_run_id && ($parent = WorkflowRun::find($run->parent_workflow_run_id))) {
+            $this->settleCancellation($parent);
+        }
+    }
+
+    private function descendants(WorkflowRun $run, string $key): array
+    {
+        $keys = [$key];
+        $steps = $run->steps()->get();
+        do {
+            $count = count($keys);
+            foreach ($steps as $candidate) {
+                if (array_intersect($candidate->depends_on ?? [], $keys) !== [] && ! in_array($candidate->step_key, $keys, true)) {
+                    $keys[] = $candidate->step_key;
+                }
+            }
+        } while ($count !== count($keys));
+
+        return $keys;
     }
 
     /** @return array<int,array{key:string,type:string,depends_on:array<int,string>,requires_approval:bool,max_attempts:int,payload:array<string,mixed>}> */

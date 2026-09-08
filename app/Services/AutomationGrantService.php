@@ -26,7 +26,7 @@ class AutomationGrantService
         $config = array_intersect_key($data, array_flip([
             'device_id', 'project_external_id', 'root_path', 'allowed_tasks', 'allowed_input_sources',
             'allowed_output_keys', 'egress_hosts', 'max_steps', 'max_runs_per_hour', 'max_input_bytes',
-            'max_output_bytes', 'script_hashes', 'export_results',
+            'max_output_bytes', 'script_hashes', 'export_results', 'approved_revision',
         ]));
         $config += ['max_steps' => 100, 'max_runs_per_hour' => 20, 'max_input_bytes' => 65536, 'max_output_bytes' => 65536, 'script_hashes' => [], 'export_results' => false];
         foreach (['allowed_tasks', 'allowed_input_sources', 'allowed_output_keys', 'egress_hosts'] as $field) {

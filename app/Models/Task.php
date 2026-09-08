@@ -9,12 +9,13 @@ class Task extends Model
     protected $fillable = [
         'user_id', 'client_id', 'external_id', 'title', 'description',
         'status', 'priority', 'project_ref_id', 'conversation_id',
-        'due_at', 'completed_at',
+        'due_at', 'completed_at', 'workflow_causation',
     ];
 
     protected $casts = [
         'due_at' => 'datetime',
         'completed_at' => 'datetime',
+        'workflow_causation' => 'array',
     ];
 
     public const STATUSES = ['open', 'in_progress', 'done', 'cancelled'];

@@ -8,7 +8,7 @@ class WorkflowTriggerDelivery extends Model
 {
     protected $guarded = ['id'];
 
-    protected $casts = ['available_at' => 'datetime', 'started_at' => 'datetime', 'finished_at' => 'datetime'];
+    protected $casts = ['event_payload' => 'array', 'available_at' => 'datetime', 'started_at' => 'datetime', 'finished_at' => 'datetime'];
 
     public function trigger()
     {

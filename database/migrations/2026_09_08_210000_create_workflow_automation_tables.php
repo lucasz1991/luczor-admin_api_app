@@ -23,6 +23,7 @@ return new class extends Migration
             $table->timestamp('next_due_at')->nullable()->index();
             $table->string('last_wall_key', 100)->nullable();
             $table->text('last_error')->nullable();
+            $table->softDeletes();
             $table->timestamps();
         });
         Schema::create('workflow_events', function (Blueprint $table) {
@@ -50,6 +51,7 @@ return new class extends Migration
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();
             $table->unsignedInteger('attempts')->default(0);
+            $table->json('event_payload')->nullable();
             $table->text('last_error')->nullable();
             $table->timestamps();
             $table->unique(['workflow_trigger_id', 'workflow_event_id'], 'workflow_trigger_event_unique');

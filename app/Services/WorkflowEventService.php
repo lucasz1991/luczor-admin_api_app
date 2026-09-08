@@ -83,13 +83,16 @@ class WorkflowEventService
                         if ($trigger->kind === 'workspace.file_changed' && $older->isNotEmpty()) {
                             $changes = $event->payload['changes'] ?? [];
                             foreach ($older as $previous) {
-                                $changes = array_merge($previous->event?->payload['changes'] ?? [], $changes);
+                                $changes = array_merge(($previous->event_payload ?? $previous->event?->payload)['changes'] ?? [], $changes);
                             }
                             $byPath = [];
                             foreach ($changes as $change) {
                                 $byPath[$change['path']] = $change;
                             }
-                            // The event inbox remains immutable. Coalesced paths are recovered from linked prior rows at dispatch.
+                            $payload = $event->payload;
+                            $payload['changes'] = count($byPath) > 128 ? [['path' => '.', 'kind' => 'rescan']] : array_values($byPath);
+                            $payload['coalesced'] = true;
+                            $delivery->update(['event_payload' => $payload]);
                         }
                         foreach ($older as $previous) {
                             $previous->update(['status' => 'coalesced', 'finished_at' => now(), 'last_error' => 'Coalesced into delivery '.$delivery->id]);
