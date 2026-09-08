@@ -7,14 +7,40 @@ use Illuminate\Support\Facades\DB;
 
 class WorkflowDefinition extends Model
 {
-    protected $fillable = ['user_id', 'project_id', 'name', 'version', 'status', 'is_locked', 'definition'];
+    protected $fillable = ['user_id', 'project_id', 'name', 'version', 'status', 'is_locked', 'definition', 'current_revision_id'];
 
     protected $casts = ['definition' => 'array', 'is_locked' => 'boolean'];
 
     protected static function booted(): void
     {
         // Keep the include-graph in sync with the definition's 'workflow' steps.
-        static::saved(fn (self $def) => $def->syncDependencies());
+        static::saved(function (self $def) {
+            $def->syncDependencies();
+            if ($def->wasRecentlyCreated || $def->wasChanged(['definition', 'name'])) {
+                $latest = $def->revisions()->orderByDesc('version')->first();
+                $hash = hash('sha256', json_encode($def->definition, JSON_THROW_ON_ERROR));
+                if (! $latest || $latest->definition_hash !== $hash || $latest->name !== $def->name) {
+                    $version = max((int) $def->version, (int) ($latest?->version ?? 0) + 1);
+                    $revision = $def->revisions()->create(['version' => $version, 'name' => $def->name, 'definition' => $def->definition, 'definition_hash' => $hash]);
+                    $def->updateQuietly(['version' => $version, 'current_revision_id' => $revision->id]);
+                }
+            }
+        });
+    }
+
+    public function revisions()
+    {
+        return $this->hasMany(WorkflowDefinitionRevision::class);
+    }
+
+    public function currentRevision()
+    {
+        return $this->belongsTo(WorkflowDefinitionRevision::class, 'current_revision_id');
+    }
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
     }
 
     public function runs()

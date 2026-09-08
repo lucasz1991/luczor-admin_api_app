@@ -46,7 +46,7 @@ class WorkflowPlanner
             $answerDeps[] = 'recherche';
         }
 
-        $steps[] = ['key' => 'antwort', 'type' => 'llm', 'depends_on' => $answerDeps, 'payload' => ['title' => 'Antwort/Plan erstellen', 'list' => 'ergebnis'], 'routes' => ['failed' => ['type' => 'fail']]];
+        $steps[] = ['key' => 'antwort', 'type' => 'llm', 'depends_on' => $answerDeps, 'payload' => ['title' => 'Antwort/Plan erstellen', 'list' => 'ergebnis', 'instruction' => $goal, 'inference' => 'local', 'output_format' => 'text'], 'routes' => ['failed' => ['type' => 'fail']]];
         $steps[] = ['key' => 'review', 'type' => 'review', 'depends_on' => ['antwort'], 'payload' => ['title' => 'Ergebnis prüfen', 'list' => 'ergebnis']];
         $steps[] = ['key' => 'folgeaufgabe', 'type' => 'task.create', 'depends_on' => ['review'], 'payload' => ['title' => 'Folgeaufgabe anlegen', 'list' => 'ergebnis', 'title_task' => Str::limit('Ziel umsetzen: '.$goal, 180, '')], 'routes' => ['success' => ['type' => 'end']]];
 

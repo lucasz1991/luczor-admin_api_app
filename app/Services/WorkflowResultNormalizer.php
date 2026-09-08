@@ -9,7 +9,7 @@ namespace App\Services;
  */
 class WorkflowResultNormalizer
 {
-    public const OUTCOMES = ['success', 'failed', 'partial', 'timeout'];
+    public const OUTCOMES = ['success', 'failed', 'partial', 'timeout', 'true', 'false'];
 
     /** @param array<string,mixed> $output */
     public static function outcome(array $output, string $fallback = 'success'): string

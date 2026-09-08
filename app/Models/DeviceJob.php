@@ -12,10 +12,12 @@ class DeviceJob extends Model
         'tool_profile', 'status', 'risk_level', 'requires_local_approval',
         'approved_at', 'expires_at', 'payload', 'payload_hash', 'signature',
         'result', 'result_hash', 'error', 'started_at', 'finished_at',
+        'workflow_execution_id', 'cancel_requested_at',
     ];
 
     protected $casts = [
         'requires_local_approval' => 'boolean', 'approved_at' => 'datetime',
+        'cancel_requested_at' => 'datetime',
         'expires_at' => 'datetime', 'started_at' => 'datetime', 'finished_at' => 'datetime',
         'payload' => DeviceJobData::class, 'result' => DeviceJobData::class,
     ];

@@ -28,7 +28,13 @@ class WorkflowTaskCatalog
         return [
             // ── Server-safe step types (original seven) ──────────────────────
             'context' => self::entry('Kontext abrufen', 'server', 'data', true, ['auto_dispatch' => true]),
-            'llm' => self::entry('LLM-Aufruf', 'server', 'ai', true),
+            'llm' => self::entry('Lokaler KI-Schritt', 'client', 'ai', true, [
+                'auto_dispatch' => true,
+                'params' => ['instruction' => ['type' => 'textarea'], 'output_format' => ['type' => 'string', 'default' => 'text'], 'inference' => ['type' => 'string', 'default' => 'local']],
+            ]),
+            'condition' => self::entry('Bedingung', 'server', 'control', true, [
+                'auto_dispatch' => true, 'params' => ['left' => ['type' => 'string'], 'operator' => ['type' => 'string', 'default' => 'eq'], 'right' => ['type' => 'string']],
+            ]),
             'evaluator' => self::entry('Evaluator', 'server', 'data', true, ['auto_dispatch' => true]),
             'review' => self::entry('Review', 'server', 'data', true, ['auto_dispatch' => true]),
             'device_job' => self::entry('Geräte-Job', 'client', 'device', true, ['mutating' => true, 'requires_approval' => true]),

@@ -329,3 +329,7 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Signierte Runtime unterstützt optionale backend/files mit strikten Bibliotheksnamen/Hashes; fehlende Felder erhalten Legacy-Signaturbytes.
 - Verifiziert:48 fokussierte Tests/427 Assertions, abschließend22 Teamtests/132,2 UI-Kompositionstests/61, scoped PHPStan/Pint/Diff-Check bestanden.
 - Bericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-backend-agent-readiness-gpu-contract.md. Keine echten Provideranfragen, Aktivierung oder Veröffentlichung. Quellen freigegeben; Desktop/Browser/Hardwareintegration bei Root.
+
+## 2026-09-08T19:59:39Z | Codex/backend_workflows -> all | status
+
+- Message: Started: immutable workflow authoring and execution core

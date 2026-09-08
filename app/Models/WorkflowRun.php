@@ -13,11 +13,13 @@ class WorkflowRun extends Model
         'parent_workflow_run_id', 'parent_workflow_step_id',
         'current_workflow_step_id', 'status', 'sandbox', 'input', 'output', 'context',
         'started_at', 'finished_at', 'duration_ms',
+        'workflow_revision_id', 'definition_snapshot', 'parent_execution_id',
     ];
 
     protected $casts = [
         'sandbox' => 'boolean',
         'input' => 'array', 'output' => 'array', 'context' => 'array',
+        'definition_snapshot' => 'array',
         'started_at' => 'datetime', 'finished_at' => 'datetime', 'duration_ms' => 'integer',
     ];
 
