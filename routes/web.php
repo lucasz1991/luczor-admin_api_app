@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountDevicesController;
 use App\Http\Controllers\Admin\AgentTeamConfigurationController;
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\LocalModelTierController;
 use App\Http\Controllers\Admin\ModelConfigurationController;
 use App\Http\Controllers\Admin\PersonaSkillController;
 use App\Http\Controllers\Admin\SystemOperationsController;
@@ -28,6 +29,8 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
     Route::get('/github/callback', [GithubOAuthController::class, 'callback'])->name('github.callback');
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/local-model-tiers', [LocalModelTierController::class, 'index'])->name('admin.local-models');
+        Route::put('/admin/local-model-tiers', [LocalModelTierController::class, 'update'])->name('admin.local-models.update');
         Route::post('/dashboard/users', [UserManagementController::class, 'store'])->name('dashboard.users.store');
         Route::patch('/dashboard/users/{user}', [UserManagementController::class, 'update'])->name('dashboard.users.update');
         Route::get('/admin/{page}', [DashboardController::class, 'page'])->name('admin.page');

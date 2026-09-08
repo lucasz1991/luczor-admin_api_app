@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Device;
 use App\Models\LlmRun;
 use App\Models\User;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -37,7 +38,7 @@ class AccountDevicesController extends Controller
             } elseif ((int) $user->master_device_id === (int) $device->id) {
                 $user->forceFill(['master_device_id' => null])->save();
             }
-            app(\App\Services\AuditLogger::class)->record(['actor_user_id' => $user->id, 'device_id' => $device->id, 'event_type' => 'device.coordination_updated', 'payload' => ['master_device_id' => $user->master_device_id]]);
+            app(AuditLogger::class)->record(['actor_user_id' => $user->id, 'device_id' => $device->id, 'event_type' => 'device.coordination_updated', 'payload' => ['master_device_id' => $user->master_device_id]]);
         });
 
         return back()->with('status', 'Gerätezuordnung gespeichert.');

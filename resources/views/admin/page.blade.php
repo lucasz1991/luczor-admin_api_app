@@ -4,6 +4,7 @@
         @if(session('status'))<div class="rounded border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-100">{{ session('status') }}</div>@endif
     </div>
     @if($errors->any())<div class="mb-6 rounded border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">{{ $errors->first() }}</div>@endif
+    @if(in_array($page, ['overview', 'models', 'settings'], true))<a href="{{ route('admin.local-models') }}" class="luczor-btn-secondary mb-5 inline-block">Lokale Modelle · fünf Leistungsstufen</a>@endif
 
     @if($page === 'overview')
         <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">@foreach($operations as $label=>$value)<div class="luczor-card p-4"><div class="text-xs uppercase tracking-wider text-slate-500">{{ str_replace('_',' ',$label) }}</div><div class="mt-2 text-2xl font-semibold text-cyan-100">{{ $value }}</div></div>@endforeach</div>

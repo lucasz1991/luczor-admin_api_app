@@ -3,10 +3,37 @@
 namespace App\Services;
 
 use App\Exceptions\LocalModelManifestConfigurationException;
+use App\Models\LocalModelCatalog;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 final class LocalModelManifestService
 {
+    private bool $catalogLoaded = false;
+
+    private ?array $publishedCatalog = null;
+
+    private function catalogValue(string $key): mixed
+    {
+        if (! $this->catalogLoaded) {
+            $this->catalogLoaded = true;
+            if (Schema::hasTable('local_model_catalogs')) {
+                $this->publishedCatalog = LocalModelCatalog::find(1)?->published;
+            }
+        }
+
+        return $this->publishedCatalog[$key] ?? config('local_models.'.$key);
+    }
+
+    public function validateCatalog(array $catalog, bool $sign = false): array
+    {
+        $validator = clone $this;
+        $validator->catalogLoaded = true;
+        $validator->publishedCatalog = $catalog;
+
+        return $sign ? $validator->envelope() : $validator->payload();
+    }
+
     private const FLASH_MODEL_ID = 'qwen3.8-flash-next';
 
     private const FALLBACK_MODEL_ID = 'orcarouter-qwen3.8-27b-uncensored-q4-k-m';
@@ -81,8 +108,8 @@ final class LocalModelManifestService
 
     private function schemaVersion(): int
     {
-        $version = config('local_models.schema_version');
-        if (! is_int($version) || $version !== 1) {
+        $version = $this->catalogValue('schema_version');
+        if (! is_int($version) || ! in_array($version, [1, 2], true)) {
             throw new LocalModelManifestConfigurationException('local_model_schema_version_invalid');
         }
 
@@ -91,7 +118,7 @@ final class LocalModelManifestService
 
     private function version(string $key): int
     {
-        $version = config('local_models.'.$key);
+        $version = $this->catalogValue($key);
         if (! is_int($version) || $version < 1) {
             throw new LocalModelManifestConfigurationException('local_model_'.$key.'_invalid');
         }
@@ -122,8 +149,8 @@ final class LocalModelManifestService
     /** @return array<int,array<string,mixed>> */
     private function models(): array
     {
-        $configured = config('local_models.models');
-        if (! is_array($configured) || count($configured) !== 2 || ! array_is_list($configured)) {
+        $configured = $this->catalogValue('models');
+        if (! is_array($configured) || count($configured) !== ($this->schemaVersion() === 2 ? 5 : 2) || ! array_is_list($configured)) {
             throw new LocalModelManifestConfigurationException('local_model_catalog_invalid');
         }
 
@@ -145,7 +172,7 @@ final class LocalModelManifestService
         $expectedIds = [self::FLASH_MODEL_ID, self::FALLBACK_MODEL_ID];
         sort($actualIds, SORT_STRING);
         sort($expectedIds, SORT_STRING);
-        if ($actualIds !== $expectedIds) {
+        if ($this->schemaVersion() === 1 && $actualIds !== $expectedIds) {
             throw new LocalModelManifestConfigurationException('local_model_catalog_unsupported');
         }
 
@@ -180,7 +207,7 @@ final class LocalModelManifestService
             self::FALLBACK_MODEL_ID => 'fallback',
             default => null,
         };
-        if ($expectedRole !== null && $routingRole !== $expectedRole) {
+        if ($this->schemaVersion() === 1 && $expectedRole !== null && $routingRole !== $expectedRole) {
             throw new LocalModelManifestConfigurationException('local_model_routing_role_invalid');
         }
         if (($promoted && $releaseChannel !== 'stable')
@@ -334,12 +361,20 @@ final class LocalModelManifestService
      */
     private function routing(array $models): array
     {
-        $routing = config('local_models.routing');
+        $routing = $this->catalogValue('routing');
         if (! is_array($routing)) {
             throw new LocalModelManifestConfigurationException('local_model_routing_invalid');
         }
 
         $byId = collect($models)->keyBy('id');
+        if ($this->schemaVersion() === 2) {
+            $preferredIds = collect($models)->where('routing_role', 'preferred')->pluck('id')->all();
+            $fallbackIds = collect($models)->where('routing_role', 'fallback')->pluck('id')->all();
+            $actualFallbacks = $routing['fallback_model_ids'] ?? [];
+            if (count($preferredIds) !== 1 || count($fallbackIds) !== 4 || ! is_array($actualFallbacks) || count(array_unique($actualFallbacks)) !== 4 || array_diff($fallbackIds, $actualFallbacks) || ($routing['default_model_id'] ?? null) !== $preferredIds[0] || collect($models)->contains(fn ($model) => ! $model['promoted'] || $model['release_channel'] !== 'stable')) {
+                throw new LocalModelManifestConfigurationException('local_model_tier_routing_invalid');
+            }
+        }
         $preferred = $this->requiredIdentifier($routing['preferred_model_id'] ?? null, 'local_model_preferred_id_invalid');
         $preferredModel = $byId->get($preferred);
         if (($preferredModel['routing_role'] ?? null) !== 'preferred') {
