@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -73,12 +74,19 @@ return new class extends Migration
         });
         Schema::table('tasks', function (Blueprint $table) {
             $table->json('workflow_causation')->nullable();
+            $table->unsignedInteger('completion_sequence')->default(0);
         });
+        Schema::table('workflow_runs', function (Blueprint $table) {
+            $table->timestamp('terminal_event_published_at')->nullable()->index();
+        });
+        // Installing subscriptions must not replay pre-feature historical completions.
+        DB::table('workflow_runs')->whereIn('status', ['completed', 'failed', 'cancelled'])->update(['terminal_event_published_at' => now()]);
     }
 
     public function down(): void
     {
-        Schema::table('tasks', fn (Blueprint $table) => $table->dropColumn('workflow_causation'));
+        Schema::table('workflow_runs', fn (Blueprint $table) => $table->dropColumn('terminal_event_published_at'));
+        Schema::table('tasks', fn (Blueprint $table) => $table->dropColumn(['workflow_causation', 'completion_sequence']));
         Schema::dropIfExists('workflow_automation_grants');
         Schema::dropIfExists('workflow_trigger_deliveries');
         Schema::dropIfExists('workflow_events');

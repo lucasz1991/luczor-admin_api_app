@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class WorkflowDefinitionRevision extends Model
 {
-    protected $fillable = ['workflow_definition_id', 'version', 'name', 'definition', 'definition_hash'];
+    protected $fillable = ['workflow_definition_id', 'version', 'name', 'definition', 'definition_hash', 'change_summary'];
 
     protected $casts = ['definition' => 'array', 'version' => 'integer'];
 

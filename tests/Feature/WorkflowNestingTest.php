@@ -32,6 +32,7 @@ class WorkflowNestingTest extends TestCase
         ]);
 
         $parentRun = $svc->createRun($parent);
+        $svc->advance($parentRun);
         $parentStep = $parentRun->steps()->where('type', 'workflow')->first();
 
         $childRun = $svc->startChildWorkflow($parentStep);
@@ -59,9 +60,8 @@ class WorkflowNestingTest extends TestCase
         $this->assertTrue($b->fresh()->includesDefinition($a->id));
         $this->assertTrue($a->fresh()->includesDefinition($b->id));
 
-        $runA = $svc->createRun($a->fresh());
         $this->expectException(HttpException::class);
-        $svc->startChildWorkflow($runA->steps()->where('type', 'workflow')->first());
+        $svc->createRun($a->fresh());
     }
 
     public function test_embedded_definition_is_edit_locked(): void

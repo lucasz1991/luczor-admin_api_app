@@ -40,10 +40,12 @@ class WorkflowTaskCatalogTest extends TestCase
             $this->assertTrue(WorkflowTaskCatalog::isAutoDispatch($type), $type);
         }
         // Externally completed types are never handed to the executor unattended.
-        foreach (['llm', 'manual', 'approval', 'device_job'] as $type) {
+        foreach (['manual', 'approval', 'device_job'] as $type) {
             $this->assertFalse(WorkflowTaskCatalog::isAutoDispatch($type), $type);
         }
         $this->assertTrue(WorkflowTaskCatalog::isClientTask('browser.open'));
+        $this->assertTrue(WorkflowTaskCatalog::isAutoDispatch('llm'));
+        $this->assertTrue(WorkflowTaskCatalog::isClientTask('llm'));
         $this->assertFalse(WorkflowTaskCatalog::isClientTask('device_job'));
         $this->assertFalse(WorkflowTaskCatalog::isClientTask('wait.seconds'));
     }

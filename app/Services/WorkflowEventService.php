@@ -32,11 +32,18 @@ class WorkflowEventService
         if (! in_array($run->status, ['completed', 'failed', 'cancelled'], true)) {
             return;
         }
-        $execution = $run->context['_execution'] ?? [];
-        $this->record((int) $run->user_id, $run->project_id, 'workflow.completed', 'workflow', $run->public_id.':'.$run->status, [
-            'workflow_definition_id' => $run->workflow_definition_id, 'run_id' => $run->public_id,
-            'status' => $run->status, 'finished_at' => $run->finished_at?->toISOString(),
-        ], $execution);
+        DB::transaction(function () use ($run) {
+            $run = WorkflowRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($run->status, ['completed', 'failed', 'cancelled'], true) || $run->terminal_event_published_at) {
+                return;
+            }
+            $execution = $run->context['_execution'] ?? [];
+            $this->record((int) $run->user_id, $run->project_id, 'workflow.completed', 'workflow', $run->public_id.':'.$run->status, [
+                'workflow_definition_id' => $run->workflow_definition_id, 'run_id' => $run->public_id,
+                'status' => $run->status, 'finished_at' => $run->finished_at?->toISOString(),
+            ], $execution);
+            WorkflowRun::whereKey($run->id)->whereNull('terminal_event_published_at')->update(['terminal_event_published_at' => now()]);
+        });
     }
 
     public function recordTaskTerminal(Task $task): void
@@ -44,7 +51,7 @@ class WorkflowEventService
         if ($task->status !== 'done') {
             return;
         }
-        $this->record((int) $task->user_id, $task->project_ref_id, 'task.completed', 'task', $task->id.':'.$task->updated_at->format('U.u'), [
+        $this->record((int) $task->user_id, $task->project_ref_id, 'task.completed', 'task', $task->id.':'.$task->completion_sequence, [
             'task_id' => $task->id, 'external_id' => $task->external_id, 'status' => 'done',
             'completed_at' => $task->completed_at?->toISOString(),
         ], $task->workflow_causation ?? []);
@@ -52,6 +59,10 @@ class WorkflowEventService
 
     public function publishPending(int $limit = 250): int
     {
+        // Recover the crash boundary between a terminal status commit and its event hook.
+        foreach (WorkflowRun::whereNull('terminal_event_published_at')->whereIn('status', ['completed', 'failed', 'cancelled'])->orderBy('id')->limit($limit)->get() as $run) {
+            $this->recordWorkflowTerminal($run);
+        }
         $count = 0;
         foreach (WorkflowEvent::whereNull('published_at')->orderBy('id')->limit($limit)->pluck('id') as $eventId) {
             DB::transaction(function () use ($eventId, &$count) {

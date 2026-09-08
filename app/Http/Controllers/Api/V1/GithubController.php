@@ -12,9 +12,9 @@ use App\Services\AuditLogger;
 use App\Services\ContextCache;
 use App\Services\GithubService;
 use App\Services\GitWritePolicy;
+use App\Services\WorkflowEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Services\WorkflowEventService;
 
 class GithubController extends Controller
 {

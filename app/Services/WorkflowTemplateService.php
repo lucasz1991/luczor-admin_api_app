@@ -26,7 +26,7 @@ class WorkflowTemplateService
                     'steps' => [
                         ['key' => 'kontext', 'type' => 'context', 'payload' => ['title' => 'Kontext sammeln', 'list' => 'vorbereitung', 'query' => '']],
                         ['key' => 'erinnerungen', 'type' => 'memory.recall', 'depends_on' => ['kontext'], 'payload' => ['title' => 'Erinnerungen abrufen', 'list' => 'vorbereitung', 'query' => '', 'top_k' => 6]],
-                        ['key' => 'antwort', 'type' => 'llm', 'depends_on' => ['erinnerungen'], 'payload' => ['title' => 'Antwort erzeugen', 'list' => 'antwort'], 'routes' => ['failed' => ['type' => 'fail']]],
+                        ['key' => 'antwort', 'type' => 'llm', 'depends_on' => ['erinnerungen'], 'payload' => ['title' => 'Antwort erzeugen', 'list' => 'antwort', 'instruction' => 'Beantworte die Workflow-Aufgabe anhand der bereitgestellten Daten.', 'inference' => 'local', 'input_bindings' => ['context' => 'steps.erinnerungen.memories']], 'routes' => ['failed' => ['type' => 'fail']]],
                         ['key' => 'review', 'type' => 'review', 'depends_on' => ['antwort'], 'payload' => ['title' => 'Ergebnis prüfen', 'list' => 'antwort'], 'routes' => ['success' => ['type' => 'end']]],
                     ],
                 ],
@@ -42,7 +42,7 @@ class WorkflowTemplateService
                     'steps' => [
                         ['key' => 'vorbereiten', 'type' => 'manual', 'payload' => ['title' => 'Auftrag beschreiben', 'list' => 'pruefung']],
                         ['key' => 'freigabe', 'type' => 'approval', 'depends_on' => ['vorbereiten'], 'payload' => ['title' => 'Freigabe einholen', 'list' => 'pruefung']],
-                        ['key' => 'umsetzen', 'type' => 'llm', 'depends_on' => ['freigabe'], 'payload' => ['title' => 'Umsetzen', 'list' => 'umsetzung'], 'routes' => ['failed' => ['type' => 'fail']]],
+                        ['key' => 'umsetzen', 'type' => 'llm', 'depends_on' => ['freigabe'], 'payload' => ['title' => 'Umsetzen', 'list' => 'umsetzung', 'instruction' => 'Erstelle einen konkreten Umsetzungsplan für die freigegebene Aufgabe.', 'inference' => 'local'], 'routes' => ['failed' => ['type' => 'fail']]],
                         ['key' => 'folgeaufgabe', 'type' => 'task.create', 'depends_on' => ['umsetzen'], 'payload' => ['title' => 'Ergebnis nachverfolgen', 'list' => 'umsetzung', 'priority' => 'normal'], 'routes' => ['success' => ['type' => 'end']]],
                     ],
                 ],
@@ -78,13 +78,9 @@ class WorkflowTemplateService
             $name = $template['name'].' '.$suffix++;
         }
 
-        return WorkflowDefinition::create([
-            'user_id' => $userId,
-            'name' => $name,
-            'version' => 1,
-            'status' => 'active',
-            'definition' => $template['definition'],
-        ]);
+        $saved = app(WorkflowAuthoringService::class)->save($userId, ['name' => $name, 'definition' => $template['definition']]);
+
+        return WorkflowDefinition::findOrFail($saved['id']);
     }
 
     /** Seed every template whose base name does not exist yet. */

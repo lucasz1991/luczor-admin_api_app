@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Services\ApiActor;
-use Illuminate\Http\Request;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
 use App\Services\WorkflowEventService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /** SOLL §8 — agent/user task management (create, assign, complete). */
 class TaskController extends Controller
@@ -166,11 +166,30 @@ class TaskController extends Controller
         if (($data['status'] ?? null) && $data['status'] !== 'done') {
             $task->completed_at = null;
         }
-        DB::transaction(function () use ($task) {
-            $task->save();
-            if ($task->wasChanged('status') && $task->status === 'done') {
-                app(WorkflowEventService::class)->recordTaskTerminal($task);
+        $task = DB::transaction(function () use ($task, $data) {
+            $current = Task::whereKey($task->id)->lockForUpdate()->firstOrFail();
+            $before = $current->status;
+            $current->fill($task->getDirty());
+            foreach (['title', 'description', 'status', 'priority', 'conversation_id'] as $field) {
+                if (array_key_exists($field, $data) && $data[$field] !== null) {
+                    $current->{$field} = $data[$field];
+                }
             }
+            if (array_key_exists('project_id', $data)) {
+                $current->project_ref_id = $task->project_ref_id;
+            }
+            if (isset($data['status'])) {
+                $current->completed_at = $current->status === 'done' ? ($current->completed_at ?? now()) : null;
+            }
+            if ($before !== 'done' && $current->status === 'done') {
+                $current->completion_sequence++;
+            }
+            $current->save();
+            if ($before !== 'done' && $current->status === 'done') {
+                app(WorkflowEventService::class)->recordTaskTerminal($current);
+            }
+
+            return $current;
         });
 
         return response()->json(['data' => $task]);

@@ -188,6 +188,9 @@ class DeviceController extends Controller
             }
 
             $job->update(['status' => 'running', 'started_at' => now()]);
+            if (isset($step)) {
+                $step->update(['started_at' => $job->started_at]);
+            }
             $audit->record([
                 'actor_user_id' => $device->user_id, 'device_id' => $device->id,
                 'project_id' => $job->project_id, 'device_job_id' => $job->id,

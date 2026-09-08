@@ -69,6 +69,36 @@ class WorkflowDefinitionValidator
         foreach (array_keys($dependencies) as $key) {
             $visit($key);
         }
+        foreach ($normalized as $step) {
+            $references = array_values($step['payload']['input_bindings'] ?? []);
+            $scan = function (mixed $value) use (&$scan, &$references): void {
+                if (! is_array($value)) {
+                    return;
+                }
+                if (array_key_exists('$ref', $value)) {
+                    abort_unless(count($value) === 1 && is_string($value['$ref']), 422, 'Invalid data reference object.');
+                    $references[] = $value['$ref'];
+                }
+                foreach ($value as $child) {
+                    $scan($child);
+                }
+            };
+            $scan($step['payload']);
+            $predecessors = $step['depends_on'];
+            for ($index = 0; $index < count($predecessors); $index++) {
+                foreach ($dependencies[$predecessors[$index]] ?? [] as $ancestor) {
+                    if (! in_array($ancestor, $predecessors, true)) {
+                        $predecessors[] = $ancestor;
+                    }
+                }
+            }
+            foreach ($references as $reference) {
+                abort_unless(preg_match('/^(input|event|steps)(\.[A-Za-z0-9_.-]+)+$/', $reference), 422, 'Invalid workflow data reference.');
+                if (str_starts_with($reference, 'steps.')) {
+                    abort_unless(collect($predecessors)->contains(fn ($key) => str_starts_with($reference, 'steps.'.$key.'.')), 422, 'Step binding must reference a declared predecessor.');
+                }
+            }
+        }
 
         return $normalized;
     }
@@ -114,7 +144,7 @@ class WorkflowDefinitionValidator
         }
         if ($type === 'llm') {
             abort_unless(in_array($payload['output_format'] ?? 'text', ['text', 'json'], true), 422, 'Invalid LLM output format.');
-            abort_unless(($payload['inference'] ?? 'local') === 'local', 422, 'Workflow LLM execution currently requires local inference.');
+            abort_unless(in_array($payload['inference'] ?? 'local', ['local', 'external'], true), 422, 'Invalid workflow inference target.');
         }
         if (isset($payload['file_scope'])) {
             abort_unless(in_array($payload['file_scope'], ['legacy', 'workspace'], true), 422, 'Invalid file scope.');

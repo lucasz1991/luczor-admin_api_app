@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Project;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
+use App\Models\WorkflowTrigger;
 use App\Models\WorkflowTriggerDelivery;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -33,15 +35,16 @@ class WorkflowTriggerDispatcher
                         return null;
                     }
                     // Serialize automatic starts across all subscriptions of the workflow.
-                    $triggerIds = \App\Models\WorkflowTrigger::where('workflow_definition_id', $definition->id)->pluck('id');
-                    $earlier = WorkflowTriggerDelivery::whereIn('workflow_trigger_id', $triggerIds)->where('id', '<', $delivery->id)->whereIn('status', ['pending', 'waiting'])->exists();
+                    $triggerIds = WorkflowTrigger::withTrashed()->where('workflow_definition_id', $definition->id)->pluck('id');
+                    $enabledTriggerIds = WorkflowTrigger::where('workflow_definition_id', $definition->id)->where('enabled', true)->pluck('id');
+                    $earlier = WorkflowTriggerDelivery::whereIn('workflow_trigger_id', $enabledTriggerIds)->where('id', '<', $delivery->id)->whereIn('status', ['pending', 'waiting'])->exists();
                     $active = WorkflowTriggerDelivery::whereIn('workflow_trigger_id', $triggerIds)->where('status', 'running')->exists();
                     if ($earlier || $active) {
                         return null;
                     }
                     $event = $delivery->event;
                     $grant = app(AutomationGrantService::class)->current($definition);
-                    $project = $definition->project_id ? \App\Models\Project::find($definition->project_id) : null;
+                    $project = $definition->project_id ? Project::find($definition->project_id) : null;
                     $chain = array_merge($event->causation['causal_trigger_ids'] ?? [], [(int) $trigger->id]);
                     $context = [
                         'automatic' => true, 'trigger_id' => $trigger->id, 'event_id' => $event->public_id,

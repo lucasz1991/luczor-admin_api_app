@@ -9,10 +9,11 @@
         const SELF_ID = @js($workflowEditing->id);
         const INITIAL = @js($workflowEditing->definition ?? ['steps' => []]);
         const INITIAL_NAME = @js($workflowEditing->name);
+        const INITIAL_VERSION = @js($workflowEditing->version);
 
         const KIND_DOT = {ai: 'bg-violet-400', data: 'bg-slate-400', control: 'bg-amber-400', device: 'bg-sky-400', browser: 'bg-sky-400', memory: 'bg-emerald-400', workflow: 'bg-fuchsia-400', file: 'bg-blue-400', api: 'bg-teal-400', code: 'bg-rose-400', agent: 'bg-indigo-400'};
         const KIND_LABEL = {ai: 'AI', data: 'Daten', control: 'Steuerung', device: 'Gerät', browser: 'Browser', memory: 'Memory', workflow: 'Workflow', file: 'Datei', api: 'API', code: 'Code', agent: 'Agent'};
-        const OUTCOMES = [['success', 'Bei Erfolg'], ['failed', 'Bei Fehler'], ['partial', 'Bei Teilstatus'], ['timeout', 'Bei Timeout']];
+        const OUTCOMES = [['success', 'Bei Erfolg'], ['failed', 'Bei Fehler'], ['partial', 'Bei Teilstatus'], ['timeout', 'Bei Timeout'], ['true', 'Bedingung erfüllt'], ['false', 'Bedingung nicht erfüllt']];
         const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const $ = (sel, root) => (root || document).querySelector(sel);
         const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
@@ -546,7 +547,7 @@
                     method: 'PUT',
                     headers: {Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF},
                     credentials: 'same-origin',
-                    body: JSON.stringify({name: $('[data-ed-name]').value.trim() || INITIAL_NAME, definition_json: JSON.stringify(serialize())}),
+                    body: JSON.stringify({name: $('[data-ed-name]').value.trim() || INITIAL_NAME, definition_json: JSON.stringify(serialize()), expected_version: INITIAL_VERSION, operation_id: crypto.randomUUID()}),
                 });
                 const payload = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(payload.message || 'Speichern fehlgeschlagen (' + res.status + ').');
@@ -573,4 +574,3 @@
         .wf-fullscreen { position: fixed; inset: 0; z-index: 50; margin: 0; border-radius: 0; background: #050b12; overflow: auto; }
         [data-ed-board] [data-card-menu] > summary::-webkit-details-marker { display: none; }
     </style>
-

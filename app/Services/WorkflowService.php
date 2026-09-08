@@ -37,6 +37,7 @@ class WorkflowService
     /** @param array<string,mixed> $definition */
     public function createRun(WorkflowDefinition $definition, array $input = [], ?int $agentRunId = null, bool $sandbox = false, array $executionContext = []): WorkflowRun
     {
+        abort_if(strlen(json_encode($input, JSON_THROW_ON_ERROR)) > 200000, 422, 'Workflow input is too large.');
         $sandbox = $sandbox || Setting::getValue('sandbox_enabled', false) === true;
         return DB::transaction(function () use ($definition, $input, $agentRunId, $sandbox, $executionContext) {
             $definition = WorkflowDefinition::query()->lockForUpdate()->findOrFail($definition->id);
@@ -56,6 +57,9 @@ class WorkflowService
             }
             if (($executionContext['automatic'] ?? false) && ! $sandbox && ! $isChild) {
                 $executionContext['grant'] = app(AutomationGrantService::class)->authorizeRun($definition, $snapshot, $executionContext);
+            }
+            if (! empty($executionContext['grant'])) {
+                abort_if(strlen(json_encode($input, JSON_THROW_ON_ERROR)) > ($executionContext['grant']['config']['max_input_bytes'] ?? 65536), 409, 'Automation input exceeds the approved input budget.');
             }
             $run = WorkflowRun::create([
                 'public_id' => (string) Str::uuid(),
@@ -168,13 +172,15 @@ class WorkflowService
 
     public function complete(WorkflowStep $step, array $output = []): WorkflowRun
     {
-        $step->refresh();
-        abort_if(in_array($step->run->status, ['cancelled', 'cancelling'], true), 409, 'Workflow was cancelled.');
+        return DB::transaction(function () use ($step, $output) {
+        $run = WorkflowRun::query()->lockForUpdate()->findOrFail($step->workflow_run_id);
+        $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
         if ($step->status === 'completed') {
             abort_unless($step->output === $output, 409, 'Conflicting workflow result.');
 
             return $step->run->fresh(['steps']);
         }
+        abort_if(in_array($run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true), 409, 'Workflow is no longer running.');
         abort_unless(in_array($step->status, ['ready', 'running', 'awaiting_approval'], true), 409, 'Workflow step is not ready.');
         $step->update([
             'status' => 'completed', 'output' => $output, 'finished_at' => now(), 'error' => null,
@@ -188,6 +194,7 @@ class WorkflowService
         $this->notifyTerminalRun($result);
 
         return $result;
+        }, 3);
     }
 
     public function approve(WorkflowStep $step, int $userId): WorkflowRun
@@ -212,7 +219,9 @@ class WorkflowService
 
     public function fail(WorkflowStep $step, string $error, string $outcome = 'failed'): WorkflowRun
     {
-        $step->refresh();
+        return DB::transaction(function () use ($step, $error, $outcome) {
+        WorkflowRun::query()->lockForUpdate()->findOrFail($step->workflow_run_id);
+        $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
         if (in_array($step->run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true)) {
             return $step->run;
         }
@@ -240,6 +249,7 @@ class WorkflowService
         }
 
         return $this->advance($step->run);
+        }, 3);
     }
 
     /** Schedule a delayed poll of an in-flight run (timeout expiry + advance). */
@@ -354,7 +364,7 @@ class WorkflowService
     {
         $settled = 0;
         foreach ($run->steps()->where('type', 'wait.seconds')->where('status', 'running')->get() as $step) {
-            $seconds = max(1, min(3600, (int) (($step->payload['seconds'] ?? null) ?: 5)));
+            $seconds = max(1, min(3600, (int) (($step->resolved_payload['seconds'] ?? $step->payload['seconds'] ?? null) ?: 5)));
             if ($step->started_at && $step->started_at->copy()->addSeconds($seconds)->isPast()) {
                 $this->complete($step, ['waited_seconds' => $seconds]);
                 $settled++;
@@ -469,10 +479,21 @@ class WorkflowService
         $target = $run->steps()->where('step_key', $targetKey)->first();
         if ($target) {
             $revisit = in_array($target->status, ['completed', 'skipped', 'failed'], true);
-            $target->update(array_merge([
+            if ($revisit) {
+                $visits = $run->steps()->whereIn('step_key', $this->descendants($run, $targetKey))->get();
+                abort_if($visits->contains(fn ($visit) => in_array($visit->status, ['running', 'waiting_for_device', 'awaiting_approval'], true)), 409, 'A loop cannot restart an unfinished parallel step.');
+                foreach ($visits->whereIn('status', ['completed', 'skipped', 'failed']) as $visit) {
+                    $visit->update(['status' => 'queued', 'attempts' => 0, 'output' => null, 'error' => null,
+                        'available_at' => now(), 'started_at' => null, 'finished_at' => null,
+                        'execution_id' => (string) Str::uuid(), 'execution_sequence' => $visit->execution_sequence + 1,
+                        'resolved_payload' => null, 'approved_at' => null, 'external_run_type' => null, 'external_run_id' => null]);
+                }
+            } else {
+            $target->update([
                 'status' => 'queued', 'attempts' => 0, 'output' => null, 'error' => null,
                 'available_at' => now(), 'started_at' => null, 'finished_at' => null,
-            ], $revisit ? ['execution_id' => (string) Str::uuid(), 'execution_sequence' => $target->execution_sequence + 1, 'resolved_payload' => null, 'approved_at' => null, 'external_run_type' => null, 'external_run_id' => null] : []));
+            ]);
+            }
         }
 
         return $this->advance($run);

@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Models\Project;
+use App\Models\Repository;
+use App\Models\Task;
 use App\Models\WorkflowDefinition;
+use App\Models\WorkflowRun;
 use App\Models\WorkflowTrigger;
 use App\Models\WorkflowTriggerDelivery;
 use App\Services\ApiActor;
@@ -26,8 +29,8 @@ class WorkflowTriggerController extends Controller
         $userId = (int) $request->user()->id;
 
         return response()->json(['data' => [
-            'repositories' => \App\Models\Repository::where('user_id', $userId)->where('project_id', $project?->id)->orderBy('full_name')->limit(500)->get(['id', 'full_name']),
-            'tasks' => \App\Models\Task::where('user_id', $userId)->where('project_ref_id', $project?->id)->orderBy('title')->limit(500)->get(['id', 'title']),
+            'repositories' => Repository::where('user_id', $userId)->where('project_id', $project?->id)->orderBy('full_name')->limit(500)->get(['id', 'full_name']),
+            'tasks' => Task::where('user_id', $userId)->where('project_ref_id', $project?->id)->orderBy('title')->limit(500)->get(['id', 'title']),
             'workflows' => WorkflowDefinition::where('user_id', $userId)->where('project_id', $project?->id)->orderBy('name')->limit(500)->get(['id', 'name']),
         ]]);
     }
@@ -136,7 +139,8 @@ class WorkflowTriggerController extends Controller
         $data = $request->validate([
             'trigger_id' => 'required|integer|min:1', 'event_id' => 'required|uuid', 'device_id' => 'required|string|max:120',
             'root_path' => 'required|string|max:2000', 'occurred_at' => 'required|date', 'changes' => 'required|array|min:1|max:128',
-            'changes.*' => 'array:path,kind', 'changes.*.path' => 'present|string|max:500',
+            'origin_run_id' => 'nullable|uuid',
+            'changes.*' => 'array:path,kind', 'changes.*.path' => 'present|nullable|string|max:500',
             'changes.*.kind' => 'required|in:created,modified,deleted,rescan',
         ]);
         abort_unless(array_diff(array_keys($request->all()), array_keys($data)) === [], 422, 'File events accept metadata only.');
@@ -145,25 +149,33 @@ class WorkflowTriggerController extends Controller
         $trigger = WorkflowTrigger::whereKey($data['trigger_id'])->where('user_id', $request->user()->id)->where('kind', 'workspace.file_changed')->where('enabled', true)->firstOrFail();
         abort_unless(($trigger->config['device_id'] ?? null) === $deviceId && AutomationGrantService::canonicalRoot($data['root_path']) === $trigger->config['root_path'], 403, 'File event scope does not match its subscription.');
         foreach ($data['changes'] as &$change) {
-            if ($change['kind'] === 'rescan' && $change['path'] === '') {
+            if ($change['kind'] === 'rescan' && ($change['path'] === '' || $change['path'] === null)) {
                 $change['path'] = '.';
             }
-            abort_unless($triggers->safeRelativePath($change['path']), 422, 'File event path escapes its root.');
+            abort_unless(is_string($change['path']) && $triggers->safeRelativePath($change['path']), 422, 'File event path escapes its root.');
             $matches = $change['kind'] === 'rescan' && $change['path'] === '.';
+            $windows = preg_match('/^[a-z]:\//', $trigger->config['root_path']) === 1 || str_starts_with($trigger->config['root_path'], '//');
             foreach ($trigger->config['paths'] as $glob) {
-                $matches = $matches || \Illuminate\Support\Str::is($glob, str_replace('\\', '/', $change['path']));
+                $matches = $matches || $triggers->globMatches($glob, $change['path'], $windows);
             }
             foreach ($trigger->config['excludes'] ?? [] as $glob) {
-                if (\Illuminate\Support\Str::is($glob, str_replace('\\', '/', $change['path']))) {
+                if ($triggers->globMatches($glob, $change['path'], $windows)) {
                     $matches = false;
                 }
             }
             abort_unless($matches, 422, 'File event is outside the watched paths.');
         }
         unset($change);
+        $causation = [];
+        if (! empty($data['origin_run_id'])) {
+            $origin = WorkflowRun::where('public_id', $data['origin_run_id'])->where('user_id', $trigger->user_id)->where('project_id', $trigger->project_id)->firstOrFail();
+            $causation = $origin->context['_execution'] ?? [];
+            abort_unless(($causation['device_id'] ?? null) === $deviceId
+                && AutomationGrantService::canonicalRoot((string) ($causation['root_path'] ?? $causation['grant']['config']['root_path'] ?? '')) === $trigger->config['root_path'], 403, 'File event origin does not match its device and root.');
+        }
         $event = $events->record((int) $trigger->user_id, $trigger->project_id, 'workspace.file_changed', 'device:'.$deviceId, $data['event_id'], [
             '_trigger_id' => $trigger->id, 'device_id' => $deviceId, 'changes' => $data['changes'],
-        ], [], $data['occurred_at']);
+        ], $causation, $data['occurred_at']);
 
         return response()->json(['data' => ['event_id' => $event->public_id, 'status' => $event->wasRecentlyCreated ? 'accepted' : 'duplicate']], 202);
     }
@@ -191,7 +203,7 @@ class WorkflowTriggerController extends Controller
 
         return $request->validate([
             'name' => $required.'|string|max:160', 'kind' => $required.'|in:'.implode(',', WorkflowTriggerService::KINDS),
-            'enabled' => 'sometimes|boolean', 'config' => $required.'|array', 'input' => 'sometimes|array',
+            'enabled' => 'sometimes|boolean', 'config' => ($partial ? 'sometimes' : 'present').'|array', 'input' => 'sometimes|array',
             'operation_id' => 'nullable|uuid', 'rotate_secret' => 'sometimes|boolean',
         ]);
     }

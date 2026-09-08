@@ -89,6 +89,7 @@ class WorkflowTriggerService
             $valid['excludes'] ??= ['.git/**', 'node_modules/**', 'vendor/**'];
             foreach (array_merge($valid['paths'], $valid['excludes']) as $path) {
                 abort_unless($this->safeRelativePath($path, true), 422, 'Watch paths must be relative and cannot contain traversal.');
+                abort_unless(! str_starts_with($path, '!') && ! preg_match('/[\[\]{}]/', $path), 422, 'Watch patterns support only literal paths, *, ** and ?; use excludes for negative patterns.');
             }
             $valid['debounce_seconds'] ??= 2;
         }
@@ -140,5 +141,17 @@ class WorkflowTriggerService
 
         return $path !== '' && ! str_starts_with($path, '/') && ! preg_match('/[\x00-\x1f:]/', $path)
             && ! in_array('..', explode('/', $path), true) && ! in_array('', explode('/', $path), true);
+    }
+
+    /** A double-star directory prefix includes zero directories; a single star stays in one segment. */
+    public function globMatches(string $pattern, string $path, bool $caseInsensitive = false): bool
+    {
+        $quoted = preg_quote(str_replace('\\', '/', $pattern), '~');
+        $quoted = str_replace('\\*\\*/', "\x01", $quoted);
+        $quoted = str_replace('\\*\\*', "\x02", $quoted);
+        $quoted = str_replace(['\\*', '\\?'], ['[^/]*', '[^/]'], $quoted);
+        $quoted = str_replace(["\x01", "\x02"], ['(?:.*/)?', '.*'], $quoted);
+
+        return preg_match('~^'.$quoted.'$~u'.($caseInsensitive ? 'i' : ''), str_replace('\\', '/', $path)) === 1;
     }
 }

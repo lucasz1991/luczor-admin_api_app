@@ -263,7 +263,7 @@ class WorkflowStepExecutor
             'title' => mb_substr($title, 0, 200),
             'description' => mb_substr((string) ($payload['description'] ?? ('Erstellt durch Workflow-Lauf '.$step->run->public_id)), 0, 4000),
             'status' => 'open',
-            'priority' => in_array($payload['priority'] ?? 'normal', Task::PRIORITIES, true) ? $payload['priority'] : 'normal',
+            'priority' => in_array($payload['priority'] ?? 'normal', Task::PRIORITIES, true) ? ($payload['priority'] ?? 'normal') : 'normal',
             'project_ref_id' => $step->run->project_id,
             'workflow_causation' => $step->run->context['_execution'] ?? [],
         ]);
@@ -299,7 +299,7 @@ class WorkflowStepExecutor
             app(AutomationGrantService::class)->authorizeTask($step->run, $step->type, $payload);
         }
         $job = $this->deviceJobs->createForWorkflow($step, $device, $params);
-        $step->update(['external_run_type' => 'device_job', 'external_run_id' => $job->public_id]);
+        $step->update(['external_run_type' => 'device_job', 'external_run_id' => $job->public_id, 'started_at' => $job->started_at]);
         $this->workflows->scheduleMonitor($step->run, 5);
     }
 

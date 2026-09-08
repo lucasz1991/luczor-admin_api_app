@@ -147,10 +147,13 @@ class DeviceJobService
                 'execution_id' => $step->execution_id, 'definition_id' => $context['root_workflow_definition_id'] ?? $run->workflow_definition_id,
                 'revision' => $context['root_workflow_revision'] ?? $run->definition_snapshot['version'] ?? 1,
                 'child_definition_id' => $run->workflow_definition_id, 'child_revision' => $run->definition_snapshot['version'] ?? 1,
-                'project_id' => $context['project_id'] ?? $device->project?->external_id,
+                'project_id' => $context['project_id'] ?? null,
                 'device_id' => $device->device_id,
                 'file_scope' => $params['file_scope'] ?? 'legacy', 'workspace_root_id' => $params['workspace_root_id'] ?? null,
                 'automatic' => (bool) ($context['automatic'] ?? false), 'grant' => $context['grant'] ?? null,
+                'workspace_root_path' => $params['workspace_root_id'] ?? null,
+                'input_sources' => $this->workflowInputSources($step->payload ?? []),
+                'output_keys' => [$step->step_key],
             ],
         ]);
         $risk = $tools->risk('workflow.task', $payload);
@@ -224,5 +227,27 @@ class DeviceJobService
                 'error_class' => $exception::class,
             ]);
         }
+    }
+
+    private function workflowInputSources(array $payload): array
+    {
+        $sources = [];
+        $walk = function (mixed $value) use (&$walk, &$sources): void {
+            if (! is_array($value)) {
+                return;
+            }
+            if (isset($value['$ref']) && is_string($value['$ref'])) {
+                $sources[] = explode('.', $value['$ref'])[0];
+            }
+            foreach ($value as $child) {
+                $walk($child);
+            }
+        };
+        $walk($payload);
+        foreach ($payload['input_bindings'] ?? [] as $reference) {
+            $sources[] = explode('.', (string) $reference)[0];
+        }
+
+        return array_values(array_unique($sources));
     }
 }

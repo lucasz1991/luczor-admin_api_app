@@ -38,6 +38,13 @@ class WorkflowController extends Controller
         return response()->json(['data' => WorkflowTemplateService::templates()]);
     }
 
+    public function revision(Request $request, WorkflowDefinition $workflowDefinition, int $version, WorkflowAuthoringService $authoring)
+    {
+        $authoring->assertOwned((int) $request->user()->id, $workflowDefinition);
+
+        return response()->json(['data' => $workflowDefinition->revisions()->where('version', $version)->firstOrFail()]);
+    }
+
     public function validateDefinition(Request $request, WorkflowAuthoringService $authoring)
     {
         $data = $request->validate(['definition' => ['required', 'array'], 'project_id' => ['nullable', 'string', 'max:190'], 'workflow_definition_id' => ['nullable', 'integer']]);
@@ -94,7 +101,7 @@ class WorkflowController extends Controller
             $run = $workflows->createRun($workflowDefinition, $data['input'] ?? [], $data['agent_run_id'] ?? null, $data['sandbox'] ?? false, $context);
             $workflows->advance($run);
 
-            return $run->fresh()->toArray();
+            return $run->fresh(['steps'])->toArray();
         });
 
         return response()->json(['data' => $result], 201);
@@ -154,6 +161,6 @@ class WorkflowController extends Controller
 
     private function writeRules(): array
     {
-        return ['operation_id' => ['nullable', 'uuid'], 'project_id' => ['nullable', 'string', 'max:190'], 'name' => ['required', 'string', 'max:160'], 'definition' => ['required', 'array'], 'status' => ['nullable', 'in:active,disabled']];
+        return ['operation_id' => ['nullable', 'uuid'], 'project_id' => ['nullable', 'string', 'max:190'], 'name' => ['required', 'string', 'max:160'], 'definition' => ['required', 'array'], 'status' => ['nullable', 'in:active,disabled'], 'change_summary' => ['nullable', 'string', 'max:1000']];
     }
 }

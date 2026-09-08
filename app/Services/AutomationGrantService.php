@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Device;
+use App\Models\Project;
 use App\Models\WorkflowAutomationGrant;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
@@ -21,7 +22,7 @@ class AutomationGrantService
         abort_unless((int) $definition->user_id === $userId && hash_equals($deviceId, $data['device_id']), 403, 'Automation approval must originate on the selected owned device.');
         abort_unless(Device::where('user_id', $userId)->where('device_id', $deviceId)->whereNull('revoked_at')->exists(), 403, 'Automation device is unavailable.');
         abort_unless(($data['local_approved'] ?? false) === true, 422, 'Complete local approval is required.');
-        $projectExternalId = $definition->project_id ? \App\Models\Project::find($definition->project_id)?->external_id : null;
+        $projectExternalId = $definition->project_id ? Project::find($definition->project_id)?->external_id : null;
         abort_unless(($data['project_external_id'] ?? null) === $projectExternalId, 422, 'Automation project does not match the workflow.');
         $config = array_intersect_key($data, array_flip([
             'device_id', 'project_external_id', 'root_path', 'allowed_tasks', 'allowed_input_sources',
@@ -65,6 +66,7 @@ class AutomationGrantService
         abort_unless(($executionContext['device_id'] ?? null) === $grant->device_id, 409, 'Automation device exceeds the standing approval.');
         abort_unless((int) $grant->project_id === (int) $definition->project_id, 409, 'Automation project exceeds the standing approval.');
         abort_unless(count($steps) <= $config['max_steps'], 409, 'Automation step budget requires new approval.');
+        abort_unless(! isset($executionContext['root_path']) || self::canonicalRoot((string) $executionContext['root_path']) === $config['root_path'], 409, 'Automation root exceeds the standing approval.');
         foreach ($steps as $step) {
             $this->assertTask($grant, (string) ($step['type'] ?? ''), $step['payload'] ?? [], (string) ($step['key'] ?? ''), false);
         }
@@ -96,12 +98,16 @@ class AutomationGrantService
         $config = $grant->config;
         abort_unless(in_array($type, $config['allowed_tasks'], true), 409, "Automation action {$type} requires new approval.");
         abort_unless(strlen(self::canonicalJson($payload)) <= $config['max_input_bytes'], 409, 'Automation input budget exceeded.');
+        foreach ($payload['input_bindings'] ?? [] as $reference) {
+            $source = explode('.', (string) $reference)[0];
+            abort_unless(in_array($source, $config['allowed_input_sources'], true), 409, 'Automation input source requires new approval.');
+        }
         $walk = function (mixed $value) use (&$walk, $config): void {
             if (! is_array($value)) {
                 return;
             }
-            if (isset($value['source'])) {
-                $source = explode('.', (string) $value['source'])[0];
+            if (isset($value['source']) || isset($value['$ref'])) {
+                $source = explode('.', (string) ($value['source'] ?? $value['$ref']))[0];
                 if (in_array($source, ['input', 'event', 'steps'], true)) {
                     abort_unless(in_array($source, $config['allowed_input_sources'], true), 409, 'Automation input source requires new approval.');
                 }
@@ -111,7 +117,7 @@ class AutomationGrantService
             }
         };
         $walk($payload);
-        foreach (['root_path', 'project_dir'] as $rootField) {
+        foreach (['root_path', 'project_dir', 'workspace_root_id', 'workspace_root_path'] as $rootField) {
             if (isset($payload[$rootField]) && is_string($payload[$rootField])) {
                 abort_unless(self::canonicalRoot($payload[$rootField]) === $config['root_path'], 409, 'Automation root requires new approval.');
             }
@@ -138,22 +144,10 @@ class AutomationGrantService
 
     private function collectSteps(array $graph): array
     {
-        $steps = [];
-        $walk = function (array $node) use (&$walk, &$steps): void {
-            foreach ($node as $key => $value) {
-                if ($key === 'steps' && is_array($value)) {
-                    foreach ($value as $step) {
-                        if (is_array($step)) {
-                            $steps[] = $step;
-                        }
-                    }
-                }
-                if (is_array($value)) {
-                    $walk($value);
-                }
-            }
-        };
-        $walk($graph);
+        $steps = $graph['definition']['steps'] ?? $graph['steps'] ?? [];
+        foreach ($graph['children'] ?? [] as $child) {
+            $steps = array_merge($steps, $this->collectSteps($child));
+        }
 
         return $steps;
     }

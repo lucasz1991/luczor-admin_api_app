@@ -14,12 +14,16 @@ return new class extends Migration
             $table->foreignId('workflow_definition_id')->constrained()->cascadeOnDelete();
             $table->unsignedInteger('version');
             $table->string('name', 160);
+            $table->string('change_summary', 1000)->nullable();
             $table->json('definition');
             $table->char('definition_hash', 64);
             $table->timestamps();
             $table->unique(['workflow_definition_id', 'version'], 'workflow_revision_version_unique');
         });
-        Schema::table('workflow_definitions', fn (Blueprint $table) => $table->unsignedBigInteger('current_revision_id')->nullable());
+        Schema::table('workflow_definitions', function (Blueprint $table) {
+            $table->unsignedBigInteger('current_revision_id')->nullable();
+            $table->string('change_summary', 1000)->nullable();
+        });
         Schema::table('workflow_runs', function (Blueprint $table) {
             $table->unsignedBigInteger('workflow_revision_id')->nullable();
             $table->json('definition_snapshot')->nullable();
@@ -65,7 +69,7 @@ return new class extends Migration
         Schema::table('device_jobs', fn (Blueprint $table) => $table->dropColumn(['workflow_execution_id', 'cancel_requested_at']));
         Schema::table('workflow_steps', fn (Blueprint $table) => $table->dropColumn(['execution_id', 'execution_sequence', 'approved_at', 'resolved_payload']));
         Schema::table('workflow_runs', fn (Blueprint $table) => $table->dropColumn(['workflow_revision_id', 'definition_snapshot', 'parent_execution_id']));
-        Schema::table('workflow_definitions', fn (Blueprint $table) => $table->dropColumn('current_revision_id'));
+        Schema::table('workflow_definitions', fn (Blueprint $table) => $table->dropColumn(['current_revision_id', 'change_summary']));
         Schema::dropIfExists('workflow_definition_revisions');
     }
 };

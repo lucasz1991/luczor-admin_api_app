@@ -44,8 +44,10 @@ class WorkflowAuthoringService
     }
 
     /** Resolve all nested definitions now; execution never consults mutable child JSON. */
-    public function snapshot(WorkflowDefinition $definition, int $userId, ?int $projectId, array $ancestors = [], bool $requireActive = true): array
+    public function snapshot(WorkflowDefinition $definition, int $userId, ?int $projectId, array $ancestors = [], bool $requireActive = true, ?int &$nodeCount = null): array
     {
+        $nodeCount ??= 0;
+        abort_if(++$nodeCount > 100, 422, 'Expanded workflow exceeds the definition limit.');
         $this->assertOwned($userId, $definition);
         abort_if(count($ancestors) >= 8 || in_array($definition->id, $ancestors, true), 422, 'Nested workflow cycle or depth limit exceeded.');
         abort_if($definition->project_id !== null && (int) $definition->project_id !== $projectId, 422, 'Nested workflow belongs to another project.');
@@ -55,7 +57,7 @@ class WorkflowAuthoringService
         foreach ($steps as $step) {
             if ($step['type'] === 'workflow') {
                 $child = WorkflowDefinition::query()->lockForUpdate()->findOrFail($step['payload']['workflow_definition_id']);
-                $children[$step['key']] = $this->snapshot($child, $userId, $projectId, [...$ancestors, $definition->id], $requireActive);
+                $children[$step['key']] = $this->snapshot($child, $userId, $projectId, [...$ancestors, $definition->id], $requireActive, $nodeCount);
             }
         }
 
@@ -82,6 +84,7 @@ class WorkflowAuthoringService
                 'user_id' => $userId, 'project_id' => $projectId, 'name' => $data['name'],
                 'definition' => $data['definition'], 'status' => $data['status'] ?? $definition?->status ?? 'active',
                 'version' => $definition ? $definition->version + 1 : 1,
+                'change_summary' => $data['change_summary'] ?? null,
             ];
             if ($definition) {
                 $definition->update($attributes);
@@ -115,11 +118,11 @@ class WorkflowAuthoringService
 
     public function serialize(WorkflowDefinition $definition, bool $withRevisions = false): array
     {
-        $data = $definition->only(['id', 'name', 'version', 'current_revision_id', 'status', 'is_locked', 'project_id', 'definition', 'created_at', 'updated_at']);
+        $data = $definition->only(['id', 'name', 'version', 'current_revision_id', 'status', 'is_locked', 'project_id', 'definition', 'change_summary', 'created_at', 'updated_at']);
         $data['project_external_id'] = $definition->project?->external_id;
         $data['is_edit_locked'] = $definition->is_edit_locked;
         if ($withRevisions) {
-            $data['revisions'] = $definition->revisions()->orderByDesc('version')->get(['id', 'version', 'name', 'definition_hash', 'created_at'])->toArray();
+            $data['revisions'] = $definition->revisions()->orderByDesc('version')->limit(100)->get(['id', 'version', 'name', 'definition_hash', 'change_summary', 'created_at'])->toArray();
         }
 
         return $data;

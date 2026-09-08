@@ -70,14 +70,14 @@ class WorkflowTaskExecutionTest extends TestCase
         // Model the failure boundary directly after the memory transaction:
         // the same durable step is made ready again and executed by a retry.
         $step->update(['status' => 'ready', 'finished_at' => null]);
-        $run->update(['status' => 'running', 'finished_at' => null]);
+        $run->refresh()->update(['status' => 'running', 'finished_at' => null]);
         app(WorkflowStepExecutor::class)->execute($step->id);
 
         $this->assertSame('completed', $step->fresh()->status);
         $this->assertSame('completed', $run->fresh()->status);
         $this->assertSame(1, MemoryLink::query()->where('user_id', $user->id)->count());
         $this->assertSame(1, MemoryWriteEvent::query()->where('user_id', $user->id)->count());
-        $this->assertSame("workflow-step:{$step->id}:memory", MemoryLink::query()->sole()->external_id);
+        $this->assertSame("workflow-step:{$step->execution_id}:memory", MemoryLink::query()->sole()->external_id);
     }
 
     public function test_memory_recall_step_fills_output_and_run_context(): void

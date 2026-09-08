@@ -67,12 +67,8 @@ class WorkflowPlanner
             $name = Str::limit('Plan: '.trim($goal), 132, '').' '.$suffix++;
         }
 
-        return WorkflowDefinition::create([
-            'user_id' => $userId,
-            'name' => $name,
-            'version' => 1,
-            'status' => 'active',
-            'definition' => $definition,
-        ]);
+        $saved = app(WorkflowAuthoringService::class)->save($userId, ['name' => $name, 'definition' => $definition]);
+
+        return WorkflowDefinition::findOrFail($saved['id']);
     }
 }

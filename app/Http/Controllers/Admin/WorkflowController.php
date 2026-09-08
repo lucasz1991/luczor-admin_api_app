@@ -6,6 +6,7 @@ use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
 use App\Models\WorkflowStep;
 use App\Services\WorkflowPlanner;
+use App\Services\WorkflowAuthoringService;
 use App\Services\WorkflowService;
 use App\Services\WorkflowTemplateService;
 use Illuminate\Http\Request;
@@ -24,11 +25,10 @@ class WorkflowController extends AdminController
             return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => 'Ungültiges JSON — erwartet {"steps":[...]}.']);
         }
         try {
-            app(WorkflowService::class)->assertDefinition($definition);
+            app(WorkflowAuthoringService::class)->save((int) $request->user()->id, ['name' => $data['name'], 'definition' => $definition]);
         } catch (HttpException $e) {
             return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => $e->getMessage()]);
         }
-        WorkflowDefinition::create(['user_id' => $request->user()->id, 'name' => $data['name'], 'version' => 1, 'status' => 'active', 'definition' => $definition]);
 
         return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow gespeichert.');
     }
@@ -70,15 +70,10 @@ class WorkflowController extends AdminController
             return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => 'Ungültige Workflow-Datei.']);
         }
         try {
-            app(WorkflowService::class)->assertDefinition($parsed['definition']);
+            app(WorkflowAuthoringService::class)->save((int) $request->user()->id, ['name' => Str::limit((string) ($parsed['name'] ?? 'Importierter Workflow'), 160, ''), 'definition' => $parsed['definition']]);
         } catch (HttpException $e) {
             return Redirect::route('admin.page', 'workflows')->withErrors(['workflow' => $e->getMessage()]);
         }
-        WorkflowDefinition::create([
-            'user_id' => $request->user()->id,
-            'name' => (string) ($parsed['name'] ?? 'Importierter Workflow'),
-            'version' => 1, 'status' => 'active', 'definition' => $parsed['definition'],
-        ]);
 
         return Redirect::route('admin.page', 'workflows')->with('status', 'Workflow importiert.');
     }
@@ -131,17 +126,21 @@ class WorkflowController extends AdminController
         if ($workflowDefinition->is_edit_locked) {
             return $this->workflowError($request, 'Eingebundener/gesperrter Workflow kann nicht bearbeitet werden.');
         }
-        $data = $request->validate(['name' => ['required', 'string', 'max:160'], 'definition_json' => ['required', 'string', 'max:200000']]);
+        $data = $request->validate(['name' => ['required', 'string', 'max:160'], 'definition_json' => ['required', 'string', 'max:200000'], 'expected_version' => ['nullable', 'integer', 'min:1'], 'operation_id' => ['nullable', 'uuid']]);
         $definition = json_decode($data['definition_json'], true);
         if (! is_array($definition) || ! isset($definition['steps'])) {
             return $this->workflowError($request, 'Ungültiges JSON — erwartet {"steps":[...]}.');
         }
         try {
-            app(WorkflowService::class)->assertDefinition($definition);
+            app(WorkflowAuthoringService::class)->save((int) $workflowDefinition->user_id, [
+                'name' => $data['name'], 'definition' => $definition,
+                'expected_version' => $data['expected_version'] ?? $workflowDefinition->version,
+                'operation_id' => $data['operation_id'] ?? null,
+            ], $workflowDefinition->id);
         } catch (HttpException $e) {
             return $this->workflowError($request, $e->getMessage());
         }
-        $workflowDefinition->update(['name' => $data['name'], 'definition' => $definition, 'version' => $workflowDefinition->version + 1]);
+        $workflowDefinition->refresh();
 
         return $request->wantsJson()
             ? response()->json(['message' => 'Workflow gespeichert (v'.$workflowDefinition->version.').', 'workflow' => ['id' => $workflowDefinition->id, 'version' => $workflowDefinition->version]])
@@ -151,13 +150,12 @@ class WorkflowController extends AdminController
     public function duplicateWorkflow(Request $request, WorkflowDefinition $workflowDefinition)
     {
         $this->ensureAdmin($request);
-        $copy = WorkflowDefinition::create([
-            'user_id' => $request->user()->id,
+        $saved = app(WorkflowAuthoringService::class)->save((int) $request->user()->id, [
             'name' => Str::limit($workflowDefinition->name, 148, '').' (Kopie)',
-            'version' => 1,
             'status' => $workflowDefinition->status,
             'definition' => $workflowDefinition->definition,
         ]);
+        $copy = WorkflowDefinition::findOrFail($saved['id']);
 
         return Redirect::route('admin.page', ['page' => 'workflows', 'wf' => $copy->id])->with('status', 'Workflow dupliziert.');
     }
@@ -246,7 +244,7 @@ class WorkflowController extends AdminController
         if ($workflowStep->status !== 'awaiting_approval') {
             return $this->workflowError($request, 'Dieser Schritt wartet nicht auf Freigabe.');
         }
-        app(WorkflowService::class)->complete($workflowStep, ['approved' => true, 'approved_by' => $request->user()->id]);
+        app(WorkflowService::class)->approve($workflowStep, (int) $workflowStep->user_id);
 
         return $request->wantsJson()
             ? response()->json(['message' => 'Schritt freigegeben.'])

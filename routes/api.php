@@ -187,6 +187,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/workflows/templates', [WorkflowController::class, 'templates'])->name('api.v1.workflows.templates');
         Route::get('/workflows/{workflowDefinition}', [WorkflowController::class, 'definition'])->whereNumber('workflowDefinition')->name('api.v1.workflows.show');
         Route::get('/workflows/{workflowDefinition}/runs', [WorkflowController::class, 'runs'])->whereNumber('workflowDefinition')->name('api.v1.workflows.runs.index');
+        Route::get('/workflows/{workflowDefinition}/revisions/{version}', [WorkflowController::class, 'revision'])->whereNumber(['workflowDefinition', 'version'])->name('api.v1.workflows.revisions.show');
         Route::get('/workflow-operations/{operationId}', [WorkflowController::class, 'operation'])->name('api.v1.workflow-operations.show');
     });
 
