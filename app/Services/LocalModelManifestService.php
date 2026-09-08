@@ -359,7 +359,7 @@ final class LocalModelManifestService
             throw new LocalModelManifestConfigurationException('local_model_benchmark_policy_invalid');
         }
 
-        return [
+        $result = [
             'min_total_ram_bytes' => $this->nullablePositiveInteger($policy['min_total_ram_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
             'min_available_ram_bytes' => $this->nullablePositiveInteger($policy['min_available_ram_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
             'min_vram_bytes' => $this->schemaVersion() === 2 && ($policy['min_vram_bytes'] ?? null) === 0 ? 0 : $this->nullablePositiveInteger($policy['min_vram_bytes'] ?? null, 'local_model_capacity_policy_invalid'),
@@ -371,6 +371,16 @@ final class LocalModelManifestService
                 'max_first_token_ms' => $this->positiveInteger($benchmarks['max_first_token_ms'] ?? null, 'local_model_benchmark_policy_invalid'),
             ],
         ];
+        // Omitting this extension preserves both legacy single-device semantics and signed bytes.
+        if (array_key_exists('accelerator_memory_scope', $policy)) {
+            $result['accelerator_memory_scope'] = $this->enum(
+                $policy['accelerator_memory_scope'],
+                ['single_device', 'compatible_group'],
+                'local_model_accelerator_memory_scope_invalid',
+            );
+        }
+
+        return $result;
     }
 
     /** @return array{cooldown_ms:int,max_consecutive_failures:int} */

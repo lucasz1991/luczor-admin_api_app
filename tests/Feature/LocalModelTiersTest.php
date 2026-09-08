@@ -66,6 +66,77 @@ class LocalModelTiersTest extends TestCase
         $this->put('/admin/local-model-tiers', [])->assertForbidden();
     }
 
+    public function test_five_scope_controls_preserve_thresholds_omission_and_the_published_catalog(): void
+    {
+        $this->configureExistingModel();
+        $draft = app(LocalModelTierService::class)->defaults();
+        $published = $draft;
+        LocalModelCatalog::create(['id' => 1, 'draft' => $draft, 'published' => $published, 'revision' => 1]);
+        $draft['models'][2]['capacity_policy']['accelerator_memory_scope'] = 'compatible_group';
+        $draft['models'][3]['capacity_policy']['accelerator_memory_scope'] = 'compatible_group';
+        $profiles = $this->profiles($draft);
+        $profiles[0]['accelerator_memory_scope'] = 'compatible_group';
+        $profiles[1]['accelerator_memory_scope'] = 'single_device';
+        $profiles[2]['accelerator_memory_scope'] = null;
+        // An older client omitting the new field must preserve the submitted model's existing scope.
+        $profiles[4]['accelerator_memory_scope'] = '';
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->put('/admin/local-model-tiers', ['revision' => 1, 'models' => array_map('json_encode', $draft['models']), 'profiles' => $profiles])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $catalog = LocalModelCatalog::find(1);
+        $this->assertSame($published, $catalog->published);
+        $models = $catalog->draft['models'];
+        $this->assertSame('compatible_group', $models[0]['capacity_policy']['accelerator_memory_scope']);
+        $this->assertSame('single_device', $models[1]['capacity_policy']['accelerator_memory_scope']);
+        $this->assertArrayNotHasKey('accelerator_memory_scope', $models[2]['capacity_policy']);
+        $this->assertSame('compatible_group', $models[3]['capacity_policy']['accelerator_memory_scope']);
+        $this->assertArrayNotHasKey('accelerator_memory_scope', $models[4]['capacity_policy']);
+        foreach ($models as $index => $model) {
+            $policy = $model['capacity_policy'];
+            unset($policy['accelerator_memory_scope']);
+            $this->assertSame($published['models'][$index]['capacity_policy'], $policy);
+        }
+
+        $response = $this->get('/admin/local-model-tiers')->assertOk()->assertSee('Kompatible GPUs gemeinsam');
+        foreach (range(0, 4) as $index) {
+            $response->assertSee('name="profiles['.$index.'][accelerator_memory_scope]"', false);
+        }
+        $validated = app(LocalModelManifestService::class)->validateCatalog($catalog->draft);
+        $this->assertSame('compatible_group', $validated['models'][0]['capacity_policy']['accelerator_memory_scope']);
+        $this->assertArrayNotHasKey('accelerator_memory_scope', $validated['models'][4]['capacity_policy']);
+    }
+
+    public function test_invalid_profile_scope_and_invalid_raw_catalog_scope_leave_no_catalog_changes(): void
+    {
+        $this->configureExistingModel();
+        $draft = app(LocalModelTierService::class)->defaults();
+        $profiles = $this->profiles($draft);
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        foreach (['all', false, ['compatible_group']] as $scope) {
+            $profiles[0]['accelerator_memory_scope'] = $scope;
+            $this->put('/admin/local-model-tiers', ['revision' => 0, 'models' => array_map('json_encode', $draft['models']), 'profiles' => $profiles])
+                ->assertSessionHasErrors('profiles.0.accelerator_memory_scope');
+            $this->assertNull(LocalModelCatalog::find(1));
+        }
+        $draft['models'][0]['capacity_policy']['accelerator_memory_scope'] = null;
+        $this->put('/admin/local-model-tiers', ['revision' => 0, 'models' => array_map('json_encode', $draft['models']), 'publish' => true])
+            ->assertSessionHasErrors('models');
+        $this->assertNull(LocalModelCatalog::find(1));
+    }
+
+    private function profiles(array $draft): array
+    {
+        return array_map(fn (array $model) => [
+            'name' => $model['display_name'],
+            'enabled' => $model['enabled'],
+            'context' => $model['context_limit'],
+            'total_ram' => $model['capacity_policy']['min_total_ram_bytes'] / 1024 ** 3,
+            'free_ram' => $model['capacity_policy']['min_available_ram_bytes'] / 1024 ** 3,
+            'vram' => $model['capacity_policy']['min_vram_bytes'] / 1024 ** 3,
+        ], $draft['models']);
+    }
+
     public function test_upgrade_fills_only_untouched_old_proposals_and_keeps_published_catalog(): void
     {
         $this->configureExistingModel();

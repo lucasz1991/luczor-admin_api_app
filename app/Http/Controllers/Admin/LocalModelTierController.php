@@ -36,7 +36,8 @@ class LocalModelTierController extends AdminController
             'profiles' => ['sometimes', 'array', 'size:5'], 'profiles.*.name' => ['required', 'string', 'max:160'],
             'profiles.*.enabled' => ['required', 'boolean'], 'profiles.*.context' => ['required', 'integer', 'min:512', 'max:2000000'],
             'profiles.*.total_ram' => ['required', 'numeric', 'min:1', 'max:1024'], 'profiles.*.free_ram' => ['required', 'numeric', 'min:0.5', 'max:1024'],
-            'profiles.*.vram' => ['required', 'numeric', 'min:0', 'max:1024']]);
+            'profiles.*.vram' => ['required', 'numeric', 'min:0', 'max:1024'],
+            'profiles.*.accelerator_memory_scope' => ['sometimes', 'nullable', 'string', 'in:single_device,compatible_group']]);
 
         return DB::transaction(function () use ($request, $data, $tiers, $manifest) {
             // The owner row serializes the first creation too.
@@ -57,6 +58,13 @@ class LocalModelTierController extends AdminController
                 $models[$index]['capacity_policy']['min_total_ram_bytes'] = (int) round($profile['total_ram'] * 1024 ** 3);
                 $models[$index]['capacity_policy']['min_available_ram_bytes'] = (int) round($profile['free_ram'] * 1024 ** 3);
                 $models[$index]['capacity_policy']['min_vram_bytes'] = (int) round($profile['vram'] * 1024 ** 3);
+                if (array_key_exists('accelerator_memory_scope', $profile)) {
+                    if ($profile['accelerator_memory_scope'] === null) {
+                        unset($models[$index]['capacity_policy']['accelerator_memory_scope']);
+                    } else {
+                        $models[$index]['capacity_policy']['accelerator_memory_scope'] = $profile['accelerator_memory_scope'];
+                    }
+                }
             }
             if (array_column($models, 'id') !== array_column($draft['models'], 'id')) {
                 throw ValidationException::withMessages(['models' => 'Die Modell-IDs der fünf Stufen müssen erhalten bleiben.']);

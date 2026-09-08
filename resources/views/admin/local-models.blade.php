@@ -45,6 +45,14 @@
                                     @foreach(['total_ram' => ['Mindest-RAM (GiB)', 'min_total_ram_bytes'], 'free_ram' => ['Freier RAM zum Start (GiB)', 'min_available_ram_bytes'], 'vram' => ['GPU-Speicher (GiB; 0 = CPU erlaubt)', 'min_vram_bytes']] as $field => [$label, $policyKey])
                                         <label class="ui-field">{{ $label }}<x-ui.input type="number" step="0.1" min="{{ $field === 'vram' ? 0 : ($field === 'total_ram' ? 1 : 0.5) }}" max="1024" name="profiles[{{ $index }}][{{ $field }}]" value="{{ old('profiles.'.$index.'.'.$field, isset($model['capacity_policy'][$policyKey]) ? $model['capacity_policy'][$policyKey] / 1024 ** 3 : '') }}" required /></label>
                                     @endforeach
+                                    <label class="ui-field">GPU-Speicherprüfung
+                                        <x-ui.select name="profiles[{{ $index }}][accelerator_memory_scope]" aria-describedby="accelerator-memory-scope-{{ $index }}">
+                                            @foreach(['' => 'Standard: eine GPU', 'single_device' => 'Eine GPU ausdrücklich festlegen', 'compatible_group' => 'Kompatible GPUs gemeinsam'] as $scope => $label)
+                                                <option value="{{ $scope }}" @selected(old('profiles.'.$index.'.accelerator_memory_scope', $model['capacity_policy']['accelerator_memory_scope'] ?? '') === $scope)>{{ $label }}</option>
+                                            @endforeach
+                                        </x-ui.select>
+                                        <span id="accelerator-memory-scope-{{ $index }}" class="text-sm text-slate-400">Standard: Eine GPU muss die VRAM-Grenze erfüllen. Gemeinsamer Speicher zählt nur bei einer kompatiblen, von der Runtime unterstützten GPU-Gruppe. Die RAM-Mindestwerte gelten weiterhin.</span>
+                                    </label>
                                     <label class="ui-field">Kontextfenster (Tokens)<x-ui.input name="profiles[{{ $index }}][context]" type="number" min="512" max="2000000" value="{{ old('profiles.'.$index.'.context', $model['context_limit'] ?? 32768) }}" required /></label>
                                 </div>
                                 <div class="ui-record flex flex-wrap items-center justify-between gap-3">

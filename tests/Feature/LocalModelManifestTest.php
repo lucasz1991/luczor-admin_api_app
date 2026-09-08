@@ -451,6 +451,41 @@ class LocalModelManifestTest extends TestCase
         }
     }
 
+    public function test_accelerator_memory_scope_is_optional_and_covered_by_the_signature(): void
+    {
+        $payload = $this->fixtureCase('explicit_experiment');
+        $payload['models'][0]['capacity_policy']['accelerator_memory_scope'] = 'compatible_group';
+        $this->configurePayload($payload);
+        $service = app(LocalModelManifestService::class);
+        $envelope = $service->envelope();
+        $this->assertSame($payload['models'][0]['capacity_policy'], $envelope['payload']['models'][0]['capacity_policy']);
+        $this->assertArrayNotHasKey('accelerator_memory_scope', $envelope['payload']['models'][1]['capacity_policy']);
+
+        $publicKey = openssl_pkey_get_public((string) config('local_models.testing_public_key'));
+        $signature = base64_decode($envelope['signature'], true);
+        $this->assertSame(1, openssl_verify($service->canonicalJson($envelope['payload']), $signature, $publicKey, OPENSSL_ALGO_SHA256));
+        $tampered = $envelope['payload'];
+        $tampered['models'][0]['capacity_policy']['accelerator_memory_scope'] = 'single_device';
+        $this->assertSame(0, openssl_verify($service->canonicalJson($tampered), $signature, $publicKey, OPENSSL_ALGO_SHA256));
+        $this->assertSame('single_device', $service->validateCatalog($tampered)['models'][0]['capacity_policy']['accelerator_memory_scope']);
+    }
+
+    public function test_accelerator_memory_scope_rejects_explicit_null_unknown_values_and_wrong_types(): void
+    {
+        $baseline = $this->fixtureCase('explicit_experiment');
+        $this->configurePayload($baseline);
+        foreach ([null, '', 'all', 'single-device', 'COMPATIBLE_GROUP', false, 1, ['compatible_group']] as $scope) {
+            $catalog = $baseline;
+            $catalog['models'][0]['capacity_policy']['accelerator_memory_scope'] = $scope;
+            try {
+                app(LocalModelManifestService::class)->validateCatalog($catalog);
+                $this->fail('An invalid accelerator memory scope must not enter the signed catalog.');
+            } catch (LocalModelManifestConfigurationException $exception) {
+                $this->assertSame('local_model_accelerator_memory_scope_invalid', $exception->reasonCode);
+            }
+        }
+    }
+
     /** @return array<string,mixed> */
     private function assertManifestCase(string $case): array
     {

@@ -16,3 +16,11 @@ Fehlende optionale Felder bleiben beim Signieren weggelassen. Der bestehende gem
 Die fünf Stufen lassen sich im Admin unter **Lokale Modelle** über **Modelldatei, Runtime, Lizenz und Prüfnachweise bearbeiten** pflegen. Entwurf speichern verändert die aktive Richtlinie nicht. Erst die vorhandene Aktion **Prüfen, signieren und aktivieren** veröffentlicht sie. Diese Codeerweiterung aktiviert weder einen neuen Katalog noch eine GPU- oder Provider-Runtime automatisch.
 
 Der signierte Backend-Wunsch ist kein Nachweis für tatsächlich ausgelagerte Modellschichten oder hinreichenden VRAM. Dafür zeigt der Desktop seine Laufzeitdiagnose. Bei Teil-Offload bleiben Modellanteile beziehungsweise Kontextdaten im RAM; derselbe große Modell-Download wird durch fünf Profilnamen nicht kleiner.
+
+## VRAM-Prüfung pro Gerät oder kompatibler Gruppe
+
+`capacity_policy.accelerator_memory_scope` kann optional `single_device` oder `compatible_group` enthalten. Ohne dieses Feld gilt unverändert `single_device`: Ein einzelnes geeignetes Gerät muss die signierte VRAM-Grenze erfüllen. Nur `compatible_group` erlaubt dem Desktop, die Grenze für eine nachgewiesen kompatible und von der gewählten Runtime unterstützte GPU-Gruppe zu prüfen. Beliebige Adapter unterschiedlicher Backends dürfen dadurch nicht zusammengezählt werden; die Runtime und ihre echte Gruppenfähigkeit müssen separat geprüft werden.
+
+Das Feld ändert keine RAM-/Speicher-Mindestschwellen, erlaubt keinen externen Fallback und wählt selbst noch keine GPU aus. Explizites `null`, leere Werte, andere Typen oder unbekannte Bezeichner sind im signierten Vertrag ungültig. Fehlende Felder bleiben beim Signieren weggelassen; vorhandene Legacy-Signaturen bleiben bytekompatibel. Die ausdrücklich gewählte Gruppensemantik ist Bestandteil der Signatur.
+
+Der Admin kann die Speicherprüfung in jeder der fünf Modellstufen ändern. **Standard: eine GPU** entfernt eine explizite Auswahl im Entwurf; ältere Requests ohne das neue Formularfeld erhalten bestehende Werte. Speichern ist weiterhin nur eine Entwurfsänderung. Es gibt keine automatische Migration, Veröffentlichung oder Aktivierung. Desktops müssen die Erweiterung unterstützen, bevor ein Katalog mit dem neuen Feld ausdrücklich veröffentlicht wird.
