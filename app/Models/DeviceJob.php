@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\DeviceJobData;
 use Illuminate\Database\Eloquent\Model;
 
 class DeviceJob extends Model
@@ -16,7 +17,7 @@ class DeviceJob extends Model
     protected $casts = [
         'requires_local_approval' => 'boolean', 'approved_at' => 'datetime',
         'expires_at' => 'datetime', 'started_at' => 'datetime', 'finished_at' => 'datetime',
-        'payload' => 'array', 'result' => 'array',
+        'payload' => DeviceJobData::class, 'result' => DeviceJobData::class,
     ];
 
     public function device()

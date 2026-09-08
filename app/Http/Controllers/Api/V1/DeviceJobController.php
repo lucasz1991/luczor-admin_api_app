@@ -28,6 +28,9 @@ class DeviceJobController extends Controller
         $query = DeviceJob::query()->with('device')->latest();
         if (! $request->user()?->isAdmin()) {
             $query->where('user_id', $actor->userId($request));
+        } else {
+            // Personal chat payloads are account data, including when an administrator lists jobs.
+            $query->where(fn ($scope) => $scope->where('tool_profile', '!=', 'workspace.chat')->orWhere('user_id', $actor->userId($request)));
         }
 
         return response()->json(['data' => $query->paginate(50)]);

@@ -3,30 +3,35 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Models\User;
+use App\Services\AdminUserManagement;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 class UserManagementController extends AdminController
 {
-    public function store(Request $request)
+    public function index(Request $request)
     {
         $this->ensureAdmin($request);
-        $data = $request->validate(['name' => ['required', 'string', 'max:160'], 'email' => ['required', 'email', 'max:255', Rule::unique('users')], 'password' => ['required', 'confirmed', Password::min(12)]]);
-        User::create($data + ['tenant_id' => $request->user()->tenant_id, 'role' => 'user', 'status' => true]);
+
+        return view('admin.users.index');
+    }
+
+    public function show(Request $request, User $user)
+    {
+        $this->ensureAdmin($request);
+
+        return view('admin.users.show', compact('user'));
+    }
+
+    public function store(Request $request, AdminUserManagement $manager)
+    {
+        $manager->create($request->user(), $request->all());
 
         return back()->with('status', 'Benutzer angelegt.');
     }
 
-    public function update(Request $request, User $user)
+    public function update(Request $request, User $user, AdminUserManagement $manager)
     {
-        $this->ensureAdmin($request);
-        abort_if($user->isAdmin(), 403, 'Admin-Konten werden über die bestehende Kontoverwaltung gepflegt.');
-        $data = $request->validate(['name' => ['required', 'string', 'max:160'], 'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)], 'status' => ['required', 'boolean']]);
-        if ($data['email'] !== $user->email) {
-            $user->email_verified_at = null;
-        }
-        $user->fill($data)->save();
+        $manager->update($request->user(), $user->id, $request->all());
 
         return back()->with('status', 'Benutzer aktualisiert. Die Sperre gilt auch für alle Geräte-Schlüssel.');
     }

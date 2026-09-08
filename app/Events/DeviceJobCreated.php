@@ -17,7 +17,12 @@ class DeviceJobCreated implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
-        return [new PrivateChannel('device.'.$this->job->device->device_id)];
+        $device = $this->job->device;
+        if (! $device || $device->revoked_at || (int) $device->user_id !== (int) $this->job->user_id) {
+            return [];
+        }
+
+        return [new PrivateChannel('device.'.$device->device_id)];
     }
 
     public function broadcastAs(): string

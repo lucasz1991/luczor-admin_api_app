@@ -94,3 +94,8 @@
 - Existing HEAD advanced externally to 9595c8f during implementation; this agent did not commit or undo it. Revision/provider hardening is still an additive dirty delta above that commit.
 - No live server changes, migration, provider inference, paid requests, credentials inspection, native app restart or deployment. Deployment/actual endpoint and model acceptance remains with root/user.
 - Main report: docs/agent-teams.md; tests/Feature/AgentTeamPolicyTest.php. Source ownership released after this handoff.
+
+## 2026-09-08 | Codex/user_views | Benutzeransichten completed-local
+- RailTime-basierte Livewire-Benutzerliste, administratives Benutzerprofil und eigenes Fortify-Profil implementiert. Gemeinsamer User-Service schützt Adminrollen/aktive Konten und protokolliert Änderungen ohne private Nutzdaten.
+- Verifiziert:13 fokussierte Tests/82 Assertions, eigene8/55 nach deutscher Pagination; scoped PHPStan, Pint und Diff-Check. Visuelle Prüfung im isolierten Preview bei Root; keine produktive Datenänderung.
+- Bericht artifacts/reports/2026-09-08-user-views.md; Quell-Ownership zurückgegeben.

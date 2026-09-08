@@ -38,6 +38,7 @@ class MemoryController extends Controller
             'type' => ['nullable', 'string', 'max:60'],
             'visibility' => ['nullable', 'string', 'in:private,syncable,public'],
             'importance' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'priority' => ['nullable', 'string', 'in:background,normal,high,critical'],
             'external_id' => ['nullable', 'string', 'max:190'],
             'write_id' => ['nullable', 'string', 'max:190'],
             'expected_previous_id' => ['nullable', 'integer', 'min:1'],
@@ -164,6 +165,16 @@ class MemoryController extends Controller
         $scheduled = $memory->improve($data['scope'] ?? 'project', $this->ids($request));
 
         return response()->json(['ok' => true, 'scheduled' => $scheduled]);
+    }
+
+    public function analyze(Request $request, MemoryOrchestrator $memory)
+    {
+        $data = $request->validate([
+            'scope' => ['required', 'string', 'in:user,project'],
+            'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
+        ]);
+
+        return response()->json(['data' => $memory->analyze($data['scope'], $this->ids($request))]);
     }
 
     public function promote(Request $request, MemoryOrchestrator $memory, ApiActor $actor)

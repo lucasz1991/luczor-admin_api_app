@@ -12,6 +12,7 @@ use App\Services\AuditLogger;
 use App\Services\DeviceJobSigner;
 use App\Services\WorkflowService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class DeviceController extends Controller
@@ -28,21 +29,26 @@ class DeviceController extends Controller
         $deviceId = $actor->deviceId($request, $data['client_id'], true);
         $apiKey = $request->attributes->get('apiKey');
 
-        $existing = Device::query()->where('device_id', $deviceId)->first();
-        abort_if($existing && ! $request->user()?->isAdmin() && (int) $existing->user_id !== $userId, 404);
-
-        $device = Device::updateOrCreate(
-            ['device_id' => $deviceId],
-            [
+        $device = DB::transaction(function () use ($deviceId, $userId, $apiKey, $data) {
+            // firstOrCreate resolves a concurrent unique-key insert without changing its owner.
+            $device = Device::firstOrCreate(['device_id' => $deviceId], [
                 'user_id' => $userId,
+                'name' => $data['name'],
+                'status' => 'online',
+            ]);
+            $device = Device::whereKey($device->id)->lockForUpdate()->firstOrFail();
+            // Device enrollment is personal, including administrators.
+            abort_unless((int) $device->user_id === $userId, 404);
+            $device->update([
                 'api_key_id' => $apiKey?->id,
-                'name' => $existing?->name ?? $data['name'],
                 'public_key' => $data['public_key'] ?? null,
                 'status' => 'online',
                 'last_seen_at' => now(),
                 'meta' => $data['meta'] ?? null,
-            ]
-        );
+            ]);
+
+            return $device;
+        }, 3);
         $session = $this->newSession($device, $request);
         $audit->record([
             'actor_user_id' => $userId,
@@ -99,6 +105,7 @@ class DeviceController extends Controller
         $device = $this->currentDevice($request, $actor, $clientId);
         $job = DeviceJob::query()
             ->where('device_id', $device->id)
+            ->where('user_id', $device->user_id)
             ->whereIn('status', ['approval_required', 'queued'])
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
             ->oldest()
@@ -123,58 +130,65 @@ class DeviceController extends Controller
             'reason' => ['nullable', 'string', 'max:1000'],
         ]);
         $device = $this->currentDevice($request, $actor, $data['client_id']);
-        $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->firstOrFail();
-        abort_unless($job->status === 'approval_required', 409, 'This job is not awaiting approval.');
 
-        $decision = $data['approved'] ? 'approved' : 'rejected';
-        $job->approvals()->create([
-            'device_id' => $device->id,
-            'decision' => $decision,
-            'reason' => $data['reason'] ?? null,
-            'decided_at' => now(),
-        ]);
-        $job->update([
-            'status' => $data['approved'] ? 'queued' : 'rejected',
-            'approved_at' => $data['approved'] ? now() : null,
-            'finished_at' => $data['approved'] ? null : now(),
-            'error' => $data['approved'] ? null : ($data['reason'] ?? 'Rejected on device'),
-        ]);
-        $audit->record([
-            'actor_user_id' => $device->user_id,
-            'device_id' => $device->id,
-            'project_id' => $job->project_id,
-            'device_job_id' => $job->id,
-            'event_type' => 'device_job.approval',
-            'tool' => $job->tool_profile,
-            'approval' => $decision,
-            'risk_level' => $job->risk_level,
-            'outcome' => $decision,
-            'payload' => ['job_id' => $job->public_id, 'reason' => $data['reason'] ?? null],
-        ]);
-        if (! $data['approved']) {
-            $this->settleWorkflowStep($job->fresh());   // P15b — a rejection fails the workflow step
-        }
+        return DB::transaction(function () use ($device, $publicId, $data, $audit) {
+            $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            abort_unless($job->status === 'approval_required', 409, 'This job is not awaiting approval.');
+            abort_if($job->expires_at?->isPast(), 410, 'This job has expired.');
 
-        return response()->json(['data' => $job->fresh()]);
+            $decision = $data['approved'] ? 'approved' : 'rejected';
+            $job->approvals()->create([
+                'device_id' => $device->id,
+                'decision' => $decision,
+                'reason' => $data['reason'] ?? null,
+                'decided_at' => now(),
+            ]);
+            $job->update([
+                'status' => $data['approved'] ? 'queued' : 'rejected',
+                'approved_at' => $data['approved'] ? now() : null,
+                'finished_at' => $data['approved'] ? null : now(),
+                'error' => $data['approved'] ? null : ($data['reason'] ?? 'Rejected on device'),
+            ]);
+            $audit->record([
+                'actor_user_id' => $device->user_id,
+                'device_id' => $device->id,
+                'project_id' => $job->project_id,
+                'device_job_id' => $job->id,
+                'event_type' => 'device_job.approval',
+                'tool' => $job->tool_profile,
+                'approval' => $decision,
+                'risk_level' => $job->risk_level,
+                'outcome' => $decision,
+                'payload' => ['job_id' => $job->public_id, 'reason' => $data['reason'] ?? null],
+            ]);
+            if (! $data['approved']) {
+                $this->settleWorkflowStep($job->fresh());   // P15b — a rejection fails the workflow step
+            }
+
+            return response()->json(['data' => $job->fresh()]);
+        });
     }
 
     public function startJob(Request $request, string $publicId, ApiActor $actor, AuditLogger $audit)
     {
         $data = $request->validate(['client_id' => ['required', 'string', 'max:120']]);
         $device = $this->currentDevice($request, $actor, $data['client_id']);
-        $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->firstOrFail();
-        abort_unless($job->status === 'queued', 409, 'This job is not executable.');
-        abort_if($job->expires_at?->isPast(), 410, 'This job has expired.');
 
-        $job->update(['status' => 'running', 'started_at' => now()]);
-        $audit->record([
-            'actor_user_id' => $device->user_id, 'device_id' => $device->id,
-            'project_id' => $job->project_id, 'device_job_id' => $job->id,
-            'event_type' => 'device_job.started', 'tool' => $job->tool_profile,
-            'risk_level' => $job->risk_level, 'outcome' => 'started', 'payload' => ['job_id' => $job->public_id],
-        ]);
+        return DB::transaction(function () use ($device, $publicId, $audit) {
+            $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            abort_unless($job->status === 'queued', 409, 'This job is not executable.');
+            abort_if($job->expires_at?->isPast(), 410, 'This job has expired.');
 
-        return response()->json(['data' => $job->fresh()]);
+            $job->update(['status' => 'running', 'started_at' => now()]);
+            $audit->record([
+                'actor_user_id' => $device->user_id, 'device_id' => $device->id,
+                'project_id' => $job->project_id, 'device_job_id' => $job->id,
+                'event_type' => 'device_job.started', 'tool' => $job->tool_profile,
+                'risk_level' => $job->risk_level, 'outcome' => 'started', 'payload' => ['job_id' => $job->public_id],
+            ]);
+
+            return response()->json(['data' => $job->fresh()]);
+        });
     }
 
     public function completeJob(Request $request, string $publicId, ApiActor $actor, AuditLogger $audit)
@@ -186,13 +200,14 @@ class DeviceController extends Controller
             'error' => ['nullable', 'string', 'max:8000'],
         ]);
         $device = $this->currentDevice($request, $actor, $data['client_id']);
-        $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->firstOrFail();
+        $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->firstOrFail();
         abort_unless($job->status === 'running', 409, 'This job is not running.');
 
-        $resultHash = $data['result'] === null ? null : $audit->hash($data['result']);
+        $result = $data['result'] ?? null;
+        $resultHash = $result === null ? null : $audit->hash($result);
         $job->update([
             'status' => $data['ok'] ? 'completed' : 'failed',
-            'result' => $data['result'] ?? null,
+            'result' => $result,
             'result_hash' => $resultHash,
             'error' => $data['ok'] ? null : ($data['error'] ?? 'Device tool failed'),
             'finished_at' => now(),

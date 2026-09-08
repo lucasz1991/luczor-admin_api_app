@@ -1,35 +1,19 @@
 <x-app-layout>
-    <div class="max-w-2xl">
-        <h1 class="text-2xl font-semibold text-white">Profil</h1>
-        <p class="mt-2 text-sm text-slate-400">Accountdaten fuer die Luczor Admin API.</p>
-
-        <section class="mt-6 luczor-card p-5">
-            <h2 class="text-lg font-semibold text-white">Profilinformationen</h2>
-            <form class="mt-4 space-y-4" method="POST" action="{{ route('user-profile-information.update') }}">
+    <x-user-ui.page title="Mein Profil" eyebrow="Konto" description="Persönliche Daten, Anmeldung und die Verbindung zu deinen Geräten.">
+        <div class="max-w-5xl space-y-6">
+            <livewire:profile.profile-identity-card />
+            <section class="rounded-2xl border border-slate-700/70 bg-slate-900/40 p-5 sm:p-6" aria-labelledby="password-title">
+                <h2 id="password-title" class="text-lg font-semibold">Passwort & Anmeldung</h2>
+                <p class="mt-2 text-sm text-slate-400">Zum Ändern bestätigst du zunächst dein aktuelles Passwort.</p>
+                <form class="mt-5 grid gap-5 sm:grid-cols-2" method="POST" action="{{ route('user-password.update') }}">
                 @csrf
                 @method('PUT')
-                <div>
-                    <label class="text-sm text-slate-200" for="name">Name</label>
-                    <input class="luczor-input" id="name" name="name" value="{{ old('name', auth()->user()->name) }}" required>
-                </div>
-                <div>
-                    <label class="text-sm text-slate-200" for="email">E-Mail</label>
-                    <input class="luczor-input" id="email" type="email" name="email" value="{{ old('email', auth()->user()->email) }}" required>
-                </div>
-                <button class="luczor-btn" type="submit">Speichern</button>
-            </form>
-        </section>
-
-        <section class="mt-6 luczor-card p-5">
-            <h2 class="text-lg font-semibold text-white">Passwort</h2>
-            <form class="mt-4 space-y-4" method="POST" action="{{ route('user-password.update') }}">
-                @csrf
-                @method('PUT')
-                <input class="luczor-input" name="current_password" type="password" placeholder="Aktuelles Passwort" required>
-                <input class="luczor-input" name="password" type="password" placeholder="Neues Passwort" required>
-                <input class="luczor-input" name="password_confirmation" type="password" placeholder="Neues Passwort bestaetigen" required>
-                <button class="luczor-btn" type="submit">Passwort speichern</button>
-            </form>
-        </section>
-    </div>
+                    <div class="sm:col-span-2"><label class="text-sm text-slate-300" for="current-password">Aktuelles Passwort</label><input class="luczor-input sm:max-w-md" id="current-password" name="current_password" type="password" autocomplete="current-password" required>@error('current_password', 'updatePassword')<p class="mt-1 text-sm text-rose-300">{{ $message }}</p>@enderror</div>
+                    <div><label class="text-sm text-slate-300" for="new-password">Neues Passwort</label><input class="luczor-input" id="new-password" name="password" type="password" autocomplete="new-password" required>@error('password', 'updatePassword')<p class="mt-1 text-sm text-rose-300">{{ $message }}</p>@enderror</div>
+                    <div><label class="text-sm text-slate-300" for="confirm-password">Neues Passwort bestätigen</label><input class="luczor-input" id="confirm-password" name="password_confirmation" type="password" autocomplete="new-password" required></div>
+                    <div class="sm:col-span-2"><button class="luczor-btn" type="submit">Passwort speichern</button></div>
+                </form>
+            </section>
+        </div>
+    </x-user-ui.page>
 </x-app-layout>

@@ -3,6 +3,7 @@
 namespace App\Data;
 
 use App\Models\MemoryLink;
+use App\Services\MemoryPriority;
 
 final readonly class MemoryWriteResult
 {
@@ -31,6 +32,7 @@ final readonly class MemoryWriteResult
             'memory_link_id' => $this->link?->id,
             'status' => $this->link?->status,
             'projection_status' => $this->link?->projection_status,
+            'priority' => $this->link ? MemoryPriority::name((float) $this->link->importance) : null,
         ];
     }
 }

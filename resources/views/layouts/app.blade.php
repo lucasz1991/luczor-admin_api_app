@@ -20,6 +20,9 @@
             ['label' => 'Agenten & Ereignisse', 'href' => route('admin.page', 'agents'), 'icon' => 'agents', 'active' => request()->routeIs('admin.page') && $currentAdminPage === 'agents'],
         ],
         'Betrieb' => [
+            ['label' => 'Benutzer', 'href' => route('admin.users.index'), 'icon' => 'user', 'active' => request()->routeIs('admin.users.*')],
+            ['label' => 'Lokale Modellstufen', 'href' => route('admin.local-models'), 'icon' => 'cpu', 'active' => request()->routeIs('admin.local-models')],
+            ['label' => 'Mein Workspace', 'href' => route('account.workspace'), 'icon' => 'terminal', 'active' => request()->routeIs('account.workspace')],
             ['label' => 'Geräte-Debug', 'href' => route('admin.page', 'devices'), 'icon' => 'monitor', 'active' => request()->routeIs('admin.page') && $currentAdminPage === 'devices'],
             ['label' => 'Geräte & Keys', 'href' => route('admin.page', 'api-keys'), 'icon' => 'key', 'active' => request()->routeIs('admin.page') && $currentAdminPage === 'api-keys'],
             ['label' => 'Archive & Audit', 'href' => route('admin.page', 'archives'), 'icon' => 'archive', 'active' => request()->routeIs('admin.page') && $currentAdminPage === 'archives'],
@@ -29,10 +32,11 @@
 
     $customerNavigation = [
         'Luczor' => [
-            ['label' => 'Terminal', 'href' => route('dashboard'), 'icon' => 'terminal', 'active' => request()->routeIs('dashboard')],
+            ['label' => 'Chats & Steuerung', 'href' => route('account.workspace'), 'icon' => 'terminal', 'active' => request()->routeIs('account.workspace')],
+            ['label' => 'Übersicht', 'href' => route('dashboard'), 'icon' => 'home', 'active' => request()->routeIs('dashboard')],
         ],
         'Arbeitsbereich' => [
-            ['label' => 'Meine Geräte', 'href' => route('dashboard').'#devices', 'icon' => 'smartphone', 'active' => false],
+            ['label' => 'Meine Geräte', 'href' => route('account.devices'), 'icon' => 'smartphone', 'active' => request()->routeIs('account.devices')],
             ['label' => 'Meine Projekte', 'href' => route('dashboard').'#projects', 'icon' => 'folder', 'active' => false],
             ['label' => 'GitHub / Cloud', 'href' => route('dashboard').'#github', 'icon' => 'github', 'active' => false],
             ['label' => 'Verbindung erstellen', 'href' => route('dashboard').'#connect', 'icon' => 'link', 'active' => false],
@@ -57,9 +61,15 @@
         'archives' => 'Archive & Audit',
         'settings' => 'Server Settings',
     ];
-    $layoutTitle = request()->routeIs('profile.show')
-        ? 'Profil & Konto'
-        : ($layoutIsAdmin ? ($adminTitles[$currentAdminPage] ?? 'Admin Control') : 'Mein Luczor');
+    $layoutTitle = match (true) {
+        request()->routeIs('profile.show') => 'Profil & Konto',
+        request()->routeIs('admin.users.index') => 'Benutzer',
+        request()->routeIs('admin.users.show') => 'Benutzerprofil',
+        request()->routeIs('admin.local-models') => 'Lokale Modellstufen',
+        request()->routeIs('account.workspace') => 'Chats & Steuerung',
+        request()->routeIs('account.devices') => 'Meine Geräte',
+        default => $layoutIsAdmin ? ($adminTitles[$currentAdminPage] ?? 'Admin Control') : 'Mein Luczor',
+    };
     $layoutEyebrow = $layoutIsAdmin ? 'Systemsteuerung' : 'Cloud Terminal';
     $layoutRole = $layoutIsAdmin ? 'Administrator' : 'Benutzer';
     $layoutInitials = collect(preg_split('/\s+/u', trim($layoutUser?->name ?? 'Luczor')))

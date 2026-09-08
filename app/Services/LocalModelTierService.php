@@ -10,24 +10,15 @@ class LocalModelTierService
     {
         $existing = collect(config('local_models.models'))->firstWhere('id', config('local_models.routing.default_model_id'));
         $models = [];
-        foreach ([['local-tier-light', 'Sparsam · Qwen3.5 0.8B', 4, 2, 4096], ['local-tier-compact', 'Kompakt · Qwen3.5 2B', 8, 3, 8192], ['local-tier-balanced', 'Ausgewogen · Qwen3.5 4B', 12, 5, 16384], ['local-tier-performance', 'Leistungsstark · Qwen3.5 9B', 16, 8, 16384]] as [$id, $name, $total, $free, $context]) {
+        foreach ([['local-tier-light', 'Sparsam'], ['local-tier-compact', 'Kompakt'], ['local-tier-balanced', 'Ausgewogen'], ['local-tier-performance', 'Leistungsstark']] as [$id, $name]) {
             $model = $existing;
             $model['id'] = $id;
-            $model['display_name'] = $name;
-            $model['enabled'] = false;
+            $model['display_name'] = mb_substr($name.' · '.$existing['display_name'], 0, 160);
             $model['promoted'] = true;
             $model['release_channel'] = 'stable';
             $model['routing_role'] = 'fallback';
-            $model['context_limit'] = $context;
-            $model['artifact'] = null;
-            $model['chat_template_hash'] = null;
-            $model['evaluation_report_hash'] = null;
-            $model['license'] = 'Apache-2.0';
-            $model['capacity_policy']['min_total_ram_bytes'] = $total * 1024 ** 3;
-            $model['capacity_policy']['min_available_ram_bytes'] = $free * 1024 ** 3;
-            $model['capacity_policy']['min_vram_bytes'] = 0;
-            $model['capacity_policy']['min_storage_free_bytes'] = $free * 1024 ** 3;
-            // Disabled proposals need measured runtime/quality evidence before publication as executable models.
+            // Starter slots share the existing verified weights and measured requirements.
+            // A different label cannot make the same model fit into less memory.
             $models[] = $model;
         }
         $existing['routing_role'] = 'preferred';
@@ -47,6 +38,31 @@ class LocalModelTierService
     {
         $catalog = LocalModelCatalog::find(1);
 
-        return ['draft' => $catalog?->draft ?? $this->defaults(), 'revision' => $catalog?->revision ?? 0, 'published' => $catalog?->published !== null];
+        return ['draft' => $catalog->draft ?? $this->defaults(), 'revision' => $catalog->revision ?? 0, 'published' => $catalog?->published !== null];
+    }
+
+    /** Upgrade only the original, untouched disabled proposals; never overwrite configured models. */
+    public function upgradeStarterDraft(array $draft): ?array
+    {
+        $models = $draft['models'] ?? [];
+        if (count($models) !== 5) {
+            return null;
+        }
+        $ids = ['local-tier-light', 'local-tier-compact', 'local-tier-balanced', 'local-tier-performance'];
+        foreach ($ids as $index => $id) {
+            if (($models[$index]['id'] ?? null) !== $id || ($models[$index]['enabled'] ?? true) !== false
+                || ($models[$index]['artifact'] ?? null) !== null) {
+                return null;
+            }
+        }
+        foreach (['Sparsam', 'Kompakt', 'Ausgewogen', 'Leistungsstark'] as $index => $label) {
+            $models[$index] = $models[4];
+            $models[$index]['id'] = $ids[$index];
+            $models[$index]['display_name'] = mb_substr($label.' · '.$models[4]['display_name'], 0, 160);
+            $models[$index]['routing_role'] = 'fallback';
+        }
+        $draft['models'] = $models;
+
+        return $draft;
     }
 }

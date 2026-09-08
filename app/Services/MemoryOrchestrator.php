@@ -20,6 +20,7 @@ class MemoryOrchestrator
     /** @param array<string,mixed> $data */
     public function remember(array $data): MemoryWriteResult
     {
+        $data['importance'] = MemoryPriority::resolve($data);
         $content = trim((string) ($data['content'] ?? ''));
         abort_if($content === '', 422, 'Memory content must not be empty.');
 
@@ -162,6 +163,17 @@ class MemoryOrchestrator
         $this->assertWorkspaceTenant($scope, $ids['tenant_id']);
 
         return $this->store->improve($scope, $ids);
+    }
+
+    /** Read-only, bounded quality review; historical facts are never rewritten. */
+    public function analyze(string $scope, array $ids = []): array
+    {
+        abort_unless(in_array($scope, ['user', 'project'], true), 422, 'Analyze personal or project memory separately.');
+        abort_unless(! empty($ids['user_id']), 403, 'An authenticated memory owner is required.');
+        abort_if($scope === 'project' && empty($ids['project_id']), 422, 'A project is required.');
+        $ids['tenant_id'] ??= $this->tenantId($ids['user_id']);
+
+        return $this->store->analyze($scope, $ids);
     }
 
     private function tenantId(mixed $userId): ?int

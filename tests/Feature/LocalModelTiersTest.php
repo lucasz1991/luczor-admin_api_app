@@ -31,7 +31,12 @@ class LocalModelTiersTest extends TestCase
         $this->assertCount(5, $draft['models']);
         $existing = collect(config('local_models.models'))->firstWhere('id', config('local_models.routing.default_model_id'));
         $this->assertSame($existing['artifact'], $draft['models'][4]['artifact']);
-        $this->assertFalse($draft['models'][0]['enabled']);
+        foreach ($draft['models'] as $model) {
+            $this->assertSame($existing['artifact'], $model['artifact']);
+            $this->assertSame($existing['capacity_policy'], $model['capacity_policy']);
+            $this->assertSame($existing['runtime'], $model['runtime']);
+            $this->assertSame($existing['enabled'], $model['enabled']);
+        }
         $this->actingAs($admin)->get('/admin/local-model-tiers')->assertOk()->assertSee('fünf Leistungsstufen');
         $this->put('/admin/local-model-tiers', ['revision' => 0, 'models' => array_map('json_encode', $draft['models'])])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertNull(LocalModelCatalog::find(1)->published);
@@ -50,15 +55,41 @@ class LocalModelTiersTest extends TestCase
         $this->assertCount(5, $payload['models']);
         $this->assertSame([], $payload['routing']['experimental_model_ids']);
         $this->put('/admin/local-model-tiers', $body)->assertStatus(409);
-        $draft['models'][0]['enabled'] = true;
+        $draft['models'][0]['artifact'] = null;
         $this->put('/admin/local-model-tiers', ['revision' => LocalModelCatalog::find(1)->revision, 'models' => array_map('json_encode', $draft['models'])])->assertSessionHasErrors('models');
-        $this->assertFalse(LocalModelCatalog::find(1)->published['models'][0]['enabled']);
+        $this->assertNotNull(LocalModelCatalog::find(1)->published['models'][0]['artifact']);
     }
 
     public function test_regular_user_cannot_edit_or_publish_local_models(): void
     {
         $this->actingAs(User::factory()->create(['role' => 'user']))->get('/admin/local-model-tiers')->assertForbidden();
         $this->put('/admin/local-model-tiers', [])->assertForbidden();
+    }
+
+    public function test_upgrade_fills_only_untouched_old_proposals_and_keeps_published_catalog(): void
+    {
+        $this->configureExistingModel();
+        $draft = app(LocalModelTierService::class)->defaults();
+        $published = $draft;
+        for ($index = 0; $index < 4; $index++) {
+            $draft['models'][$index]['enabled'] = false;
+            $draft['models'][$index]['artifact'] = null;
+        }
+        LocalModelCatalog::create(['id' => 1, 'draft' => $draft, 'published' => $published, 'revision' => 1]);
+        $migration = require database_path('migrations/2026_09_08_000003_fill_starter_model_tiers.php');
+        $migration->up();
+        $catalog = LocalModelCatalog::find(1);
+        $this->assertSame($published, $catalog->published);
+        $this->assertGreaterThan(1, $catalog->revision);
+        foreach ($catalog->draft['models'] as $model) {
+            $this->assertSame($draft['models'][4]['artifact'], $model['artifact']);
+            $this->assertSame($draft['models'][4]['enabled'], $model['enabled']);
+        }
+        $revision = $catalog->revision;
+        $migration->up();
+        $this->assertSame($revision, $catalog->fresh()->revision);
+        $draft['models'][0]['artifact'] = $published['models'][0]['artifact'];
+        $this->assertNull(app(LocalModelTierService::class)->upgradeStarterDraft($draft));
     }
 
     public function test_missing_signer_and_non_object_models_leave_catalog_unpublished(): void

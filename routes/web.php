@@ -13,12 +13,14 @@ use App\Http\Controllers\Admin\WorkflowController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\GithubOAuthController;
 use App\Http\Middleware\EnsureActiveUser;
+use App\Livewire\Account\Workspace;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard');
 
 Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', EnsureActiveUser::class])->group(function () {
     Route::get('/account/devices', [AccountDevicesController::class, 'index'])->name('account.devices');
+    Route::get('/account/workspace', Workspace::class)->name('account.workspace');
     Route::patch('/account/devices/{device}', [AccountDevicesController::class, 'update'])->name('account.devices.update');
     Route::get('/devices/pair/{id}', [DevicePairingController::class, 'show'])->whereUuid('id')->name('devices.pair.show');
     Route::post('/devices/pair/{id}', [DevicePairingController::class, 'approve'])->whereUuid('id')->name('devices.pair.approve');
@@ -29,6 +31,8 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
     Route::get('/github/callback', [GithubOAuthController::class, 'callback'])->name('github.callback');
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/users', [UserManagementController::class, 'index'])->name('admin.users.index');
+        Route::get('/admin/users/{user}', [UserManagementController::class, 'show'])->whereNumber('user')->name('admin.users.show');
         Route::get('/admin/local-model-tiers', [LocalModelTierController::class, 'index'])->name('admin.local-models');
         Route::put('/admin/local-model-tiers', [LocalModelTierController::class, 'update'])->name('admin.local-models.update');
         Route::post('/dashboard/users', [UserManagementController::class, 'store'])->name('dashboard.users.store');

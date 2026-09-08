@@ -151,6 +151,7 @@ class LuczorMemoryService
     /** @param array<string,mixed> $data */
     public function remember(array $data): MemoryLink
     {
+        $data['importance'] = MemoryPriority::resolve($data);
         if (MemoryDlp::containsSecretInMemoryPayload($data)
             || MemoryDlp::containsLocalOnlySourceInMemoryPayload($data)) {
             throw ValidationException::withMessages([
@@ -263,7 +264,7 @@ class LuczorMemoryService
                     'type' => $data['type'] ?? 'note',
                     'source_type' => $data['source_type'] ?? ($data['source'] ?? 'user'),
                     'source_ref' => $data['source_ref'] ?? null,
-                    'importance' => (float) ($data['importance'] ?? 0.5),
+                    'importance' => $data['importance'],
                     'confidence' => (float) ($data['confidence'] ?? 0.5),
                     'tenant_id' => $data['tenant_id'] ?? null,
                     'project_id' => $data['project_id'] ?? null,
@@ -462,7 +463,7 @@ class LuczorMemoryService
                     'status' => $status,
                     'retention' => $retention,
                     'sensitivity' => $data['sensitivity'] ?? 'normal',
-                    'importance' => (float) ($data['importance'] ?? 0.5),
+                    'importance' => $data['importance'],
                     'confidence' => (float) ($data['confidence'] ?? 0.5),
                     'summary' => mb_substr($content, 0, 8000),
                     'content_hash' => $hash,
@@ -701,6 +702,8 @@ class LuczorMemoryService
                 'type' => $row->type,
                 'scope' => $row->scope,
                 'importance' => (float) $row->importance,
+                'priority' => MemoryPriority::name((float) $row->importance),
+                'priority_label' => MemoryPriority::LABELS[MemoryPriority::name((float) $row->importance)],
                 'confidence' => (float) $row->confidence,
                 'staleness' => $row->staleness,
                 'feature_key' => $row->feature_key,
@@ -718,7 +721,51 @@ class LuczorMemoryService
                 || MemoryDlp::containsLocalOnlySourceInMemoryPayload($payload)
                     ? null
                     : $payload;
-        })->filter()->sortByDesc('retrieval_score')->take($topK)->values()->all();
+        })->filter()->sortByDesc('retrieval_score')
+            // Identical evidence occupies one context slot. Preserve every ledger
+            // version; normalization never changes or deletes stored facts.
+            ->unique(fn (array $item) => preg_replace('/\s+/u', ' ', trim($item['content'])))
+            ->take($topK)->values()->all();
+    }
+
+    /** @return array<string,mixed> */
+    public function analyze(string $scope, array $ids): array
+    {
+        // Scope is exact, including the actor even when legacy dataset aliases
+        // are encountered. No tenant-wide or cross-project quality sweep.
+        abort_unless(in_array($scope, ['user', 'project'], true) && ! empty($ids['user_id']), 422);
+        $rows = MemoryLink::query()->whereIn('dataset', $this->datasetsFor($scope, $ids))
+            ->where('user_id', $ids['user_id'])->orderByDesc('recorded_at')->orderByDesc('id')
+            ->limit(1001)->get();
+        $truncated = $rows->count() > 1000;
+        $safe = $rows->take(1000)->filter(fn (MemoryLink $row) => ! MemoryDlp::containsSecretInMemoryPayload(['content' => $row->summary, 'meta' => $row->meta, 'provenance' => $row->provenance])
+            && ! MemoryDlp::containsLocalOnlySourceInMemoryPayload(['source_type' => $row->source_type, 'meta' => $row->meta, 'provenance' => $row->provenance]));
+        $active = $safe->where('status', 'active');
+        $duplicates = $active->groupBy(fn (MemoryLink $row) => hash('sha256', preg_replace('/\s+/u', ' ', trim($row->summary)) ?? trim($row->summary)))
+            ->filter(fn ($group) => $group->count() > 1)
+            ->map(fn ($group) => ['ids' => $group->pluck('id')->map(fn ($id) => (string) $id)->values()->all(), 'count' => $group->count()])
+            ->values()->take(20)->all();
+        $conflicts = $active->filter(fn (MemoryLink $row) => ! empty($row->feature_key))
+            ->groupBy('feature_key')->filter(fn ($group) => $group->pluck('content_hash')->unique()->count() > 1)
+            ->map(fn ($group) => ['ids' => $group->pluck('id')->map(fn ($id) => (string) $id)->values()->all(), 'count' => $group->count()])
+            ->values()->take(20)->all();
+        $expired = $active->filter(fn (MemoryLink $row) => $row->expires_at?->isPast() || $row->valid_until?->isPast());
+        $review = $active->filter(fn (MemoryLink $row) => ! $expired->contains('id', $row->id)
+            && ($row->staleness !== 'fresh' || $row->recorded_at?->lt(now()->subDays(90))));
+
+        return [
+            'scope' => $scope, 'analyzed' => $safe->count(), 'truncated' => $truncated,
+            'priorities' => $active->groupBy(fn (MemoryLink $row) => MemoryPriority::name((float) $row->importance))->map->count()->all(),
+            'duplicates' => $duplicates, 'possible_conflicts' => $conflicts,
+            'expired_count' => $expired->count(), 'review_count' => $review->count(),
+            'candidate_count' => $safe->where('status', 'candidate')->count(),
+            'changed_records' => 0,
+            'recommendations' => [
+                'Identische Inhalte werden beim Abruf einmal verwendet; alle Versionen bleiben erhalten.',
+                'Unbestätigte Kandidaten und verschiedene Aussagen zum selben Merkmal zuerst prüfen.',
+                'Alter ist nur ein Prüfhinweis und kein Beleg für eine falsche Erinnerung.',
+            ],
+        ];
     }
 
     public function forget(string $scope, string $externalId, array $ids = []): bool

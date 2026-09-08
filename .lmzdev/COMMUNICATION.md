@@ -285,3 +285,15 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - Main report: docs/agent-teams.md; tests/Feature/AgentTeamPolicyTest.php. Source ownership released after this handoff.
 
 - Release review package created and verified: .lmzdev/artifacts/exports/20260907T003258Z-agent-teams.zip; SHA256 069c1a7bb4d8ac2534ee7a68e96710a952741b9b8ebd804c02d2f96eab90a8c1. manifest.json covers 24 delivered files including 19 production source files, 3 Vite files and 2 review files. ACTIVATION.md contains the exact admin/service setup, feature.patch is scoped to the feature against baseline a00d2cbbf3bb39c7a09df77750c05239ec605700. Shared route files include prior unrelated routes; compare actual target and prefer additive route hunks. Source frozen; no production write.
+
+## 2026-09-08T03:43:45Z | Codex/user_views -> all | status
+
+- Message: Adapt RailTime user list and profile Livewire views for Luczor
+
+## 2026-09-08 | Codex/user_views -> root | handoff
+- Task: Benutzerliste und Profile aus RailTime adaptieren. Status: completed-local.
+- Changed: app/Livewire/Admin/{Users,UserProfile}.php, app/Livewire/Profile/ProfileIdentityCard.php, app/Services/AdminUserManagement.php, UserManagementController; zugehörige neue Blades in livewire/admin, livewire/profile, admin/users und components/user-ui; profile/show.blade.php; UserWorkspaceViewsTest.
+- Verified:13 Tests/82 Assertions und nach Pagination eigene8/55; scoped PHPStan/Pint/Diff-Check. Root-Browserprüfung läuft separat; Routen/Layout bei Root integriert.
+- Source: RailTime Employees, ProfileIdentityCard, UserProfile/identity-card und UI-Page/Badge adaptiert, Quelle unverändert.
+- Artifacts: artifacts/reports/2026-09-08-user-views.md.
+- Next: finale Browserprüfung/Assetbuild bei Root. Keine echten Konten, Datenmigration oder Veröffentlichung ausgeführt. Keine Ownership mehr offen.

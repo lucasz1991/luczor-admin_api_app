@@ -21,6 +21,7 @@ class DeviceToolPolicy
         // SOLL §14 P15b — a vetted workflow client task compiled into a bundle;
         // the task_key is re-validated against the WorkflowTaskCatalog.
         'workflow.task' => 'sensitive',
+        'workspace.chat' => 'sensitive',
     ];
 
     /** @param array<string,mixed> $payload */
@@ -30,6 +31,7 @@ class DeviceToolPolicy
 
         return match ($tool) {
             'workflow.task' => $this->workflowTask($payload),
+            'workspace.chat' => $this->workspaceChat($payload),
             'desktop.input.move_mouse' => [
                 'x' => $this->coordinate($payload['x'] ?? null),
                 'y' => $this->coordinate($payload['y'] ?? null),
@@ -109,6 +111,30 @@ class DeviceToolPolicy
             });
 
         return $policy === null;
+    }
+
+    private function workspaceChat(array $payload): array
+    {
+        $validated = validator($payload, [
+            'user_id' => ['required', 'integer', 'min:1'],
+            'device_id' => ['required', 'string', 'max:255'],
+            'chat_id' => ['required', 'integer', 'min:1'],
+            'scope' => ['required', 'in:workspace,personal'],
+            'prompt' => ['required', 'string', 'max:12000'],
+            'history' => ['present', 'array', 'max:8'],
+            'history.*.role' => ['required', 'in:user,assistant'],
+            'history.*.content' => ['required', 'string', 'max:3000'],
+            'personal_memories' => ['present', 'array', 'max:8'],
+            'personal_memories.*.id' => ['required', 'string', 'max:255'],
+            'personal_memories.*.content' => ['required', 'string', 'max:1500'],
+            'personal_memories.*.priority' => ['required', 'in:background,normal,high,critical'],
+        ])->validate();
+        // Explicit fields only: no caller-supplied system prompt, project path or provider settings.
+        $validated['history'] = array_map(fn ($message) => array_intersect_key($message, array_flip(['role', 'content'])), $validated['history']);
+        $validated['personal_memories'] = array_map(fn ($memory) => array_intersect_key($memory, array_flip(['id', 'content', 'priority'])), $validated['personal_memories']);
+        abort_unless(mb_strlen(json_encode($validated, JSON_UNESCAPED_UNICODE)) <= 23000, 422, 'Der Chatkontext ist zu groß. Bitte einen neuen Chat starten.');
+
+        return $validated;
     }
 
     private function coordinate(mixed $value): int

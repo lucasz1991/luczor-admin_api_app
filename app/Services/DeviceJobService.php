@@ -6,6 +6,8 @@ use App\Events\DeviceJobCreated;
 use App\Models\AgentRun;
 use App\Models\Device;
 use App\Models\DeviceJob;
+use App\Models\User;
+use App\Models\WebWorkspaceChat;
 use App\Models\WorkflowStep;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +17,22 @@ use Throwable;
 /** Creates the only permitted class of remote device work: signed, fixed profiles. */
 class DeviceJobService
 {
+    /** Browser control-plane requests remain strictly inside the account, including administrators. */
+    public function createForAccount(User $user, Device $device, array $payload): DeviceJob
+    {
+        abort_unless($user->isActive(), 403);
+        abort_unless((int) $device->user_id === (int) $user->id, 404);
+        $request = Request::create('/account/workspace', 'POST');
+        $request->setUserResolver(fn () => $user);
+        $request->attributes->set('account_workspace_dispatch', true);
+
+        return $this->create($request, [
+            'device_id' => $device->device_id,
+            'tool_profile' => 'workspace.chat',
+            'payload' => array_merge($payload, ['user_id' => (int) $user->id, 'device_id' => $device->device_id]),
+        ]);
+    }
+
     /** @param array{device_id:string,project_id?:string|null,agent_run_id?:int|null,tool_profile:string,payload?:array<string,mixed>} $data */
     public function create(Request $request, array $data): DeviceJob
     {
@@ -27,17 +45,28 @@ class DeviceJobService
         // Once selected, only this user's master may delegate to other devices.
         // A device can always submit work for itself; web workflows keep their own authorization.
         $masterId = $request->user()->master_device_id;
-        if ($masterId) {
+        if ($masterId && ! $request->attributes->get('account_workspace_dispatch', false)) {
             $sourceId = $actor->deviceId($request, null, true);
             $source = Device::where('device_id', $sourceId)->where('user_id', $actorUserId)->whereNull('revoked_at')->firstOrFail();
             abort_unless($data['device_id'] === $sourceId || (int) $source->id === (int) $masterId, 403, 'Nur das Master-Gerät darf Aufträge an andere Geräte delegieren.');
         }
 
         $device = Device::query()->where('device_id', $data['device_id'])->firstOrFail();
-        if (! $request->user()?->isAdmin()) {
+        $tool = $data['tool_profile'];
+        if ($tool === 'workspace.chat' || ! $request->user()?->isAdmin()) {
             abort_unless((int) $device->user_id === $actorUserId, 404);
         }
         abort_if($device->revoked_at, 409, 'The target device is revoked.');
+
+        if ($tool === 'workspace.chat') {
+            abort_if(! empty($data['project_id']) || ! empty($data['agent_run_id']), 422, 'Web chats cannot inherit a project or agent-run context.');
+            $chatReference = validator($data['payload'] ?? [], ['chat_id' => ['required', 'integer', 'min:1']])->validate();
+            $chat = WebWorkspaceChat::where('user_id', $actorUserId)->findOrFail($chatReference['chat_id']);
+            abort_unless(($data['payload']['scope'] ?? null) === $chat->scope, 422, 'The chat scope cannot be changed by a device job.');
+            // API/MCP callers cannot bind a signed chat to somebody else's account or device.
+            $data['payload']['user_id'] = $actorUserId;
+            $data['payload']['device_id'] = $device->device_id;
+        }
 
         $project = $actor->project($request, $data['project_id'] ?? null);
         if (! empty($data['agent_run_id'])) {
@@ -45,7 +74,6 @@ class DeviceJobService
             $actor->assertOwned($request, $run);
         }
 
-        $tool = $data['tool_profile'];
         $payload = $tools->normalize($tool, $data['payload'] ?? []);
         $risk = $tools->risk($tool, $payload);
         $ownerUserId = (int) $device->user_id;
@@ -82,7 +110,7 @@ class DeviceJobService
             'approval' => $requiresApproval ? 'required' : 'policy_preapproved',
             'risk_level' => $risk,
             'outcome' => 'queued',
-            'payload' => $payload,
+            'payload' => $tool === 'workspace.chat' ? ['chat_id' => $payload['chat_id'], 'scope' => $payload['scope'], 'content_hash' => $payloadHash] : $payload,
         ]);
 
         return $job->fresh(['device']);

@@ -123,3 +123,7 @@ Record durable decisions with date, context, decision, and consequences.
 - Free roles have separate zero-cost policies and OpenRouter endpoint price caps. Optional paid planning is a separate preset; no paid fallback is added to Free chains.
 - Role ranking requires five distinct evaluated tasks; HTTP success and duplicate reviews do not create quality evidence. Research baselines are candidate recommendations, not measured winners.
 
+
+## 2026-09-08 | RailTime-Benutzeroberflächen für Luczor
+- Bestehende RailTime-Filter-/Profilmodule werden gezielt auf Luczor-Kontodaten und Layout adaptiert. Personal-, Lohn-, Teams- und Fotosysteme werden ohne entsprechenden Luczor-Datenvertrag nicht importiert.
+- HTTP und Livewire verwenden einen gemeinsamen Administrator-User-Service; bestehende Adminrollen sind nicht editierbar. Eigene Identität verwendet weiterhin Fortify mit E-Mail-Neuverifikation; Kostenauswertung zählt fehlende Kostenmeldungen separat.
