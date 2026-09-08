@@ -1,17 +1,16 @@
-<section class="luczor-card mb-6 p-5">
-    <h2 class="text-lg font-semibold">Agententeams und Modellrecherche</h2>
+<x-ui.panel title="Agententeams und Modellrecherche">
     <p class="mt-2 text-sm text-slate-400">Das lokale Modell koordiniert und führt freigegebene Tools aus. Externe Modelle liefern begrenzte Recherche, Codeentwürfe und Prüfberichte. Nur ausdrücklich freigegebener Kontext verlässt den Desktop.</p>
     <div class="mt-4 grid gap-4 lg:grid-cols-2">
         <form method="POST" action="{{ route('dashboard.agent-teams.prepare') }}" class="space-y-3 rounded border border-slate-800 p-4">
             @csrf
             <label class="block text-sm" for="agent-credential">Vorhandener OpenRouter-Zugang</label>
-            <select id="agent-credential" name="provider_credential_id" class="luczor-input" required>
+            <x-ui.select id="agent-credential" name="provider_credential_id" class="" required>
                 <option value="">Zugang auswählen</option>
                 @foreach($providers->where('active', true)->where('provider', 'openrouter')->where('request_format', 'chat_completions') as $credential)
                     <option value="{{ $credential->id }}">{{ $credential->label }}</option>
                 @endforeach
-            </select>
-            <button class="luczor-btn">Teams ergänzen</button>
+            </x-ui.select>
+            <x-ui.button class="" type="submit" variant="primary">Teams ergänzen</x-ui.button>
             <p class="text-xs text-slate-500">Ergänzt fehlende Rollen, Modelle und Kostenregeln. Bestehende oder deaktivierte Profile und bearbeitete Routingketten bleiben erhalten. Free-Rollen haben 0 USD Kostenbudget, externe Planung höchstens 0,05 USD je Anfrage.</p>
         </form>
         <form method="POST" action="{{ route('dashboard.agent-teams.update') }}" class="space-y-3 rounded border border-slate-800 p-4">
@@ -19,16 +18,16 @@
             <input type="hidden" name="enabled" value="0">
             <label class="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" value="1" @checked($agentTeamPolicy['enabled'])> Externe Agententeams verfügbar</label>
             <label class="block text-sm" for="agent-preset">Standardteam</label>
-            <select id="agent-preset" name="default_preset" class="luczor-input">
+            <x-ui.select id="agent-preset" name="default_preset" class="">
                 @foreach($agentTeamPolicy['presets'] as $preset)<option value="{{ $preset['id'] }}" @selected($agentTeamPolicy['default_preset'] === $preset['id'])>{{ $preset['label'] }}</option>@endforeach
-            </select>
+            </x-ui.select>
             <label class="block text-sm" for="agent-parallel">Gleichzeitige externe Aufgaben</label>
-            <input id="agent-parallel" name="max_parallel" type="number" min="1" max="3" value="{{ $agentTeamPolicy['presets'][0]['max_parallel'] }}" class="luczor-input" required>
-            <button class="luczor-btn-secondary">Team-Einstellungen speichern</button>
+            <x-ui.input id="agent-parallel" name="max_parallel" type="number" min="1" max="3" value="{{ $agentTeamPolicy['presets'][0]['max_parallel'] }}" class="" required aria-label="max parallel" />
+            <x-ui.button class="" type="submit" variant="secondary">Team-Einstellungen speichern</x-ui.button>
         </form>
     </div>
     <div class="mt-4 flex flex-wrap items-center gap-3">
-        <form method="POST" action="{{ route('dashboard.agent-teams.research') }}">@csrf<button class="luczor-btn-secondary">OpenRouter-Katalog neu prüfen</button></form>
+        <form method="POST" action="{{ route('dashboard.agent-teams.research') }}">@csrf<x-ui.button class="" type="submit" variant="secondary">OpenRouter-Katalog neu prüfen</x-ui.button></form>
         <span class="text-xs text-slate-400">Recherchestand: {{ $agentModelCatalog['researched_at'] }} · Preisstand 14 Tage gültig; danach neu prüfen und ergänzen.</span>
         <a class="text-sm text-cyan-300 underline" href="{{ route('admin.page', 'models') }}">Rollenketten und Modelle bearbeiten</a>
     </div>
@@ -45,11 +44,10 @@
             </article>
         @endforeach
     </div>
-</section>
-<section class="luczor-card mb-6 overflow-x-auto p-5">
-    <h2 class="font-semibold">Rollenvergleich aus ausgeführten Aufgaben</h2>
+</x-ui.panel>
+<x-ui.panel title="Rollenvergleich aus ausgeführten Aufgaben">
     <p class="mt-2 text-sm text-slate-400">Automatische Rangfolge erst ab fünf unterschiedlichen bewerteten Aufgaben pro Modell und Rolle. Technisch erfolgreiche Antworten allein belegen keine Qualität. Modellbewertungen sind Schätzungen; eine bestandene Prüfung erfordert tatsächliche Testergebnisse.</p>
-    <table class="mt-4 min-w-full text-left text-xs">
+    <x-ui.table>
         <thead class="text-slate-500"><tr><th class="pr-3">Rolle / Modell</th><th class="pr-3">Versuche</th><th class="pr-3">Technischer Erfolg</th><th class="pr-3">Qualität</th><th class="pr-3">Testquote</th><th class="pr-3">Ø Latenz</th><th>USD / Erfolg</th></tr></thead>
         <tbody>
             @forelse($modelRankings->filter(fn ($ranking) => str_starts_with($ranking->task_type, 'agent.')) as $ranking)
@@ -58,5 +56,5 @@
                 <tr><td colspan="7" class="py-3 text-slate-400">Noch keine Rollenmessungen. Bis dahin gilt die recherchierte Admin-Reihenfolge.</td></tr>
             @endforelse
         </tbody>
-    </table>
-</section>
+    </x-ui.table>
+</x-ui.panel>
