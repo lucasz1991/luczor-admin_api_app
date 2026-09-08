@@ -4,6 +4,7 @@ $rawCatalog = trim((string) env('LUCZOR_LOCAL_MODEL_CATALOG_JSON', ''));
 $catalogOverride = $rawCatalog === '' ? null : json_decode($rawCatalog, true);
 
 return [
+    'asset_directory' => env('LUCZOR_LOCAL_MODEL_ASSET_DIRECTORY', storage_path('app/local-model-assets')),
     'schema_version' => 1,
     'catalog_version' => (int) env('LUCZOR_LOCAL_MODEL_CATALOG_VERSION', 2026083001),
     'policy_version' => (int) env('LUCZOR_LOCAL_MODEL_POLICY_VERSION', 2026083001),

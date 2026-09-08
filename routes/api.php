@@ -52,6 +52,8 @@ Route::prefix('v1')->group(function () {
     Route::get('/voice/releases/{version}/{file}', VoiceAssetController::class)
         ->where(['version' => '[A-Za-z0-9._-]+', 'file' => '[A-Za-z0-9._-]+'])
         ->name('api.v1.voice.asset');
+    Route::get('/local-model/assets/{hash}', \App\Http\Controllers\Api\V1\LocalModelAssetController::class)
+        ->where('hash', '[a-f0-9]{64}')->middleware('throttle:30,1');
     // Public verification material only; TLS authenticates this bootstrap endpoint.
     Route::get('/local-model/signing-key', [LocalModelManifestController::class, 'signingKey'])
         ->middleware('throttle:30,1')->name('api.v1.local-model.signing-key');
