@@ -28,12 +28,21 @@ class WorkflowTaskCatalog
         return [
             // ── Server-safe step types (original seven) ──────────────────────
             'context' => self::entry('Kontext abrufen', 'server', 'data', true, ['auto_dispatch' => true]),
-            'llm' => self::entry('Lokaler KI-Schritt', 'client', 'ai', true, [
+            'llm' => self::entry('KI-Schritt', 'client', 'ai', true, [
                 'auto_dispatch' => true,
-                'params' => ['instruction' => ['type' => 'textarea'], 'output_format' => ['type' => 'string', 'default' => 'text'], 'inference' => ['type' => 'string', 'default' => 'local']],
+                'params' => [
+                    'instruction' => ['type' => 'textarea', 'required' => true],
+                    'output_format' => ['type' => 'string', 'default' => 'text', 'enum' => ['text', 'json']],
+                    'output_schema' => ['type' => 'object'],
+                    'inference' => ['type' => 'string', 'default' => 'local', 'enum' => ['local', 'external']],
+                ],
             ]),
             'condition' => self::entry('Bedingung', 'server', 'control', true, [
-                'auto_dispatch' => true, 'params' => ['left' => ['type' => 'string'], 'operator' => ['type' => 'string', 'default' => 'eq'], 'right' => ['type' => 'string']],
+                'auto_dispatch' => true, 'params' => [
+                    'left' => ['type' => 'string'],
+                    'operator' => ['type' => 'string', 'default' => 'eq', 'enum' => ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'exists']],
+                    'right' => ['type' => 'string'],
+                ],
             ]),
             'evaluator' => self::entry('Evaluator', 'server', 'data', true, ['auto_dispatch' => true]),
             'review' => self::entry('Review', 'server', 'data', true, ['auto_dispatch' => true]),
@@ -42,7 +51,7 @@ class WorkflowTaskCatalog
             'manual' => self::entry('Manueller Schritt', 'server', 'control', true),
             'workflow' => self::entry('Verschachtelter Workflow', 'server', 'workflow', true, [
                 'auto_dispatch' => true,
-                'params' => ['workflow_definition_id' => ['type' => 'number']],
+                'params' => ['workflow_definition_id' => ['type' => 'number', 'required' => true, 'min' => 1]],
             ]),
 
             // ── Server tasks with their own executor branch (P15b) ───────────
@@ -79,18 +88,33 @@ class WorkflowTaskCatalog
                 'auto_dispatch' => true, 'params' => ['selector' => ['type' => 'string']],
             ]),
             'file.read' => self::entry('Datei lesen', 'client', 'file', true, [
-                'auto_dispatch' => true, 'params' => ['path' => ['type' => 'string']],
+                'auto_dispatch' => true, 'params' => [
+                    'path' => ['type' => 'string', 'required' => true],
+                    'file_scope' => ['type' => 'string', 'default' => 'legacy', 'enum' => ['legacy', 'workspace']],
+                    'workspace_root_id' => ['type' => 'string'],
+                ],
             ]),
             'file.write' => self::entry('Datei schreiben', 'client', 'file', true, [
                 'auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true,
-                'params' => ['path' => ['type' => 'string'], 'content' => ['type' => 'textarea']],
+                'params' => [
+                    'path' => ['type' => 'string', 'required' => true],
+                    'content' => ['type' => 'textarea', 'required' => true],
+                    'file_scope' => ['type' => 'string', 'default' => 'legacy', 'enum' => ['legacy', 'workspace']],
+                    'workspace_root_id' => ['type' => 'string'],
+                ],
             ]),
             'api.call' => self::entry('API-Aufruf', 'client', 'api', true, [
                 'auto_dispatch' => true, 'mutating' => true,
                 'params' => ['method' => ['type' => 'string', 'default' => 'GET'], 'url' => ['type' => 'string']],
             ]),
-            'python.run' => self::entry('Python ausführen', 'client', 'code', true, ['auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true]),
-            'node.run' => self::entry('Node ausführen', 'client', 'code', true, ['auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true]),
+            'python.run' => self::entry('Python ausführen', 'client', 'code', true, [
+                'auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true,
+                'params' => ['code' => ['type' => 'textarea', 'required' => true]],
+            ]),
+            'node.run' => self::entry('Node ausführen', 'client', 'code', true, [
+                'auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true,
+                'params' => ['code' => ['type' => 'textarea', 'required' => true]],
+            ]),
             'agent.dispatch' => self::entry('Coding-Agent beauftragen', 'client', 'agent', true, [
                 'auto_dispatch' => true, 'mutating' => true, 'requires_approval' => true,
                 'params' => ['agent' => ['type' => 'string'], 'prompt' => ['type' => 'textarea']],

@@ -340,3 +340,8 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - API includes revision history metadata + lazy full revision reads with change summaries; definition read includes bounded expanded_snapshot for nested automation grant preparation. Workflow device notifications publish after transaction commit.
 - Verified locally with SQLite: combined Workflow/Github/Task selection passed 100 tests / 480 assertions. Owned source PHPStan no errors; scoped Pint and git diff --check passed.
 - No deployment, live migration or commit. Actual native device/provider and live worker acceptance remains with root. Separate backend trigger/event/grant ownership remains with workflow_plan_review. Moving to independent frontend workflow access/tools integration review as requested by root.
+
+## 2026-09-08 | Codex/backend_workflows -> root | final catalog handoff
+- WorkflowTaskCatalog enriched for usable visual editing: required AI instruction and script code, object output_schema, explicit inference/output-format/condition/file-scope enums, required file path/content and nested workflow ID. General KI-Schritt label preserves external/local choice. Existing validation stays unchanged; advertised enum acceptance and invalid/root rejection are regression tested.
+- Final targeted backend catalog/dynamic/template suite25 tests/161 assertions, catalog PHPStan/Pint/diff checks passed. Full desktop vue-tsc --build --force passed after correcting malformed ToolResult test fixtures; enum metadata typed for StepEditor.
+- All source ownership returned. No further changes planned, no deployment/live migration or commit.

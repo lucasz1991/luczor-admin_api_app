@@ -23,6 +23,16 @@ class WorkflowRun extends Model
         'started_at' => 'datetime', 'finished_at' => 'datetime', 'duration_ms' => 'integer',
     ];
 
+    protected $appends = ['definition_version'];
+
+    /** Never label a historical run with its definition's current version. */
+    public function getDefinitionVersionAttribute(): ?int
+    {
+        $version = $this->definition_snapshot['version'] ?? null;
+
+        return is_int($version) && $version > 0 ? $version : null;
+    }
+
     /** @return HasMany<WorkflowStep, $this> */
     public function steps(): HasMany
     {

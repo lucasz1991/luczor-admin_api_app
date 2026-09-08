@@ -102,6 +102,21 @@ class WorkflowDynamicAuthoringTest extends TestCase
         $this->assertSame('completed', $run->fresh()->status);
     }
 
+    public function test_historical_run_dtos_and_recovery_report_the_frozen_definition_version(): void
+    {
+        $user = $this->actor();
+        $definition = $this->definition($user, [['key' => 'old', 'type' => 'manual']]);
+        $operationId = (string) Str::uuid();
+        $runId = $this->postJson('/api/v1/workflows/'.$definition->id.'/runs', ['operation_id' => $operationId])->assertCreated()->assertJsonPath('data.definition_version', 1)->json('data.public_id');
+        $definition->update(['definition' => ['steps' => [['key' => 'new', 'type' => 'manual']]]]);
+        $this->assertSame(2, $definition->version);
+        $this->getJson('/api/v1/workflow-runs/'.$runId)->assertOk()->assertJsonPath('data.definition_version', 1);
+        $this->getJson('/api/v1/workflows/'.$definition->id.'/runs')->assertOk()->assertJsonPath('data.0.definition_version', 1);
+        $this->getJson('/api/v1/workflow-operations/'.$operationId)->assertOk()->assertJsonPath('data.response.definition_version', 1);
+        $this->postJson('/api/v1/workflows/'.$definition->id.'/runs')->assertCreated()->assertJsonPath('data.definition_version', 2);
+        $this->assertNull((new WorkflowRun)->definition_version);
+    }
+
     public function test_bound_offline_device_waits_without_dispatch_or_timeout(): void
     {
         $user = $this->actor();

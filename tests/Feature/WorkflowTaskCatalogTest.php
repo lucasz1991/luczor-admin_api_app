@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\WorkflowDefinitionValidator;
 use App\Services\WorkflowService;
 use App\Services\WorkflowTaskCatalog;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -66,5 +67,44 @@ class WorkflowTaskCatalogTest extends TestCase
         $service->assertDefinition([
             'steps' => [['key' => 'bad', 'type' => 'shell.exec']],
         ]);
+    }
+
+    public function test_editor_catalog_exposes_executable_ai_file_and_script_parameters(): void
+    {
+        $catalog = collect(WorkflowTaskCatalog::options())->keyBy('key');
+        $this->assertSame('KI-Schritt', $catalog['llm']['label']);
+        $this->assertTrue($catalog['llm']['params']['instruction']['required']);
+        $this->assertSame('object', $catalog['llm']['params']['output_schema']['type']);
+        foreach (['python.run', 'node.run'] as $type) {
+            $this->assertSame(['type' => 'textarea', 'required' => true], $catalog[$type]['params']['code']);
+        }
+        foreach (['file.read', 'file.write'] as $type) {
+            $this->assertTrue($catalog[$type]['params']['path']['required']);
+            $this->assertSame(['legacy', 'workspace'], $catalog[$type]['params']['file_scope']['enum']);
+            $this->assertSame('string', $catalog[$type]['params']['workspace_root_id']['type']);
+        }
+        $this->assertTrue($catalog['file.write']['params']['content']['required']);
+    }
+
+    public function test_catalog_enumerations_match_definition_validation_without_bypassing_root_requirements(): void
+    {
+        $validator = new WorkflowDefinitionValidator;
+        foreach (['llm' => ['inference', 'output_format'], 'condition' => ['operator'], 'file.read' => ['file_scope']] as $type => $fields) {
+            foreach ($fields as $field) {
+                foreach (WorkflowTaskCatalog::task($type)['params'][$field]['enum'] as $value) {
+                    $validator->validatePayload($type, [$field => $value, 'workspace_root_id' => 'C:\\workspace']);
+                    $this->addToAssertionCount(1);
+                }
+                try {
+                    $validator->validatePayload($type, [$field => 'unknown-value', 'workspace_root_id' => 'C:\\workspace']);
+                    $this->fail('Invalid catalog enumeration must remain rejected.');
+                } catch (HttpException $error) {
+                    $this->assertSame(422, $error->getStatusCode());
+                }
+            }
+        }
+        $validator->validatePayload('llm', ['instruction' => 'Summarize', 'output_format' => 'json', 'output_schema' => ['type' => 'object', 'properties' => ['summary' => ['type' => 'string']], 'required' => ['summary']]]);
+        $this->expectException(HttpException::class);
+        $validator->validatePayload('file.write', ['path' => 'notes.txt', 'content' => '', 'file_scope' => 'workspace']);
     }
 }
