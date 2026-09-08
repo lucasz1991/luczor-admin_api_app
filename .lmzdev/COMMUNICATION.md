@@ -301,3 +301,7 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-09-08T04:27:19Z | Codex/root -> all | status
 
 - Message: Started: complete web UI component system and RailTime-inspired redesign
+
+## 2026-09-08T04:33:24Z | Codex/account_auth_redesign -> all | status
+
+- Message: Started: unified components for accounts, profiles, devices, workspace and authentication

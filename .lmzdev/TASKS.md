@@ -30,3 +30,4 @@
 | Researched external agent teams, admin presets, revision binding and qualified role ranking | Codex/admin_model_architecture | completed-local | 2026-09-07T00:30:00Z |
 | RailTime-basierte Benutzerliste und Profile | Codex/user_views | in-progress | 2026-09-08 |
 | RailTime-basierte Benutzerliste und Profile | Codex/user_views | completed-local | 2026-09-08 |
+| Unified UI account/auth Blade surfaces | Codex/account_auth_redesign | in-progress | 2026-09-08 |
