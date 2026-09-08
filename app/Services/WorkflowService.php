@@ -382,6 +382,9 @@ class WorkflowService
     {
         $expired = 0;
         foreach ($run->steps()->where('status', 'running')->get() as $step) {
+            if ($step->type === 'workflow' && ! isset($step->payload['timeout_seconds'])) {
+                continue;
+            }
             $timeout = (int) ($step->payload['timeout_seconds']
                 ?? WorkflowTaskCatalog::task($step->type)['timeout_seconds']
                 ?? 300);

@@ -82,7 +82,7 @@ class WorkflowDynamicAuthoringTest extends TestCase
         $this->assertSame($childRun->id, $service->startChildWorkflow($run->steps()->first())->id);
     }
 
-    public function test_condition_skips_unchosen_branch_and_join_uses_resolved_predecessor_output(): void
+    public function test_condition_skips_unchosen_branch_and_join_continues(): void
     {
         $user = $this->actor();
         $definition = $this->definition($user, [
@@ -149,5 +149,84 @@ class WorkflowDynamicAuthoringTest extends TestCase
         $operation = WorkflowOperation::sole();
         $this->assertStringNotContainsString('sensitive-fixture', $operation->getRawOriginal('response'));
         $this->getJson('/api/v1/workflow-operations/'.$id)->assertOk()->assertJsonPath('data.response.webhook_secret', 'sensitive-fixture');
+    }
+
+    public function test_cancel_waits_for_device_ack_and_late_completion_cannot_revive_run(): void
+    {
+        $user = $this->actor();
+        $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        openssl_pkey_export($key, $privateKey);
+        Config::set('luczor.device_jobs.private_key', $privateKey);
+        $this->postJson('/api/v1/devices/register', ['client_id' => 'desktop', 'name' => 'Desktop'])->assertCreated();
+        $definition = $this->definition($user, [['key' => 'read', 'type' => 'file.read', 'payload' => ['path' => 'example.txt']]]);
+        $service = app(WorkflowService::class);
+        $run = $service->advance($service->createRun($definition, [], null, false, ['device_id' => 'desktop', 'strict_target' => true]));
+        $job = DeviceJob::sole();
+        $path = '/api/v1/devices/jobs/'.$job->public_id;
+        $this->postJson($path.'/approve', ['client_id' => 'desktop', 'approved' => true])->assertOk();
+        $this->postJson($path.'/start', ['client_id' => 'desktop'])->assertOk();
+        $this->assertSame('cancelling', $service->cancel($run)->status);
+        $this->getJson($path.'/status?client_id=desktop')->assertOk()->assertJsonPath('data.cancel_requested', true);
+        $this->postJson($path.'/complete', ['client_id' => 'desktop', 'ok' => true, 'result' => ['content' => 'late']])->assertConflict();
+        $this->postJson($path.'/cancel-ack', ['client_id' => 'desktop'])->assertOk();
+        $this->assertSame('cancelled', $run->fresh()->status);
+        $this->assertNull($job->fresh()->result);
+    }
+
+    public function test_retry_reuses_execution_identity_but_explicit_loop_has_new_identity(): void
+    {
+        $user = $this->actor();
+        $definition = $this->definition($user, [['key' => 'loop', 'type' => 'manual', 'routes' => ['success' => ['type' => 'step', 'step_key' => 'loop', 'max_iterations' => 2]]]]);
+        $service = app(WorkflowService::class);
+        $run = $service->advance($service->createRun($definition));
+        $step = $run->steps()->first();
+        $firstId = $step->execution_id;
+        $service->fail($step, 'Transient failure');
+        $this->assertSame($firstId, $step->fresh()->execution_id);
+        $this->travel(3)->seconds();
+        $service->advance($run->fresh());
+        $service->complete($step->fresh(), []);
+        $this->assertNotSame($firstId, $step->fresh()->execution_id);
+        $this->assertSame(2, $step->fresh()->execution_sequence);
+        $this->travelBack();
+    }
+
+    public function test_cycles_and_future_step_bindings_are_rejected_without_writes(): void
+    {
+        $this->actor();
+        foreach ([
+            [['key' => 'a', 'type' => 'manual', 'depends_on' => ['b']], ['key' => 'b', 'type' => 'manual', 'depends_on' => ['a']]],
+            [['key' => 'a', 'type' => 'manual', 'payload' => ['input_bindings' => ['text' => 'steps.b.text']]], ['key' => 'b', 'type' => 'manual']],
+        ] as $steps) {
+            $this->postJson('/api/v1/workflows', ['name' => 'Invalid', 'operation_id' => (string) Str::uuid(), 'definition' => ['steps' => $steps]])->assertUnprocessable();
+        }
+        $this->assertSame(0, WorkflowDefinition::count());
+    }
+
+    public function test_revision_details_include_original_definition_and_change_summary(): void
+    {
+        $this->actor();
+        $id = $this->postJson('/api/v1/workflows', ['name' => 'History', 'change_summary' => 'Initial workflow', 'definition' => ['steps' => [['key' => 'first', 'type' => 'manual']]]])->assertCreated()->json('data.id');
+        $this->patchJson('/api/v1/workflows/'.$id, ['name' => 'History', 'expected_version' => 1, 'change_summary' => 'New stage', 'definition' => ['steps' => [['key' => 'second', 'type' => 'manual']]]])->assertOk();
+        $this->getJson('/api/v1/workflows/'.$id.'/revisions/1')->assertOk()->assertJsonPath('data.definition.steps.0.key', 'first')->assertJsonPath('data.change_summary', 'Initial workflow');
+        $this->getJson('/api/v1/workflows/'.$id.'/revisions/2')->assertOk()->assertJsonPath('data.change_summary', 'New stage');
+    }
+
+    public function test_nested_sandbox_inherits_simulation_and_server_task_retry_does_not_duplicate(): void
+    {
+        $user = $this->actor();
+        $child = $this->definition($user, [['key' => 'task', 'type' => 'task.create', 'payload' => ['title' => 'One task']]]);
+        $parent = $this->definition($user, [['key' => 'child', 'type' => 'workflow', 'payload' => ['workflow_definition_id' => $child->id]]]);
+        $service = app(WorkflowService::class);
+        $sandbox = $service->advance($service->createRun($parent, [], null, true));
+        $this->assertSame(0, Task::count());
+        $this->assertTrue(\App\Models\WorkflowRun::where('parent_workflow_run_id', $sandbox->id)->sole()->sandbox);
+        $run = $service->advance($service->createRun($child));
+        $step = $run->steps()->first();
+        $run->refresh()->update(['status' => 'running', 'finished_at' => null]);
+        $step->update(['status' => 'ready', 'finished_at' => null]);
+        app(\App\Services\WorkflowStepExecutor::class)->execute($step->id);
+        $this->assertSame(1, Task::count());
+        $this->assertSame('completed', $run->fresh()->status);
     }
 }

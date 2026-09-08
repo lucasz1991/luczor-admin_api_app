@@ -107,7 +107,7 @@ class WorkflowTriggerController extends Controller
             'allowed_tasks' => 'required|array|min:1|max:100', 'allowed_tasks.*' => 'required|string|max:100',
             'allowed_input_sources' => 'present|array|max:3', 'allowed_input_sources.*' => 'in:input,event,steps',
             'allowed_output_keys' => 'present|array|max:100', 'allowed_output_keys.*' => 'string|max:120',
-            'egress_hosts' => 'present|array|max:100', 'egress_hosts.*' => 'string|max:253|regex:/^[a-z0-9.-]+$/',
+            'egress_hosts' => 'present|array|max:100', 'egress_hosts.*' => ['string', 'max:260', 'regex:/^(?:[a-z0-9.-]+|\[[a-f0-9:]+\])(?::[0-9]{1,5})?$/'],
             'export_results' => 'required|boolean', 'max_steps' => 'sometimes|integer|min:1|max:800',
             'max_runs_per_hour' => 'sometimes|integer|min:1|max:1000', 'max_input_bytes' => 'sometimes|integer|min:1|max:1048576',
             'max_output_bytes' => 'sometimes|integer|min:1|max:1048576', 'script_hashes' => 'present|array|max:100',
@@ -117,6 +117,9 @@ class WorkflowTriggerController extends Controller
         $deviceId = $actor->deviceId($request, $data['device_id'], true);
         $result = $operations->operate((int) $request->user()->id, $data['operation_id'], 'grant.configure', ['workflow_id' => $workflowDefinition->id] + $data,
             fn () => ['grant' => $grants->configure($workflowDefinition, $data, (int) $request->user()->id, $deviceId)->toArray()]);
+        if (($result['grant']['config']['script_hashes'] ?? null) === []) {
+            $result['grant']['config']['script_hashes'] = (object) [];
+        }
 
         return response()->json(['data' => $result]);
     }

@@ -35,7 +35,11 @@ class AutomationGrantService
             sort($config[$field]);
         }
         $config['root_path'] = self::canonicalRoot($config['root_path']);
-        $scopeHash = hash('sha256', self::canonicalJson($config));
+        $hashConfig = $config;
+        if (($hashConfig['script_hashes'] ?? null) === []) {
+            $hashConfig['script_hashes'] = (object) [];
+        }
+        $scopeHash = hash('sha256', self::canonicalJson($hashConfig));
 
         return DB::transaction(function () use ($definition, $data, $userId, $deviceId, $config, $scopeHash) {
             WorkflowDefinition::whereKey($definition->id)->lockForUpdate()->firstOrFail();
@@ -98,9 +102,11 @@ class AutomationGrantService
         $config = $grant->config;
         abort_unless(in_array($type, $config['allowed_tasks'], true), 409, "Automation action {$type} requires new approval.");
         abort_unless(strlen(self::canonicalJson($payload)) <= $config['max_input_bytes'], 409, 'Automation input budget exceeded.');
-        foreach ($payload['input_bindings'] ?? [] as $reference) {
-            $source = explode('.', (string) $reference)[0];
-            abort_unless(in_array($source, $config['allowed_input_sources'], true), 409, 'Automation input source requires new approval.');
+        if (! $resolved) {
+            foreach ($payload['input_bindings'] ?? [] as $reference) {
+                $source = explode('.', (string) $reference)[0];
+                abort_unless(in_array($source, $config['allowed_input_sources'], true), 409, 'Automation input source requires new approval.');
+            }
         }
         $walk = function (mixed $value) use (&$walk, $config): void {
             if (! is_array($value)) {
@@ -116,7 +122,9 @@ class AutomationGrantService
                 $walk($child);
             }
         };
-        $walk($payload);
+        if (! $resolved) {
+            $walk($payload);
+        }
         foreach (['root_path', 'project_dir', 'workspace_root_id', 'workspace_root_path'] as $rootField) {
             if (isset($payload[$rootField]) && is_string($payload[$rootField])) {
                 abort_unless(self::canonicalRoot($payload[$rootField]) === $config['root_path'], 409, 'Automation root requires new approval.');
@@ -127,6 +135,11 @@ class AutomationGrantService
         }
         if (isset($payload['url']) && is_string($payload['url'])) {
             $host = strtolower((string) parse_url($payload['url'], PHP_URL_HOST));
+            $port = parse_url($payload['url'], PHP_URL_PORT);
+            $scheme = strtolower((string) parse_url($payload['url'], PHP_URL_SCHEME));
+            if ($port && ! (($scheme === 'https' && $port === 443) || ($scheme === 'http' && $port === 80))) {
+                $host .= ':'.$port;
+            }
             abort_unless($host !== '' && in_array($host, $config['egress_hosts'], true), 409, 'Automation network target requires new approval.');
         }
         if (in_array($type, ['python.run', 'node.run', 'agent.dispatch'], true)) {

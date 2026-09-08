@@ -267,6 +267,26 @@ class WorkflowTriggersTest extends TestCase
             'payload' => ['code' => 'console.log(1)', 'input_bindings' => ['title' => 'event.payload.title']]]]], ['device_id' => 'device-a']);
     }
 
+    public function test_grant_api_preserves_empty_hash_map_and_exact_network_port(): void
+    {
+        $user = User::factory()->create();
+        $definition = $this->definition($user);
+        [, $data] = $this->approvedGrant($definition);
+        $data['allowed_tasks'] = ['api.call'];
+        $data['script_hashes'] = (object) [];
+        $data['egress_hosts'] = ['example.test:8443'];
+        $data['operation_id'] = (string) Str::uuid();
+        $token = $this->token($user);
+        $response = $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/workflows/'.$definition->id.'/automation', $data)->assertOk();
+        $this->assertStringContainsString('"script_hashes":{}', $response->getContent());
+        $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/workflows/'.$definition->id.'/automation', $data)->assertOk();
+        $graph = ['steps' => [['key' => 'call', 'type' => 'api.call', 'payload' => ['url' => 'https://example.test:8443/path']]]];
+        $this->assertNotEmpty(app(AutomationGrantService::class)->authorizeRun($definition, $graph, ['device_id' => 'device-a']));
+        $graph['steps'][0]['payload']['url'] = 'https://example.test:9443/path';
+        $this->expectException(HttpException::class);
+        app(AutomationGrantService::class)->authorizeRun($definition, $graph, ['device_id' => 'device-a']);
+    }
+
     public function test_source_picker_never_leaks_other_users_imports(): void
     {
         $user = User::factory()->create();

@@ -29,8 +29,15 @@ class WorkflowController extends Controller
     public function definition(Request $request, WorkflowDefinition $workflowDefinition, WorkflowAuthoringService $authoring)
     {
         $authoring->assertOwned((int) $request->user()->id, $workflowDefinition);
+        $data = $authoring->serialize($workflowDefinition, true);
+        try {
+            $data['expanded_snapshot'] = $authoring->snapshot($workflowDefinition, (int) $request->user()->id, $workflowDefinition->project_id, [], false);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $error) {
+            $data['expanded_snapshot'] = null;
+            $data['composition_error'] = $error->getStatusCode() === 404 ? 'A nested workflow is unavailable.' : $error->getMessage();
+        }
 
-        return response()->json(['data' => $authoring->serialize($workflowDefinition, true)]);
+        return response()->json(['data' => $data]);
     }
 
     public function templates()
