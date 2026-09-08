@@ -24,6 +24,15 @@ class DeviceJobService
         $audit = app(AuditLogger::class);
         $actorUserId = $actor->userId($request);
 
+        // Once selected, only this user's master may delegate to other devices.
+        // A device can always submit work for itself; web workflows keep their own authorization.
+        $masterId = $request->user()->master_device_id;
+        if ($masterId) {
+            $sourceId = $actor->deviceId($request, null, true);
+            $source = Device::where('device_id', $sourceId)->where('user_id', $actorUserId)->whereNull('revoked_at')->firstOrFail();
+            abort_unless($data['device_id'] === $sourceId || (int) $source->id === (int) $masterId, 403, 'Nur das Master-Gerät darf Aufträge an andere Geräte delegieren.');
+        }
+
         $device = Device::query()->where('device_id', $data['device_id'])->firstOrFail();
         if (! $request->user()?->isAdmin()) {
             abort_unless((int) $device->user_id === $actorUserId, 404);

@@ -36,7 +36,7 @@ class DeviceController extends Controller
             [
                 'user_id' => $userId,
                 'api_key_id' => $apiKey?->id,
-                'name' => $data['name'],
+                'name' => $existing?->name ?? $data['name'],
                 'public_key' => $data['public_key'] ?? null,
                 'status' => 'online',
                 'last_seen_at' => now(),

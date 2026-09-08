@@ -11,6 +11,8 @@ class ApiKey extends Model
 {
     use HasFactory;
 
+    public const DEVICE_ABILITIES = ['sync.read', 'sync.write', 'settings.read', 'brain.read', 'brain.write', 'proxy.use', 'device.connect', 'device.jobs.read', 'device.jobs.write'];
+
     public const ABILITIES = [
         'sync.read',
         'sync.write',

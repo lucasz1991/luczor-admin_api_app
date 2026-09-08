@@ -75,6 +75,7 @@
 
             <div id="devices" class="luczor-card p-5">
                 <h2 class="text-lg font-semibold text-white">Meine Geraete</h2>
+                <a class="luczor-btn-secondary mt-3 inline-block" href="{{ route('account.devices') }}">Geräte, Master-Zuordnung & Kosten</a>
                 <div class="mt-4 space-y-3">
                     @forelse ($apiKeys as $key)
                         <div class="rounded border border-slate-800 bg-slate-950/50 p-3 text-sm">

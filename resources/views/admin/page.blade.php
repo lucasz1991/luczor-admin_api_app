@@ -284,7 +284,18 @@ function setChainStatus(list, message, state){
                     <tbody class="divide-y divide-slate-800">
                     @forelse($users as $user)
                         <tr>
-                            <td class="py-3"><b class="text-cyan-100">{{ $user->name }}</b><div class="font-mono text-xs text-slate-500">{{ $user->email }}</div></td>
+                            <td class="py-3"><b class="text-cyan-100">{{ $user->name }}</b><div class="font-mono text-xs text-slate-500">{{ $user->email }}</div>
+                                @unless($user->isAdmin())
+                                    <details class="mt-2"><summary>Bearbeiten</summary>
+                                        <form class="grid gap-2 py-3" method="POST" action="{{ route('dashboard.users.update', $user) }}">@csrf @method('PATCH')
+                                            <label>Name<input class="luczor-input" name="name" value="{{ $user->name }}" required maxlength="160"></label>
+                                            <label>E-Mail<input class="luczor-input" name="email" type="email" value="{{ $user->email }}" required></label>
+                                            <input type="hidden" name="status" value="0"><label><input type="checkbox" name="status" value="1" @checked($user->status)> Konto aktiv</label>
+                                            <button class="luczor-btn">Speichern</button>
+                                        </form>
+                                    </details>
+                                @endunless
+                            </td>
                             <td>{{ $user->role }}</td>
                             <td>{{ $user->projects_count }}</td>
                             <td>{{ $user->devices_count }}</td>
@@ -298,11 +309,19 @@ function setChainStatus(list, message, state){
                 </table>
             </section>
             <section class="luczor-card p-5">
-                <h2 class="font-semibold">Master-Gerät-Prinzip</h2>
+                <h2 class="font-semibold">Benutzer anlegen</h2>
+                <form class="mt-4 grid gap-3" method="POST" action="{{ route('dashboard.users.store') }}">@csrf
+                    <label>Name<input class="luczor-input w-full" name="name" required maxlength="160"></label>
+                    <label>E-Mail<input class="luczor-input w-full" name="email" type="email" required></label>
+                    <label>Passwort<input class="luczor-input w-full" name="password" type="password" autocomplete="new-password" minlength="12" required></label>
+                    <label>Passwort bestätigen<input class="luczor-input w-full" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" required></label>
+                    <button class="luczor-btn">Benutzer anlegen</button>
+                </form>
+                <h2 class="mt-6 font-semibold">Master-Gerät-Prinzip</h2>
                 <div class="mt-4 space-y-3 text-sm text-slate-300">
                     <p>Ein Benutzer kann mehrere Geräte besitzen. Jedes Gerät meldet sich über einen eigenen API-Key und Client-Identifier am Laravel-Backend.</p>
                     <p>Das Master-Gerät ist die Orchestrierungsinstanz für Agenten-Teams; andere Geräte bleiben als autonome Worker adressierbar, solange ihre lokalen Modelle verfügbar sind.</p>
-                    <p class="text-slate-500">Die konkrete Master-Auswahl erfolgt über Geräte-Metadaten/API-Key-Policy und bleibt serverseitig auditierbar.</p>
+                    <p class="text-slate-500">Die Master-Auswahl erfolgt unter „Meine Geräte & Kosten“. Laravel prüft die Zuordnung beim Verteilen von Geräteaufträgen.</p>
                 </div>
             </section>
         </div>
