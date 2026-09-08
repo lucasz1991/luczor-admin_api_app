@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::post('/workflow-hooks/{publicId}', [WorkflowTriggerController::class, 'hook'])->whereUuid('publicId')->middleware('throttle:60,1');
     Route::middleware('luczor.api:brain.read')->group(function () {
+        Route::get('/workflow-trigger-sources', [WorkflowTriggerController::class, 'sources']);
         Route::get('/workflows/{workflowDefinition}/triggers', [WorkflowTriggerController::class, 'index']);
         Route::get('/workflows/{workflowDefinition}/automation', [WorkflowTriggerController::class, 'automation']);
         Route::get('/workflow-triggers/{workflowTrigger}/deliveries', [WorkflowTriggerController::class, 'deliveries']);

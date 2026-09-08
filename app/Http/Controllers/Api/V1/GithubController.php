@@ -13,6 +13,8 @@ use App\Services\ContextCache;
 use App\Services\GithubService;
 use App\Services\GitWritePolicy;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use App\Services\WorkflowEventService;
 
 class GithubController extends Controller
 {
@@ -102,6 +104,7 @@ class GithubController extends Controller
     public function webhook(Request $request, AuditLogger $audit, ContextCache $contextCache)
     {
         $raw = $request->getContent();
+        abort_unless(strlen($raw) <= 1048576, 413, 'GitHub webhook payload is too large.');
         $signature = (string) $request->header('X-Hub-Signature-256');
         $secret = (string) config('services.github.webhook_secret');
         abort_unless($secret !== '' && hash_equals('sha256='.hash_hmac('sha256', $raw, $secret), $signature), 401, 'Invalid GitHub webhook signature.');
@@ -110,46 +113,60 @@ class GithubController extends Controller
         $event = (string) $request->header('X-GitHub-Event', 'unknown');
         $payload = $request->json()->all();
         $fullName = $payload['repository']['full_name'] ?? null;
-        $repository = is_string($fullName) ? Repository::query()->where('provider', 'github')->where('full_name', $fullName)->first() : null;
-        $delivery = GithubWebhookDelivery::firstOrCreate(['delivery_id' => $deliveryId], [
-            'repository_id' => $repository?->id, 'event' => $event, 'signature' => $signature, 'payload' => $payload,
-        ]);
-        if (! $delivery->wasRecentlyCreated) {
-            return response()->json(['ok' => true, 'status' => 'duplicate']);
-        }
-
-        if ($repository && in_array($event, ['push', 'create'], true)) {
-            $branch = str_replace('refs/heads/', '', (string) ($payload['ref'] ?? ''));
-            $head = (string) ($payload['after'] ?? ($payload['head_commit']['id'] ?? ''));
-            if ($branch !== '') {
-                $repository->branches()->updateOrCreate(['name' => $branch], ['head_sha' => $head ?: null, 'last_seen_at' => now()]);
+        // A shared server hook explicitly fans out only to imported repository records.
+        // Each event remains bound to that record's owner and project; never choose the first global match.
+        $repositories = is_string($fullName) ? Repository::where('provider', 'github')->where('full_name', $fullName)->get() : collect();
+        $duplicate = DB::transaction(function () use ($deliveryId, $repositories, $event, $signature, $payload, $contextCache, $audit, $fullName) {
+            GithubWebhookDelivery::firstOrCreate(['delivery_id' => $deliveryId], [
+                'repository_id' => $repositories->first()?->id, 'event' => $event, 'signature' => $signature, 'payload' => $payload,
+            ]);
+            $delivery = GithubWebhookDelivery::where('delivery_id', $deliveryId)->lockForUpdate()->firstOrFail();
+            abort_unless($delivery->event === $event && hash_equals((string) $delivery->signature, $signature), 409, 'GitHub delivery ID was reused with different data.');
+            if ($delivery->status === 'processed') {
+                return true;
             }
-            if ($head !== '') {
-                $commit = RepositoryCommit::updateOrCreate(
-                    ['repository_id' => $repository->id, 'sha' => $head],
-                    ['branch' => $branch ?: null, 'message' => $payload['head_commit']['message'] ?? null, 'author_name' => $payload['head_commit']['author']['name'] ?? null, 'committed_at' => $payload['head_commit']['timestamp'] ?? now(), 'payload' => $payload['head_commit'] ?? null]
-                );
-                foreach ((array) ($payload['head_commit']['added'] ?? []) as $path) {
-                    $commit->files()->updateOrCreate(['path' => $path], ['status' => 'added']);
+            foreach ($repositories as $repository) {
+                if (in_array($event, ['push', 'create'], true)) {
+                    $branch = str_replace('refs/heads/', '', (string) ($payload['ref'] ?? ''));
+                    $head = (string) ($payload['after'] ?? ($payload['head_commit']['id'] ?? ''));
+                    if ($branch !== '') {
+                        $repository->branches()->updateOrCreate(['name' => $branch], ['head_sha' => $head ?: null, 'last_seen_at' => now()]);
+                    }
+                    if ($head !== '' && ! preg_match('/^0+$/', $head)) {
+                        $commit = RepositoryCommit::updateOrCreate(
+                            ['repository_id' => $repository->id, 'sha' => $head],
+                            ['branch' => $branch ?: null, 'message' => $payload['head_commit']['message'] ?? null, 'author_name' => $payload['head_commit']['author']['name'] ?? null, 'committed_at' => $payload['head_commit']['timestamp'] ?? now(), 'payload' => $payload['head_commit'] ?? null]
+                        );
+                        foreach (['added', 'modified', 'removed'] as $change) {
+                            foreach ((array) ($payload['head_commit'][$change] ?? []) as $path) {
+                                $commit->files()->updateOrCreate(['path' => $path], ['status' => $change]);
+                            }
+                        }
+                        $repository->update(['last_commit_sha' => $head]);
+                        $contextCache->invalidate((int) $repository->user_id, (string) $repository->id, $branch ?: null);
+                    }
                 }
-                foreach ((array) ($payload['head_commit']['modified'] ?? []) as $path) {
-                    $commit->files()->updateOrCreate(['path' => $path], ['status' => 'modified']);
+                if (in_array($event, ['push', 'pull_request'], true)) {
+                    app(WorkflowEventService::class)->record((int) $repository->user_id, $repository->project_id,
+                        $event === 'push' ? 'github.push' : 'github.pull_request', 'github:'.$repository->id, $deliveryId, [
+                            'repository_id' => $repository->id, 'repository' => $repository->full_name,
+                            'branch' => $event === 'push' ? str_replace('refs/heads/', '', (string) ($payload['ref'] ?? '')) : ($payload['pull_request']['base']['ref'] ?? null),
+                            'action' => $payload['action'] ?? 'push', 'sha' => $payload['after'] ?? ($payload['pull_request']['head']['sha'] ?? null),
+                            'pull_request_number' => $payload['number'] ?? null, 'deleted' => (bool) ($payload['deleted'] ?? false),
+                        ]);
                 }
-                foreach ((array) ($payload['head_commit']['removed'] ?? []) as $path) {
-                    $commit->files()->updateOrCreate(['path' => $path], ['status' => 'removed']);
-                }
-                $repository->update(['last_commit_sha' => $head]);
-                $contextCache->invalidate((int) $repository->user_id, (string) $repository->id, $branch ?: null);
             }
-        }
-        $delivery->update(['status' => 'processed', 'processed_at' => now()]);
-        $audit->record([
-            'actor_user_id' => $repository?->user_id, 'project_id' => $repository?->project_id,
-            'event_type' => 'github.webhook', 'tool' => 'github.webhook', 'outcome' => 'processed',
-            'payload' => ['delivery_id' => $deliveryId, 'event' => $event, 'repository' => $fullName],
-        ]);
+            $delivery->update(['status' => 'processed', 'processed_at' => now()]);
+            $audit->record([
+                'actor_user_id' => $repositories->first()?->user_id, 'project_id' => $repositories->first()?->project_id,
+                'event_type' => 'github.webhook', 'tool' => 'github.webhook', 'outcome' => 'processed',
+                'payload' => ['delivery_id' => $deliveryId, 'event' => $event, 'repository' => $fullName, 'repository_count' => $repositories->count()],
+            ]);
 
-        return response()->json(['ok' => true]);
+            return false;
+        });
+
+        return response()->json(['ok' => true, 'status' => $duplicate ? 'duplicate' : 'processed']);
     }
 
     private function connection(int $userId): OAuthConnection

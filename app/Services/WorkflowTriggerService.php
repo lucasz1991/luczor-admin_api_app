@@ -61,7 +61,7 @@ class WorkflowTriggerService
             'task.completed' => ['task_id' => 'nullable|integer|min:1'],
             'workflow.completed' => ['workflow_definition_id' => 'nullable|integer|min:1', 'statuses' => 'sometimes|array|min:1|max:3', 'statuses.*' => 'in:completed,failed,cancelled'],
             'github.push', 'github.pull_request' => ['repository_id' => 'required|integer|min:1', 'branch' => 'nullable|string|max:250', 'actions' => 'sometimes|array|max:20', 'actions.*' => 'string|max:60'],
-            'workspace.file_changed' => ['device_id' => 'required|string|max:120', 'root_path' => 'required|string|max:2000', 'paths' => 'required|array|min:1|max:32', 'paths.*' => 'string|max:500', 'debounce_seconds' => 'sometimes|integer|min:1|max:60'],
+            'workspace.file_changed' => ['device_id' => 'required|string|max:120', 'root_path' => 'required|string|max:2000', 'paths' => 'required|array|min:1|max:32', 'paths.*' => 'string|max:500', 'excludes' => 'sometimes|array|max:32', 'excludes.*' => 'string|max:500', 'debounce_seconds' => 'sometimes|integer|min:1|max:60'],
         };
         $valid = Validator::make($config, $rules)->validate();
         $valid = array_filter($valid, fn ($value) => $value !== null);
@@ -86,7 +86,8 @@ class WorkflowTriggerService
         if ($kind === 'workspace.file_changed') {
             abort_unless($definition->project_id && Device::where('user_id', $definition->user_id)->where('device_id', $valid['device_id'])->whereNull('revoked_at')->exists(), 422, 'File events require an owned project and device.');
             $valid['root_path'] = AutomationGrantService::canonicalRoot($valid['root_path']);
-            foreach ($valid['paths'] as $path) {
+            $valid['excludes'] ??= ['.git/**', 'node_modules/**', 'vendor/**'];
+            foreach (array_merge($valid['paths'], $valid['excludes']) as $path) {
                 abort_unless($this->safeRelativePath($path, true), 422, 'Watch paths must be relative and cannot contain traversal.');
             }
             $valid['debounce_seconds'] ??= 2;

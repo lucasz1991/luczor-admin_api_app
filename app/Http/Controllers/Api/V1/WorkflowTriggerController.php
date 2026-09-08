@@ -18,6 +18,20 @@ use Illuminate\Support\Facades\DB;
 
 class WorkflowTriggerController extends Controller
 {
+    public function sources(Request $request, ApiActor $actor)
+    {
+        $data = $request->validate(['project_id' => 'nullable|string|max:190']);
+        $project = $actor->project($request, $data['project_id'] ?? null);
+        abort_unless(empty($data['project_id']) || ($project && (int) $project->user_id === (int) $request->user()->id), 404);
+        $userId = (int) $request->user()->id;
+
+        return response()->json(['data' => [
+            'repositories' => \App\Models\Repository::where('user_id', $userId)->where('project_id', $project?->id)->orderBy('full_name')->limit(500)->get(['id', 'full_name']),
+            'tasks' => \App\Models\Task::where('user_id', $userId)->where('project_ref_id', $project?->id)->orderBy('title')->limit(500)->get(['id', 'title']),
+            'workflows' => WorkflowDefinition::where('user_id', $userId)->where('project_id', $project?->id)->orderBy('name')->limit(500)->get(['id', 'name']),
+        ]]);
+    }
+
     public function index(Request $request, WorkflowDefinition $workflowDefinition)
     {
         $this->owned($request, $workflowDefinition);
@@ -138,6 +152,11 @@ class WorkflowTriggerController extends Controller
             $matches = $change['kind'] === 'rescan' && $change['path'] === '.';
             foreach ($trigger->config['paths'] as $glob) {
                 $matches = $matches || \Illuminate\Support\Str::is($glob, str_replace('\\', '/', $change['path']));
+            }
+            foreach ($trigger->config['excludes'] ?? [] as $glob) {
+                if (\Illuminate\Support\Str::is($glob, str_replace('\\', '/', $change['path']))) {
+                    $matches = false;
+                }
             }
             abort_unless($matches, 422, 'File event is outside the watched paths.');
         }

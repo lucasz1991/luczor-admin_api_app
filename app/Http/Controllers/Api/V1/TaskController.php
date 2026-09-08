@@ -7,6 +7,8 @@ use App\Models\Task;
 use App\Services\ApiActor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use App\Services\WorkflowEventService;
 
 /** SOLL §8 — agent/user task management (create, assign, complete). */
 class TaskController extends Controller
@@ -164,7 +166,12 @@ class TaskController extends Controller
         if (($data['status'] ?? null) && $data['status'] !== 'done') {
             $task->completed_at = null;
         }
-        $task->save();
+        DB::transaction(function () use ($task) {
+            $task->save();
+            if ($task->wasChanged('status') && $task->status === 'done') {
+                app(WorkflowEventService::class)->recordTaskTerminal($task);
+            }
+        });
 
         return response()->json(['data' => $task]);
     }

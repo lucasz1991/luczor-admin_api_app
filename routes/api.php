@@ -99,6 +99,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/devices/jobs/{publicId}/approve', [DeviceController::class, 'approveJob'])->name('api.v1.devices.jobs.approve');
         Route::post('/devices/jobs/{publicId}/start', [DeviceController::class, 'startJob'])->name('api.v1.devices.jobs.start');
         Route::post('/devices/jobs/{publicId}/complete', [DeviceController::class, 'completeJob'])->name('api.v1.devices.jobs.complete');
+        Route::get('/devices/jobs/{publicId}/status', [DeviceController::class, 'jobStatus'])->name('api.v1.devices.jobs.status');
+        Route::post('/devices/jobs/{publicId}/cancel-ack', [DeviceController::class, 'acknowledgeCancellation'])->name('api.v1.devices.jobs.cancel-ack');
         Route::post('/reverb/auth', ReverbAuthController::class)->name('api.v1.reverb.auth');
         Route::get('/notifications', [AppNotificationController::class, 'index'])->name('api.v1.notifications.index');
         Route::post('/notifications/read-all', [AppNotificationController::class, 'readAll'])->name('api.v1.notifications.read-all');
@@ -165,11 +167,14 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('luczor.api:brain.write')->group(function () {
         Route::post('/workflows', [WorkflowController::class, 'storeDefinition'])->name('api.v1.workflows.store');
+        Route::post('/workflows/validate', [WorkflowController::class, 'validateDefinition'])->name('api.v1.workflows.validate');
+        Route::patch('/workflows/{workflowDefinition}', [WorkflowController::class, 'updateDefinition'])->whereNumber('workflowDefinition')->name('api.v1.workflows.update');
         Route::post('/workflows/{workflowDefinition}/runs', [WorkflowController::class, 'start'])->name('api.v1.workflows.runs.store');
         Route::post('/workflow-runs/{workflowRun}/advance', [WorkflowController::class, 'advance'])->name('api.v1.workflow-runs.advance');
         Route::post('/workflow-runs/{workflowRun}/cancel', [WorkflowController::class, 'cancel'])->name('api.v1.workflow-runs.cancel');
         Route::post('/workflow-steps/{workflowStep}/complete', [WorkflowController::class, 'completeStep'])->name('api.v1.workflow-steps.complete');
         Route::post('/workflow-steps/{workflowStep}/fail', [WorkflowController::class, 'failStep'])->name('api.v1.workflow-steps.fail');
+        Route::post('/workflow-steps/{workflowStep}/approve', [WorkflowController::class, 'approveStep'])->name('api.v1.workflow-steps.approve');
     });
     Route::get('/workflow-runs/{workflowRun}', [WorkflowController::class, 'show'])
         ->middleware('luczor.api:brain.read')->name('api.v1.workflow-runs.show');
@@ -177,6 +182,13 @@ Route::prefix('v1')->group(function () {
     // Vetted workflow task library (SOLL §14 P12) — the only tasks a definition may use.
     Route::get('/workflows/task-catalog', fn () => response()->json(['data' => WorkflowTaskCatalog::options()]))
         ->middleware('luczor.api:brain.read')->name('api.v1.workflows.task-catalog');
+    Route::middleware('luczor.api:brain.read')->group(function () {
+        Route::get('/workflows', [WorkflowController::class, 'index'])->name('api.v1.workflows.index');
+        Route::get('/workflows/templates', [WorkflowController::class, 'templates'])->name('api.v1.workflows.templates');
+        Route::get('/workflows/{workflowDefinition}', [WorkflowController::class, 'definition'])->whereNumber('workflowDefinition')->name('api.v1.workflows.show');
+        Route::get('/workflows/{workflowDefinition}/runs', [WorkflowController::class, 'runs'])->whereNumber('workflowDefinition')->name('api.v1.workflows.runs.index');
+        Route::get('/workflow-operations/{operationId}', [WorkflowController::class, 'operation'])->name('api.v1.workflow-operations.show');
+    });
 
     // SOLL §15 P27 — reusable skill bundles the client/AI may discover and apply.
     Route::get('/skills', function (Request $request) {
@@ -250,3 +262,5 @@ Route::prefix('v1')->group(function () {
         ->middleware('luczor.api:brain.write')
         ->name('api.v1.llm.runs.evaluate-request');
 });
+
+require __DIR__.'/workflow-triggers.php';

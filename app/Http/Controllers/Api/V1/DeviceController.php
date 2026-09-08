@@ -178,6 +178,14 @@ class DeviceController extends Controller
             $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
             abort_unless($job->status === 'queued', 409, 'This job is not executable.');
             abort_if($job->expires_at?->isPast(), 410, 'This job has expired.');
+            abort_if($job->cancel_requested_at, 409, 'This job was cancelled.');
+            if ($job->workflow_execution_id) {
+                $step = WorkflowStep::where('execution_id', $job->workflow_execution_id)->firstOrFail();
+                abort_unless($step->run->status === 'running' && $step->status === 'running', 409, 'Workflow is no longer executable.');
+                if ($step->run->context['_execution']['automatic'] ?? false) {
+                    app(\App\Services\AutomationGrantService::class)->authorizeTask($step->run, $step->type, $step->resolved_payload ?? $step->payload ?? []);
+                }
+            }
 
             $job->update(['status' => 'running', 'started_at' => now()]);
             $audit->record([
@@ -200,11 +208,21 @@ class DeviceController extends Controller
             'error' => ['nullable', 'string', 'max:8000'],
         ]);
         $device = $this->currentDevice($request, $actor, $data['client_id']);
-        $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->firstOrFail();
-        abort_unless($job->status === 'running', 409, 'This job is not running.');
-
+        return DB::transaction(function () use ($device, $publicId, $data, $audit) {
+        $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
         $result = $data['result'] ?? null;
         $resultHash = $result === null ? null : $audit->hash($result);
+        if (in_array($job->status, ['completed', 'failed'], true)) {
+            abort_unless($job->status === ($data['ok'] ? 'completed' : 'failed') && $job->result_hash === $resultHash
+                && $job->error === ($data['ok'] ? null : ($data['error'] ?? 'Device tool failed')), 409, 'Conflicting device result.');
+
+            return response()->json(['data' => $job, 'meta' => ['replayed' => true]]);
+        }
+        abort_unless($job->status === 'running' && ! $job->cancel_requested_at, 409, 'This job is not running or was cancelled.');
+        if ($job->workflow_execution_id) {
+            $step = WorkflowStep::where('execution_id', $job->workflow_execution_id)->first();
+            abort_unless($step && $step->run->status === 'running' && $step->status === 'running', 409, 'Workflow result is no longer current.');
+        }
         $job->update([
             'status' => $data['ok'] ? 'completed' : 'failed',
             'result' => $result,
@@ -222,6 +240,33 @@ class DeviceController extends Controller
         $this->settleWorkflowStep($job->fresh());   // P15b — feed the result back into the workflow
 
         return response()->json(['data' => $job->fresh()]);
+        });
+    }
+
+    public function jobStatus(Request $request, string $publicId, ApiActor $actor)
+    {
+        $device = $this->currentDevice($request, $actor, (string) $request->query('client_id'));
+        $job = DeviceJob::where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->firstOrFail();
+
+        return response()->json(['data' => ['public_id' => $job->public_id, 'status' => $job->status, 'cancel_requested' => (bool) $job->cancel_requested_at]]);
+    }
+
+    public function acknowledgeCancellation(Request $request, string $publicId, ApiActor $actor)
+    {
+        $data = $request->validate(['client_id' => ['required', 'string', 'max:120']]);
+        $device = $this->currentDevice($request, $actor, $data['client_id']);
+
+        return DB::transaction(function () use ($device, $publicId) {
+            $job = DeviceJob::where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            abort_unless($job->cancel_requested_at || $job->status === 'cancelled', 409, 'No cancellation was requested.');
+            $job->update(['status' => 'cancelled', 'finished_at' => $job->finished_at ?? now()]);
+            $step = WorkflowStep::where('external_run_type', 'device_job')->where('external_run_id', $job->public_id)->first();
+            if ($step) {
+                app(WorkflowService::class)->settleCancellation($step->run);
+            }
+
+            return response()->json(['data' => ['public_id' => $job->public_id, 'status' => 'cancelled']]);
+        });
     }
 
     /**
