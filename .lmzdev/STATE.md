@@ -102,3 +102,10 @@
 ## 2026-09-08 | Account/Auth UI component redesign
 - Account devices, pairing, profiles, admin user list and workspace/auth views now share the common UI components. Workspace opens on the conversation and separates chats/devices in tabs; profile password errors select security.
 - 23 focused feature tests / 152 assertions passed. Browser/asset integration belongs to root. Report artifacts/reports/2026-09-08-account-auth-ui-components.md. Source ownership released.
+
+## 2026-09-08 | Codex/root | Web-UI-Komponenten completed-local
+- Laravel-Webseiten auf gemeinsame RailTime-adaptierte Komponenten und zentrale Designwerte umgestellt: Shell, Panels, Tabs, Felder, Aktionen, Status, Tabellen und Benutzerkarten.
+- Admin-/Benutzer-Dashboard, Benutzer/Profile/Auth, Geräte/Chats, Modelle/Agenten/Optimizer, Kosten/Telemetrie/Archive/Einstellungen und Workflows überarbeitet. Mobile Umbrüche, native Tab-Validierung und konkrete Navigationsziele geprüft/korrigiert.
+- Vollsuite 569 Tests/3932 Assertions; abschließend Navigation 8 Tests/72 Assertions und Tab-JavaScript 5 Tests grün. Scoped Pint, Blade-Kompilierung, Diff-Check und finaler Vite-Build mit Node22.22.0 bestanden. Echte lokale Browserprüfung Desktop/390px mit isolierten Beispieldaten.
+- Bericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-complete-web-ui-components.md; Komponentenreferenz admin_api_app/docs/ui-components.md. Vorschau9032 bleibt verfügbar. Kein Serverdeploy, kein neuer Desktopbuild und keine echte Modell-/Mehrgeräteabnahme dieses UI-Auftrags.
+- Source-Ownership aller Teilagenten zurückgegeben. Externe Zwischencommits und vorhandene Änderungen erhalten; kein eigener Commit. Frühere persönliche Datenzuordnung und produktiver Rollout bleiben separat offen.

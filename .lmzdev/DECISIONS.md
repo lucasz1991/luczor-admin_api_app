@@ -130,3 +130,9 @@ Record durable decisions with date, context, decision, and consequences.
 ## 2026-09-08 | Account UI tabs preserve server ownership
 - Device/profile presentation uses common client-side tabs; administrative profile sections retain server-side selectTab because the PHP module owns which selected-user data is rendered.
 - Existing RailTime-derived user-ui page/badge names remain compatibility adapters to the common component system. Livewire/auth/device submission contracts stay unchanged.
+
+## 2026-09-08 | Web-UI: Komponenten, Tabs und Validierung
+- RailTime-Page/Surface/Stat/Tabs werden mit Luczors bestehender Authentifizierung, Livewire-Bindung und Formularrouten adaptiert; keine fremden Dienste oder Nutzdaten übernehmen.
+- Zentrale Designwerte in admin_api_app/resources/css/ui-system.css, wiederverwendbare Blade-Komponenten unter components/ui; Spezialeditoren über Kompatibilitätsklassen angleichen.
+- Ein Formular bleibt auch über mehrere Tabs atomar vollständig. Erster nativer Validierungsfehler öffnet das richtige Panel synchron; Timer hält Auswahl über Microtask-Checkpoints stabil. Serverfehler überschreiben gespeicherte Auswahl.
+- Übersichtliche Themen-Tabs, eindeutige Dashboard-Fragmente, Tastaturbedienung und mobile Aktionsumbrüche sind gemeinsame Komponentenverträge. Lokaler Browser-/Buildnachweis ist keine Produktions- oder Tauri-Abnahme.

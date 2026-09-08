@@ -32,3 +32,5 @@
 | RailTime-basierte Benutzerliste und Profile | Codex/user_views | completed-local | 2026-09-08 |
 | Unified UI account/auth Blade surfaces | Codex/account_auth_redesign | in-progress | 2026-09-08 |
 | Unified UI account/auth Blade surfaces | Codex/account_auth_redesign | completed-local | 2026-09-08 |
+
+- [x] 2026-09-08 | Codex/root: Komplettes Laravel-Web-UI mit RailTime-adaptierten Komponenten, einheitlichem Design und Themen-Tabs lokal umgesetzt; Tests, Build und Browserprüfung abgeschlossen. Bericht artifacts/reports/2026-09-08-complete-web-ui-components.md im Root-Protokoll.
