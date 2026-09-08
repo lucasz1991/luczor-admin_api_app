@@ -1,22 +1,26 @@
 <?php
 
+use App\Http\Controllers\AccountDevicesController;
 use App\Http\Controllers\Admin\AgentTeamConfigurationController;
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ModelConfigurationController;
 use App\Http\Controllers\Admin\PersonaSkillController;
 use App\Http\Controllers\Admin\SystemOperationsController;
+use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\Admin\WorkflowController;
+use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\GithubOAuthController;
+use App\Http\Middleware\EnsureActiveUser;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard');
 
-Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', \App\Http\Middleware\EnsureActiveUser::class])->group(function () {
-    Route::get('/account/devices', [\App\Http\Controllers\AccountDevicesController::class, 'index'])->name('account.devices');
-    Route::patch('/account/devices/{device}', [\App\Http\Controllers\AccountDevicesController::class, 'update'])->name('account.devices.update');
-    Route::get('/devices/pair/{id}', [\App\Http\Controllers\DevicePairingController::class, 'show'])->whereUuid('id')->name('devices.pair.show');
-    Route::post('/devices/pair/{id}', [\App\Http\Controllers\DevicePairingController::class, 'approve'])->whereUuid('id')->name('devices.pair.approve');
+Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', EnsureActiveUser::class])->group(function () {
+    Route::get('/account/devices', [AccountDevicesController::class, 'index'])->name('account.devices');
+    Route::patch('/account/devices/{device}', [AccountDevicesController::class, 'update'])->name('account.devices.update');
+    Route::get('/devices/pair/{id}', [DevicePairingController::class, 'show'])->whereUuid('id')->name('devices.pair.show');
+    Route::post('/devices/pair/{id}', [DevicePairingController::class, 'approve'])->whereUuid('id')->name('devices.pair.approve');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::post('/dashboard/api-keys', [ApiKeyController::class, 'storeApiKey'])->name('dashboard.api-keys.store');
     Route::post('/dashboard/api-keys/{apiKey}/toggle', [ApiKeyController::class, 'toggleApiKey'])->name('dashboard.api-keys.toggle');
@@ -24,8 +28,8 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
     Route::get('/github/callback', [GithubOAuthController::class, 'callback'])->name('github.callback');
 
     Route::middleware('role:admin')->group(function () {
-        Route::post('/dashboard/users', [\App\Http\Controllers\Admin\UserManagementController::class, 'store'])->name('dashboard.users.store');
-        Route::patch('/dashboard/users/{user}', [\App\Http\Controllers\Admin\UserManagementController::class, 'update'])->name('dashboard.users.update');
+        Route::post('/dashboard/users', [UserManagementController::class, 'store'])->name('dashboard.users.store');
+        Route::patch('/dashboard/users/{user}', [UserManagementController::class, 'update'])->name('dashboard.users.update');
         Route::get('/admin/{page}', [DashboardController::class, 'page'])->name('admin.page');
         Route::post('/dashboard/provider-credentials', [ModelConfigurationController::class, 'storeProviderCredential'])->name('dashboard.provider-credentials.store');
         Route::post('/dashboard/provider-credentials/{providerCredential}/toggle', [ModelConfigurationController::class, 'toggleProviderCredential'])->name('dashboard.provider-credentials.toggle');

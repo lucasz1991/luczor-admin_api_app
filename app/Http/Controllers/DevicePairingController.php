@@ -25,6 +25,7 @@ class DevicePairingController extends Controller
     {
         abort_unless($request->user()->isActive(), 403);
         $pairing = DevicePairing::whereKey($id)->where('expires_at', '>', now())->firstOrFail();
+
         return view('devices.pair', compact('pairing'));
     }
 
@@ -41,12 +42,14 @@ class DevicePairingController extends Controller
             $minted = ApiKey::mint(['user_id' => $request->user()->id, 'name' => $pairing->name, 'device_name' => $pairing->name, 'device_id' => $pairing->client_id, 'abilities' => ApiKey::DEVICE_ABILITIES, 'active' => true]);
             $pairing->update(['user_id' => $request->user()->id, 'api_key_id' => $minted['model']->id, 'credential' => $minted['plain']]);
         });
+
         return redirect()->route('devices.pair.show', $id)->with('status', 'Gerät freigegeben. Kehre zu Luczor zurück und übernimm die Anmeldung.');
     }
 
     public function claim(Request $request, string $id)
     {
         $data = $request->validate(['secret' => ['required', 'string', 'size:64']]);
+
         return DB::transaction(function () use ($data, $id) {
             $pairing = DevicePairing::whereKey($id)->lockForUpdate()->firstOrFail();
             abort_unless(hash_equals($pairing->secret_hash, hash('sha256', $data['secret'])), 404);
@@ -59,6 +62,7 @@ class DevicePairingController extends Controller
             abort_unless($pairing->credential, 410);
             $credential = $pairing->credential;
             $pairing->update(['credential' => null]);
+
             return response()->json(['status' => 'approved', 'device_key' => $credential, 'user' => $key->user->only(['id', 'name', 'email'])])->header('Cache-Control', 'no-store');
         });
     }

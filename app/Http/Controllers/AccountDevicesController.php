@@ -18,6 +18,7 @@ class AccountDevicesController extends Controller
         $costs = LlmRun::where('user_id', $user->id)->select('client_id')
             ->selectRaw('COUNT(*) as runs_count, COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost_usd, SUM(CASE WHEN estimated_cost_usd IS NULL THEN 1 ELSE 0 END) as unknown_cost_count')
             ->groupBy('client_id')->get();
+
         return view('devices.index', compact('user', 'devices', 'costs'));
     }
 
@@ -36,7 +37,9 @@ class AccountDevicesController extends Controller
             } elseif ((int) $user->master_device_id === (int) $device->id) {
                 $user->forceFill(['master_device_id' => null])->save();
             }
+            app(\App\Services\AuditLogger::class)->record(['actor_user_id' => $user->id, 'device_id' => $device->id, 'event_type' => 'device.coordination_updated', 'payload' => ['master_device_id' => $user->master_device_id]]);
         });
+
         return back()->with('status', 'Gerätezuordnung gespeichert.');
     }
 }
