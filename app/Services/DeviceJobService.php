@@ -177,10 +177,12 @@ class DeviceJobService
         ]);
         $job->update(['signature' => $signer->sign($job)]);
         $step->update(['external_run_type' => 'device_job', 'external_run_id' => $job->public_id]);
-        if (config('queue.default') !== 'sync') {
-            DeviceJobCreated::dispatch($job->fresh(['device']));
-        }
-        $this->notifyDeviceJob($job, $device, $requiresApproval);
+        DB::afterCommit(function () use ($job, $device, $requiresApproval) {
+            if (config('queue.default') !== 'sync') {
+                DeviceJobCreated::dispatch($job->fresh(['device']));
+            }
+            $this->notifyDeviceJob($job, $device, $requiresApproval);
+        });
 
         $audit->record([
             'actor_user_id' => $step->user_id,

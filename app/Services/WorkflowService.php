@@ -140,7 +140,7 @@ class WorkflowService
 
             $fresh = $run->steps()->get();
             // P15b — every auto-dispatchable catalog type (server branches and
-            // client/device bundles) is handed to the executor; llm/manual/
+            // client/device bundles) is handed to the executor; manual/
             // approval/device_job stay externally completed.
             $readyStepIds = $fresh
                 ->filter(fn (WorkflowStep $step) => $step->status === 'ready' && WorkflowTaskCatalog::isAutoDispatch($step->type))

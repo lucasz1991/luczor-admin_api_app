@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WorkflowStep extends Model
 {
@@ -21,12 +23,14 @@ class WorkflowStep extends Model
         'approved_at' => 'datetime', 'resolved_payload' => 'array', 'execution_sequence' => 'integer',
     ];
 
-    public function run()
+    /** @return BelongsTo<WorkflowRun, $this> */
+    public function run(): BelongsTo
     {
         return $this->belongsTo(WorkflowRun::class, 'workflow_run_id');
     }
 
-    public function artifacts()
+    /** @return HasMany<WorkflowRunArtifact, $this> */
+    public function artifacts(): HasMany
     {
         return $this->hasMany(WorkflowRunArtifact::class);
     }

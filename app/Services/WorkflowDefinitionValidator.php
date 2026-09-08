@@ -95,7 +95,8 @@ class WorkflowDefinitionValidator
             foreach ($references as $reference) {
                 abort_unless(preg_match('/^(input|event|steps)(\.[A-Za-z0-9_.-]+)+$/', $reference), 422, 'Invalid workflow data reference.');
                 if (str_starts_with($reference, 'steps.')) {
-                    abort_unless(collect($predecessors)->contains(fn ($key) => str_starts_with($reference, 'steps.'.$key.'.')), 422, 'Step binding must reference a declared predecessor.');
+                    $sourceKey = WorkflowBindings::stepReferenceKey($reference, array_keys($keys));
+                    abort_unless($sourceKey !== null && in_array($sourceKey, $predecessors, true), 422, 'Step binding must reference a declared predecessor.');
                 }
             }
         }

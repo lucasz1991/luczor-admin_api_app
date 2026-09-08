@@ -19,7 +19,7 @@ class WorkflowAuthoringService
             return null;
         }
         $project = Project::where('user_id', $userId)->where('external_id', $externalId)->first();
-        abort_unless($project, 422, 'The selected project_id is invalid.');
+        abort_unless($project !== null, 422, 'The selected project_id is invalid.');
 
         return (int) $project->id;
     }
@@ -82,7 +82,7 @@ class WorkflowAuthoringService
             $this->validate($userId, $data['definition'], $projectId, $definitionId);
             $attributes = [
                 'user_id' => $userId, 'project_id' => $projectId, 'name' => $data['name'],
-                'definition' => $data['definition'], 'status' => $data['status'] ?? $definition?->status ?? 'active',
+                'definition' => $data['definition'], 'status' => $data['status'] ?? $definition->status ?? 'active',
                 'version' => $definition ? $definition->version + 1 : 1,
                 'change_summary' => $data['change_summary'] ?? null,
             ];

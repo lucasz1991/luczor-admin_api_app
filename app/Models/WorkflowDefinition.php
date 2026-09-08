@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
 class WorkflowDefinition extends Model
@@ -20,7 +23,7 @@ class WorkflowDefinition extends Model
                 $latest = $def->revisions()->orderByDesc('version')->first();
                 $hash = hash('sha256', json_encode($def->definition, JSON_THROW_ON_ERROR));
                 if (! $latest || $latest->definition_hash !== $hash || $latest->name !== $def->name || (int) $latest->version !== (int) $def->version) {
-                    $version = max((int) $def->version, (int) ($latest?->version ?? 0) + 1);
+                    $version = max((int) $def->version, (int) ($latest->version ?? 0) + 1);
                     $revision = $def->revisions()->create(['version' => $version, 'name' => $def->name, 'definition' => $def->definition, 'definition_hash' => $hash, 'change_summary' => $def->change_summary]);
                     $def->updateQuietly(['version' => $version, 'current_revision_id' => $revision->id]);
                 }
@@ -28,34 +31,38 @@ class WorkflowDefinition extends Model
         });
     }
 
-    public function revisions()
+    /** @return HasMany<WorkflowDefinitionRevision, $this> */
+    public function revisions(): HasMany
     {
         return $this->hasMany(WorkflowDefinitionRevision::class);
     }
 
-    public function currentRevision()
+    /** @return BelongsTo<WorkflowDefinitionRevision, $this> */
+    public function currentRevision(): BelongsTo
     {
         return $this->belongsTo(WorkflowDefinitionRevision::class, 'current_revision_id');
     }
 
-    public function project()
+    /** @return BelongsTo<Project, $this> */
+    public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
     }
 
-    public function runs()
+    /** @return HasMany<WorkflowRun, $this> */
+    public function runs(): HasMany
     {
         return $this->hasMany(WorkflowRun::class);
     }
 
-    /** Definitions this one embeds (parent → child). */
-    public function includedDefinitions()
+    /** @return BelongsToMany<self, $this> Definitions this one embeds (parent → child). */
+    public function includedDefinitions(): BelongsToMany
     {
         return $this->belongsToMany(self::class, 'workflow_definition_dependencies', 'parent_definition_id', 'child_definition_id');
     }
 
-    /** Definitions that embed this one (child → parent). */
-    public function includedByDefinitions()
+    /** @return BelongsToMany<self, $this> Definitions that embed this one (child → parent). */
+    public function includedByDefinitions(): BelongsToMany
     {
         return $this->belongsToMany(self::class, 'workflow_definition_dependencies', 'child_definition_id', 'parent_definition_id');
     }

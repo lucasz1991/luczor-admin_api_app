@@ -52,9 +52,28 @@ class WorkflowBindings
     {
         abort_unless(is_string($reference) && preg_match('/^(input|event|steps)(\.[A-Za-z0-9_-]+)+$/', $reference), 422, 'Invalid workflow data reference.');
         $missing = new \stdClass;
-        $value = data_get($scope, $reference, $missing);
+        if (str_starts_with($reference, 'steps.')) {
+            $stepKey = self::stepReferenceKey($reference, array_keys($scope['steps']));
+            $value = $stepKey === null ? $missing
+                : data_get($scope['steps'][$stepKey], substr($reference, strlen('steps.'.$stepKey.'.')), $missing);
+        } else {
+            $value = data_get($scope, $reference, $missing);
+        }
         abort_if($value === $missing, 422, 'Workflow data reference is unavailable: '.$reference);
 
         return $value;
+    }
+
+    /** Dots are legal in existing step keys; the longest matching key is authoritative. */
+    public static function stepReferenceKey(string $reference, array $keys): ?string
+    {
+        usort($keys, fn (string $left, string $right) => strlen($right) <=> strlen($left));
+        foreach ($keys as $key) {
+            if (str_starts_with($reference, 'steps.'.$key.'.')) {
+                return $key;
+            }
+        }
+
+        return null;
     }
 }

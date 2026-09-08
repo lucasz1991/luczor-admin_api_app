@@ -178,7 +178,7 @@ class DeviceController extends Controller
             $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
             abort_unless($job->status === 'queued', 409, 'This job is not executable.');
             abort_if($job->expires_at?->isPast(), 410, 'This job has expired.');
-            abort_if($job->cancel_requested_at, 409, 'This job was cancelled.');
+            abort_if($job->cancel_requested_at !== null, 409, 'This job was cancelled.');
             if ($job->workflow_execution_id) {
                 $step = WorkflowStep::where('execution_id', $job->workflow_execution_id)->firstOrFail();
                 abort_unless($step->run->status === 'running' && $step->status === 'running', 409, 'Workflow is no longer executable.');

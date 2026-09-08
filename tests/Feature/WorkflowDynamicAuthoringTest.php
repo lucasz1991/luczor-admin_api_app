@@ -229,4 +229,23 @@ class WorkflowDynamicAuthoringTest extends TestCase
         $this->assertSame(1, Task::count());
         $this->assertSame('completed', $run->fresh()->status);
     }
+
+    public function test_bindings_resolve_dotted_step_keys_and_reject_shadowed_non_predecessors(): void
+    {
+        $user = $this->actor();
+        $definition = $this->definition($user, [
+            ['key' => 'source.data', 'type' => 'manual'],
+            ['key' => 'check', 'type' => 'condition', 'depends_on' => ['source.data'], 'payload' => ['left' => ['$ref' => 'steps.source.data.value'], 'operator' => 'eq', 'right' => 42]],
+        ]);
+        $service = app(WorkflowService::class);
+        $run = $service->advance($service->createRun($definition));
+        $service->complete($run->steps()->where('step_key', 'source.data')->first(), ['value' => 42]);
+        $this->assertSame('completed', $run->fresh()->status);
+        $this->assertSame('true', $run->steps()->where('step_key', 'check')->first()->output['outcome']);
+        $this->postJson('/api/v1/workflows/validate', ['definition' => ['steps' => [
+            ['key' => 'source', 'type' => 'manual'],
+            ['key' => 'source.data', 'type' => 'manual'],
+            ['key' => 'check', 'type' => 'manual', 'depends_on' => ['source'], 'payload' => ['input_bindings' => ['text' => 'steps.source.data.value']]],
+        ]]])->assertUnprocessable();
+    }
 }

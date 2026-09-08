@@ -18,7 +18,7 @@ namespace App\Services;
  * the whole library is definition-ready.
  *
  * `auto_dispatch` marks types advance() may hand to the executor unattended;
- * llm/manual/approval/device_job stay externally completed (API/approval).
+ * manual/approval/device_job stay externally completed (API/approval).
  */
 class WorkflowTaskCatalog
 {
