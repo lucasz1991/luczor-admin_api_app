@@ -19,6 +19,7 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <env name="LUCZOR_LOCAL_MODEL_AUTO_GENERATE_KEY" value="false"/>
         <env name="LUCZOR_MEMORY_NAMESPACE_KEY" value="luczor-test-memory-namespace-key-32-bytes"/>
         <env name="LUCZOR_MEMORY_LEDGER_KEY" value="luczor-test-memory-ledger-key-32-bytes-distinct"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

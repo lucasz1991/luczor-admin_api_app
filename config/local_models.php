@@ -9,6 +9,8 @@ return [
     'policy_version' => (int) env('LUCZOR_LOCAL_MODEL_POLICY_VERSION', 2026083001),
     'ttl_seconds' => max(300, (int) env('LUCZOR_LOCAL_MODEL_MANIFEST_TTL_SECONDS', 86400)),
     'signing' => [
+        'auto_generate' => (bool) env('LUCZOR_LOCAL_MODEL_AUTO_GENERATE_KEY', true),
+        'managed_directory' => env('LUCZOR_LOCAL_MODEL_KEY_DIRECTORY', dirname(base_path()).'/.luczor-secrets'),
         // Keep this key lifecycle separate from provider, device-job and Voice keys.
         'key_id' => env('LUCZOR_LOCAL_MODEL_SIGNING_KEY_ID', 'local-model-catalog-2026-01'),
         'private_key' => '',

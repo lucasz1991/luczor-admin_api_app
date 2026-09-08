@@ -42,6 +42,18 @@ final class LocalModelManifestService
 
     private const ID_PATTERN = '/\A[A-Za-z0-9][A-Za-z0-9._-]{0,119}\z/';
 
+    public function publicSigningKey(): array
+    {
+        $details = openssl_pkey_get_details($this->privateKey(app()->environment('production')));
+
+        return [
+            'key_id' => $this->keyId(),
+            'algorithm' => 'RSA-SHA256',
+            'public_key_b64' => base64_encode($details['key']),
+            'public_key_sha256' => hash('sha256', $details['key']),
+        ];
+    }
+
     /** @return array<string,mixed> */
     public function envelope(bool $enforceProductionKeyPolicy = false): array
     {
@@ -460,6 +472,10 @@ final class LocalModelManifestService
     {
         $configured = trim((string) config('local_models.signing.private_key', ''));
         $path = trim((string) config('local_models.signing.private_key_file', ''));
+        $managed = $configured === '' && $path === '' && config('local_models.signing.auto_generate') === true;
+        if ($managed) {
+            $path = app(ManagedLocalModelKey::class)->path();
+        }
         try {
             if ($enforceProductionKeyPolicy && (
                 $configured !== ''
@@ -502,7 +518,9 @@ final class LocalModelManifestService
         if (! is_array($details) || ($details['type'] ?? null) !== OPENSSL_KEYTYPE_RSA || ($details['bits'] ?? 0) < 2048) {
             throw new LocalModelManifestConfigurationException('local_model_signing_key_unsafe');
         }
-        $this->assertExpectedPublicKeyPin($details, $enforceProductionKeyPolicy);
+        // Managed keys are anchored by the protected persistent file; explicit
+        // deployment keys retain the independently configured production pin.
+        $this->assertExpectedPublicKeyPin($details, $enforceProductionKeyPolicy && ! $managed);
 
         return $key;
     }

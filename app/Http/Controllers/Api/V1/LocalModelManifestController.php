@@ -9,6 +9,20 @@ use Illuminate\Http\JsonResponse;
 
 final class LocalModelManifestController extends Controller
 {
+    public function signingKey(LocalModelManifestService $manifest): JsonResponse
+    {
+        try {
+            return response()->json($manifest->publicSigningKey())
+                ->header('Cache-Control', 'no-store')
+                ->header('X-Content-Type-Options', 'nosniff');
+        } catch (LocalModelManifestConfigurationException $exception) {
+            return response()->json([
+                'message' => 'Local-model signing key is currently unavailable.',
+                'code' => $exception->reasonCode,
+            ], 503)->header('Cache-Control', 'no-store');
+        }
+    }
+
     public function __invoke(LocalModelManifestService $manifest): JsonResponse
     {
         try {

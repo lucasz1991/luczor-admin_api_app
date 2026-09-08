@@ -13,6 +13,17 @@
         <x-slot:actions><x-ui.button href="{{ route('admin.page', 'models') }}" variant="secondary">Externe Modelle & Routing</x-ui.button></x-slot:actions>
         @if(session('status'))<div class="ui-notice ui-notice--success" role="status">{{ session('status') }}</div>@endif
         @if($errors->any())<div class="ui-notice ui-notice--danger" role="alert">{{ $errors->first() }}</div>@endif
+        <section aria-label="Modellsignatur" class="space-y-2 border-b border-slate-700 pb-4 text-sm">
+            @if($signingKey)
+                <p>Modellsignatur: <strong>Bereit</strong></p>
+                <dl class="grid gap-2 sm:grid-cols-2">
+                    <div><dt>Schlüssel-ID</dt><dd class="break-all font-mono text-xs">{{ $signingKey['key_id'] }}</dd></div>
+                    <div><dt>SHA-256</dt><dd class="break-all font-mono text-xs">{{ $signingKey['public_key_sha256'] }}</dd></div>
+                </dl>
+            @else
+                <p role="alert">Modellsignatur nicht verfügbar: <code>{{ $signingError }}</code></p>
+            @endif
+        </section>
         <x-ui.panel title="Ein Modell, fünf Startprofile" description="Zum Start verwenden alle fünf Stufen dasselbe bisherige Modell mit denselben geprüften Speicheranforderungen. Identische Modelldateien werden gemeinsam genutzt und nicht fünfmal gespeichert.">
             <div class="flex flex-wrap items-center gap-3"><x-ui.badge tone="info">Katalogschema 2</x-ui.badge><x-ui.badge>Revision {{ $revision }}</x-ui.badge><span class="text-sm text-slate-400">Ein geladenes Modell bleibt für Folgeanfragen im Speicher.</span></div>
         </x-ui.panel>

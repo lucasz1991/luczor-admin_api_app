@@ -14,11 +14,19 @@ use Illuminate\Validation\ValidationException;
 
 class LocalModelTierController extends AdminController
 {
-    public function index(Request $request, LocalModelTierService $tiers)
+    public function index(Request $request, LocalModelTierService $tiers, LocalModelManifestService $manifest)
     {
         $this->ensureAdmin($request);
 
-        return view('admin.local-models', $tiers->state());
+        try {
+            $signingKey = $manifest->publicSigningKey();
+            $signingError = null;
+        } catch (LocalModelManifestConfigurationException $error) {
+            $signingKey = null;
+            $signingError = $error->reasonCode;
+        }
+
+        return view('admin.local-models', array_merge($tiers->state(), compact('signingKey', 'signingError')));
     }
 
     public function update(Request $request, LocalModelTierService $tiers, LocalModelManifestService $manifest)

@@ -52,6 +52,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/voice/releases/{version}/{file}', VoiceAssetController::class)
         ->where(['version' => '[A-Za-z0-9._-]+', 'file' => '[A-Za-z0-9._-]+'])
         ->name('api.v1.voice.asset');
+    // Public verification material only; TLS authenticates this bootstrap endpoint.
+    Route::get('/local-model/signing-key', [LocalModelManifestController::class, 'signingKey'])
+        ->middleware('throttle:30,1')->name('api.v1.local-model.signing-key');
     Route::get('/agent-team-policy', AgentTeamPolicyController::class)->middleware('luczor.api:settings.read')->name('api.v1.agent-team-policy');
     Route::get('/agents', [AgentController::class, 'index'])->middleware('luczor.api:brain.read')->name('api.v1.agents.index');
     Route::post('/agents', [AgentController::class, 'store'])->middleware('luczor.api:brain.write')->name('api.v1.agents.store');
