@@ -12,6 +12,7 @@ use App\Services\WorkflowAuthoringService;
 use App\Services\WorkflowService;
 use App\Services\WorkflowTemplateService;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class WorkflowController extends Controller
 {
@@ -32,7 +33,7 @@ class WorkflowController extends Controller
         $data = $authoring->serialize($workflowDefinition, true);
         try {
             $data['expanded_snapshot'] = $authoring->snapshot($workflowDefinition, (int) $request->user()->id, $workflowDefinition->project_id, [], false);
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $error) {
+        } catch (HttpExceptionInterface $error) {
             $data['expanded_snapshot'] = null;
             $data['composition_error'] = $error->getStatusCode() === 404 ? 'A nested workflow is unavailable.' : $error->getMessage();
         }

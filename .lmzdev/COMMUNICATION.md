@@ -333,3 +333,10 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-09-08T19:59:39Z | Codex/backend_workflows -> all | status
 
 - Message: Started: immutable workflow authoring and execution core
+
+## 2026-09-08 | Codex/backend_workflows -> root | handoff
+- Backend core source ownership returned: immutable workflow revisions/current pointers and recursive run snapshots, expected-version edits, encrypted idempotent operation recovery, strict user/project ownership, bounded bindings and condition route skip/join semantics.
+- Run lifecycle: stable execution identities for retries and new IDs for route visits, explicit offline target waits, real signed LLM/device steps, inherited nested sandbox, approval dispatch, device result replay/conflict checks, recursive cancellation with acknowledgement, trigger/grant/event integration.
+- API includes revision history metadata + lazy full revision reads with change summaries; definition read includes bounded expanded_snapshot for nested automation grant preparation. Workflow device notifications publish after transaction commit.
+- Verified locally with SQLite: combined Workflow/Github/Task selection passed 100 tests / 480 assertions. Owned source PHPStan no errors; scoped Pint and git diff --check passed.
+- No deployment, live migration or commit. Actual native device/provider and live worker acceptance remains with root. Separate backend trigger/event/grant ownership remains with workflow_plan_review. Moving to independent frontend workflow access/tools integration review as requested by root.

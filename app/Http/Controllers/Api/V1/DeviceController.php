@@ -9,6 +9,7 @@ use App\Models\DeviceSession;
 use App\Models\WorkflowStep;
 use App\Services\ApiActor;
 use App\Services\AuditLogger;
+use App\Services\AutomationGrantService;
 use App\Services\DeviceJobSigner;
 use App\Services\WorkflowService;
 use Illuminate\Http\Request;
@@ -183,7 +184,7 @@ class DeviceController extends Controller
                 $step = WorkflowStep::where('execution_id', $job->workflow_execution_id)->firstOrFail();
                 abort_unless($step->run->status === 'running' && $step->status === 'running', 409, 'Workflow is no longer executable.');
                 if ($step->run->context['_execution']['automatic'] ?? false) {
-                    app(\App\Services\AutomationGrantService::class)->authorizeTask($step->run, $step->type, $step->resolved_payload ?? $step->payload ?? []);
+                    app(AutomationGrantService::class)->authorizeTask($step->run, $step->type, $step->resolved_payload ?? $step->payload ?? []);
                 }
             }
 
@@ -211,38 +212,39 @@ class DeviceController extends Controller
             'error' => ['nullable', 'string', 'max:8000'],
         ]);
         $device = $this->currentDevice($request, $actor, $data['client_id']);
+
         return DB::transaction(function () use ($device, $publicId, $data, $audit) {
-        $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
-        $result = $data['result'] ?? null;
-        $resultHash = $result === null ? null : $audit->hash($result);
-        if (in_array($job->status, ['completed', 'failed'], true)) {
-            abort_unless($job->status === ($data['ok'] ? 'completed' : 'failed') && $job->result_hash === $resultHash
-                && $job->error === ($data['ok'] ? null : ($data['error'] ?? 'Device tool failed')), 409, 'Conflicting device result.');
+            $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            $result = $data['result'] ?? null;
+            $resultHash = $result === null ? null : $audit->hash($result);
+            if (in_array($job->status, ['completed', 'failed'], true)) {
+                abort_unless($job->status === ($data['ok'] ? 'completed' : 'failed') && $job->result_hash === $resultHash
+                    && $job->error === ($data['ok'] ? null : ($data['error'] ?? 'Device tool failed')), 409, 'Conflicting device result.');
 
-            return response()->json(['data' => $job, 'meta' => ['replayed' => true]]);
-        }
-        abort_unless($job->status === 'running' && ! $job->cancel_requested_at, 409, 'This job is not running or was cancelled.');
-        if ($job->workflow_execution_id) {
-            $step = WorkflowStep::where('execution_id', $job->workflow_execution_id)->first();
-            abort_unless($step && $step->run->status === 'running' && $step->status === 'running', 409, 'Workflow result is no longer current.');
-        }
-        $job->update([
-            'status' => $data['ok'] ? 'completed' : 'failed',
-            'result' => $result,
-            'result_hash' => $resultHash,
-            'error' => $data['ok'] ? null : ($data['error'] ?? 'Device tool failed'),
-            'finished_at' => now(),
-        ]);
-        $audit->record([
-            'actor_user_id' => $device->user_id, 'device_id' => $device->id,
-            'project_id' => $job->project_id, 'device_job_id' => $job->id,
-            'event_type' => 'device_job.completed', 'tool' => $job->tool_profile,
-            'risk_level' => $job->risk_level, 'outcome' => $data['ok'] ? 'completed' : 'failed',
-            'payload' => ['job_id' => $job->public_id], 'result' => $data['result'] ?? ['error' => $data['error'] ?? null],
-        ]);
-        $this->settleWorkflowStep($job->fresh());   // P15b — feed the result back into the workflow
+                return response()->json(['data' => $job, 'meta' => ['replayed' => true]]);
+            }
+            abort_unless($job->status === 'running' && ! $job->cancel_requested_at, 409, 'This job is not running or was cancelled.');
+            if ($job->workflow_execution_id) {
+                $step = WorkflowStep::where('execution_id', $job->workflow_execution_id)->first();
+                abort_unless($step && $step->run->status === 'running' && $step->status === 'running', 409, 'Workflow result is no longer current.');
+            }
+            $job->update([
+                'status' => $data['ok'] ? 'completed' : 'failed',
+                'result' => $result,
+                'result_hash' => $resultHash,
+                'error' => $data['ok'] ? null : ($data['error'] ?? 'Device tool failed'),
+                'finished_at' => now(),
+            ]);
+            $audit->record([
+                'actor_user_id' => $device->user_id, 'device_id' => $device->id,
+                'project_id' => $job->project_id, 'device_job_id' => $job->id,
+                'event_type' => 'device_job.completed', 'tool' => $job->tool_profile,
+                'risk_level' => $job->risk_level, 'outcome' => $data['ok'] ? 'completed' : 'failed',
+                'payload' => ['job_id' => $job->public_id], 'result' => $data['result'] ?? ['error' => $data['error'] ?? null],
+            ]);
+            $this->settleWorkflowStep($job->fresh());   // P15b — feed the result back into the workflow
 
-        return response()->json(['data' => $job->fresh()]);
+            return response()->json(['data' => $job->fresh()]);
         });
     }
 

@@ -9,8 +9,10 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowOperation;
+use App\Models\WorkflowRun;
 use App\Services\WorkflowAuthoringService;
 use App\Services\WorkflowService;
+use App\Services\WorkflowStepExecutor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
@@ -220,12 +222,12 @@ class WorkflowDynamicAuthoringTest extends TestCase
         $service = app(WorkflowService::class);
         $sandbox = $service->advance($service->createRun($parent, [], null, true));
         $this->assertSame(0, Task::count());
-        $this->assertTrue(\App\Models\WorkflowRun::where('parent_workflow_run_id', $sandbox->id)->sole()->sandbox);
+        $this->assertTrue(WorkflowRun::where('parent_workflow_run_id', $sandbox->id)->sole()->sandbox);
         $run = $service->advance($service->createRun($child));
         $step = $run->steps()->first();
         $run->refresh()->update(['status' => 'running', 'finished_at' => null]);
         $step->update(['status' => 'ready', 'finished_at' => null]);
-        app(\App\Services\WorkflowStepExecutor::class)->execute($step->id);
+        app(WorkflowStepExecutor::class)->execute($step->id);
         $this->assertSame(1, Task::count());
         $this->assertSame('completed', $run->fresh()->status);
     }

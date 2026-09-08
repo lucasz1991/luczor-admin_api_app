@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Jobs\ExecuteWorkflowStep;
 use App\Jobs\MonitorWorkflowStep;
-use App\Models\DeviceJob;
 use App\Models\Device;
+use App\Models\DeviceJob;
 use App\Models\Project;
 use App\Models\Setting;
 use App\Models\WorkflowDefinition;
@@ -39,6 +39,7 @@ class WorkflowService
     {
         abort_if(strlen(json_encode($input, JSON_THROW_ON_ERROR)) > 200000, 422, 'Workflow input is too large.');
         $sandbox = $sandbox || Setting::getValue('sandbox_enabled', false) === true;
+
         return DB::transaction(function () use ($definition, $input, $agentRunId, $sandbox, $executionContext) {
             $definition = WorkflowDefinition::query()->lockForUpdate()->findOrFail($definition->id);
             $authoring = app(WorkflowAuthoringService::class);
@@ -130,6 +131,7 @@ class WorkflowService
                 if ($dependencies !== [] && array_intersect($dependencies, $completed) === []) {
                     $step->update(['status' => 'skipped', 'finished_at' => now()]);
                     $terminal[] = $step->step_key;
+
                     continue;
                 }
                 $standingGrant = ($run->context['_execution']['automatic'] ?? false) && ! empty($run->context['_execution']['grant']);
@@ -173,27 +175,27 @@ class WorkflowService
     public function complete(WorkflowStep $step, array $output = []): WorkflowRun
     {
         return DB::transaction(function () use ($step, $output) {
-        $run = WorkflowRun::query()->lockForUpdate()->findOrFail($step->workflow_run_id);
-        $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
-        if ($step->status === 'completed') {
-            abort_unless($step->output === $output, 409, 'Conflicting workflow result.');
+            $run = WorkflowRun::query()->lockForUpdate()->findOrFail($step->workflow_run_id);
+            $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
+            if ($step->status === 'completed') {
+                abort_unless($step->output === $output, 409, 'Conflicting workflow result.');
 
-            return $step->run->fresh(['steps']);
-        }
-        abort_if(in_array($run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true), 409, 'Workflow is no longer running.');
-        abort_unless(in_array($step->status, ['ready', 'running', 'awaiting_approval'], true), 409, 'Workflow step is not ready.');
-        $step->update([
-            'status' => 'completed', 'output' => $output, 'finished_at' => now(), 'error' => null,
-            'duration_ms' => $this->stepDurationMs($step),
-        ]);
+                return $step->run->fresh(['steps']);
+            }
+            abort_if(in_array($run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true), 409, 'Workflow is no longer running.');
+            abort_unless(in_array($step->status, ['ready', 'running', 'awaiting_approval'], true), 409, 'Workflow step is not ready.');
+            $step->update([
+                'status' => 'completed', 'output' => $output, 'finished_at' => now(), 'error' => null,
+                'duration_ms' => $this->stepDurationMs($step),
+            ]);
 
-        // P13 — outcome-based routing (branch / loop / terminate) if declared.
-        $routed = $this->applyRoutes($step->fresh(), WorkflowResultNormalizer::outcome($output, 'success'));
+            // P13 — outcome-based routing (branch / loop / terminate) if declared.
+            $routed = $this->applyRoutes($step->fresh(), WorkflowResultNormalizer::outcome($output, 'success'));
 
-        $result = $routed ?? $this->advance($step->run);
-        $this->notifyTerminalRun($result);
+            $result = $routed ?? $this->advance($step->run);
+            $this->notifyTerminalRun($result);
 
-        return $result;
+            return $result;
         }, 3);
     }
 
@@ -220,35 +222,35 @@ class WorkflowService
     public function fail(WorkflowStep $step, string $error, string $outcome = 'failed'): WorkflowRun
     {
         return DB::transaction(function () use ($step, $error, $outcome) {
-        WorkflowRun::query()->lockForUpdate()->findOrFail($step->workflow_run_id);
-        $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
-        if (in_array($step->run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true)) {
-            return $step->run;
-        }
-        abort_unless(in_array($step->status, ['ready', 'running'], true), 409, 'Workflow step is not running.');
-        $attempts = $step->attempts + 1;
-        $retry = $attempts < $step->max_attempts;
-        $step->update([
-            'attempts' => $attempts,
-            'status' => $retry ? 'queued' : 'failed',
-            'error' => $error,
-            'available_at' => $retry ? now()->addSeconds(min(60, 2 ** $attempts)) : null,
-            'finished_at' => $retry ? null : now(),
-            'duration_ms' => $retry ? null : $this->stepDurationMs($step),
-        ]);
-
-        // P13 — on final failure, an on-error route (e.g. to a cleanup step) wins
-        // over the default "one failed step fails the run" behaviour.
-        if (! $retry) {
-            $routed = $this->applyRoutes($step->fresh(), $outcome);
-            if ($routed) {
-                $this->notifyTerminalRun($routed);
-
-                return $routed;
+            WorkflowRun::query()->lockForUpdate()->findOrFail($step->workflow_run_id);
+            $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
+            if (in_array($step->run->status, ['cancelled', 'cancelling', 'completed', 'failed'], true)) {
+                return $step->run;
             }
-        }
+            abort_unless(in_array($step->status, ['ready', 'running'], true), 409, 'Workflow step is not running.');
+            $attempts = $step->attempts + 1;
+            $retry = $attempts < $step->max_attempts;
+            $step->update([
+                'attempts' => $attempts,
+                'status' => $retry ? 'queued' : 'failed',
+                'error' => $error,
+                'available_at' => $retry ? now()->addSeconds(min(60, 2 ** $attempts)) : null,
+                'finished_at' => $retry ? null : now(),
+                'duration_ms' => $retry ? null : $this->stepDurationMs($step),
+            ]);
 
-        return $this->advance($step->run);
+            // P13 — on final failure, an on-error route (e.g. to a cleanup step) wins
+            // over the default "one failed step fails the run" behaviour.
+            if (! $retry) {
+                $routed = $this->applyRoutes($step->fresh(), $outcome);
+                if ($routed) {
+                    $this->notifyTerminalRun($routed);
+
+                    return $routed;
+                }
+            }
+
+            return $this->advance($step->run);
         }, 3);
     }
 
@@ -492,10 +494,10 @@ class WorkflowService
                         'resolved_payload' => null, 'approved_at' => null, 'external_run_type' => null, 'external_run_id' => null]);
                 }
             } else {
-            $target->update([
-                'status' => 'queued', 'attempts' => 0, 'output' => null, 'error' => null,
-                'available_at' => now(), 'started_at' => null, 'finished_at' => null,
-            ]);
+                $target->update([
+                    'status' => 'queued', 'attempts' => 0, 'output' => null, 'error' => null,
+                    'available_at' => now(), 'started_at' => null, 'finished_at' => null,
+                ]);
             }
         }
 
