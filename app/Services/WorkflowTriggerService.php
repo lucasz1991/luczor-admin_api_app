@@ -105,7 +105,7 @@ class WorkflowTriggerService
                     return;
                 }
                 $config = $trigger->config;
-                $due = isset($config['cron']) ? Carbon::instance((new CronExpression($config['cron']))->getPreviousRunDate(now()->toDateTimeString(), 0, true, $config['timezone']))->utc() : Carbon::parse($config['run_at'])->utc();
+                $due = isset($config['cron']) ? Carbon::instance((new CronExpression($config['cron']))->getPreviousRunDate(now(), 0, true, $config['timezone']))->utc() : Carbon::parse($config['run_at'])->utc();
                 // UTC delivery identity and a local wall-clock key prevent duplicate execution in the repeated DST hour.
                 $wallKey = $due->copy()->setTimezone($config['timezone'])->format('Y-m-d H:i');
                 if ($trigger->last_wall_key !== $wallKey) {
@@ -127,7 +127,7 @@ class WorkflowTriggerService
             return Carbon::parse($config['run_at'])->utc();
         }
 
-        return Carbon::instance((new CronExpression($config['cron']))->getNextRunDate($after->toDateTimeString(), 0, false, $config['timezone']))->utc();
+        return Carbon::instance((new CronExpression($config['cron']))->getNextRunDate($after, 0, false, $config['timezone']))->utc();
     }
 
     public function safeRelativePath(string $path, bool $glob = false): bool

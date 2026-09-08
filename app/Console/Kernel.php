@@ -26,6 +26,7 @@ class Kernel extends ConsoleKernel
             ->evenInMaintenanceMode();
 
         $schedule->command('luczor:advance-workflows --limit=250')->everyMinute()->withoutOverlapping();
+        $schedule->command('luczor:dispatch-workflow-triggers --limit=250')->everyMinute()->withoutOverlapping();
         $schedule->command('luczor:dispatch-memory-projections --limit=250')->everyMinute()->withoutOverlapping();
         $schedule->command('luczor:prune-memory-identity-locks --days=7 --limit=5000')
             ->dailyAt('03:20')

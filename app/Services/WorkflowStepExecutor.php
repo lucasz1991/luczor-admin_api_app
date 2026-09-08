@@ -24,6 +24,10 @@ class WorkflowStepExecutor
 
     public function execute(int $stepId): void
     {
+        $candidate = WorkflowStep::with('run')->find($stepId);
+        if (! $candidate || $candidate->run?->status !== 'running') {
+            return;
+        }
         // Claim atomically so parallel workers cannot run the same step twice.
         $claimed = WorkflowStep::query()->whereKey($stepId)->where('status', 'ready')->update([
             'status' => 'running', 'started_at' => now(),
@@ -33,6 +37,14 @@ class WorkflowStepExecutor
         }
 
         $step = WorkflowStep::query()->with('run')->findOrFail($stepId);
+        try {
+            app(WorkflowBindings::class)->resolve($step);
+            $step->refresh();
+        } catch (Throwable $error) {
+            $this->workflows->fail($step, mb_substr($error->getMessage(), 0, 8000));
+
+            return;
+        }
         // P15 — expose the currently executing step as a run cursor for the UI.
         $step->run?->update(['current_workflow_step_id' => $step->id]);
 
@@ -71,7 +83,7 @@ class WorkflowStepExecutor
         // P15b — a wait step parks as 'running'; settleWaitSteps() completes it
         // once the delay elapsed (poked by the monitor chain / minute sweeper).
         if ($step->type === 'wait.seconds') {
-            $seconds = max(1, min(3600, (int) ((($step->payload ?? [])['seconds'] ?? null) ?: 5)));
+            $seconds = max(1, min(3600, (int) ((($step->resolved_payload ?? $step->payload ?? [])['seconds'] ?? null) ?: 5)));
             $this->workflows->scheduleMonitor($step->run, $seconds + 1);
 
             return;
@@ -97,6 +109,7 @@ class WorkflowStepExecutor
                 'memory.remember' => $this->remember($step),
                 'memory.recall' => $this->recall($step),
                 'task.create' => $this->createTask($step),
+                'condition' => $this->condition($step),
                 default => throw new \RuntimeException('This workflow step type requires an external approval or device result.'),
             };
             $this->workflows->complete($step->fresh(), $output);
@@ -128,7 +141,7 @@ class WorkflowStepExecutor
     /** @return array<string,mixed> */
     private function context(WorkflowStep $step): array
     {
-        $payload = $step->payload ?? [];
+        $payload = $step->resolved_payload ?? $step->payload ?? [];
         $project = $step->run->project_id ? Project::find($step->run->project_id) : null;
         $budget = is_array($payload['budget'] ?? null) ? $payload['budget'] : [];
         $result = $this->context->ask([
@@ -157,7 +170,7 @@ class WorkflowStepExecutor
     /** @return array<string,mixed> */
     private function review(WorkflowStep $step): array
     {
-        $required = array_values(array_filter((array) (($step->payload ?? [])['required_output_keys'] ?? []), 'is_string'));
+        $required = array_values(array_filter((array) (($step->resolved_payload ?? $step->payload ?? [])['required_output_keys'] ?? []), 'is_string'));
         $dependencies = $step->run->steps()->whereIn('step_key', $step->depends_on ?? [])->get();
         foreach ($required as $key) {
             $hasKey = $dependencies->contains(fn (WorkflowStep $dependency) => array_key_exists($key, $dependency->output ?? []));
@@ -172,7 +185,7 @@ class WorkflowStepExecutor
     /** P15b — persist a memory link (never global scope from a workflow). @return array<string,mixed> */
     private function remember(WorkflowStep $step): array
     {
-        $payload = $step->payload ?? [];
+        $payload = $step->resolved_payload ?? $step->payload ?? [];
         $content = trim((string) ($payload['content'] ?? ''));
         abort_if($content === '', 422, 'memory.remember requires payload.content.');
         $scope = (string) ($payload['scope'] ?? 'project');
@@ -185,7 +198,7 @@ class WorkflowStepExecutor
         $project = $step->run->project_id ? Project::find($step->run->project_id) : null;
         // A workflow step is a durable write intent. Reusing its row ID keeps a
         // retry after "memory committed, step completion crashed" idempotent.
-        $memoryWriteId = "workflow-step:{$step->id}:memory";
+        $memoryWriteId = 'workflow-step:'.($step->execution_id ?: $step->id).':memory';
         $result = $this->memory->remember([
             'user_id' => $step->user_id,
             'content' => mb_substr($content, 0, 8000),
@@ -213,7 +226,7 @@ class WorkflowStepExecutor
     /** P15b — recall memories into the step output AND the run's context store. @return array<string,mixed> */
     private function recall(WorkflowStep $step): array
     {
-        $payload = $step->payload ?? [];
+        $payload = $step->resolved_payload ?? $step->payload ?? [];
         $query = trim((string) ($payload['query'] ?? ''));
         $topK = max(1, min(20, (int) ($payload['top_k'] ?? 6)));
         $scope = (string) ($payload['scope'] ?? 'project');
@@ -241,18 +254,18 @@ class WorkflowStepExecutor
     /** P15b — create a user task (SOLL §8 tasks table). @return array<string,mixed> */
     private function createTask(WorkflowStep $step): array
     {
-        $payload = $step->payload ?? [];
+        $payload = $step->resolved_payload ?? $step->payload ?? [];
         $title = trim((string) ($payload['title'] ?? ''));
         abort_if($title === '', 422, 'task.create requires payload.title.');
-        $task = Task::create([
+        $task = Task::firstOrCreate(['user_id' => $step->user_id, 'external_id' => $step->execution_id ?: (string) Str::uuid()], [
             'user_id' => $step->user_id,
             'client_id' => 'workflow',
-            'external_id' => (string) Str::uuid(),
             'title' => mb_substr($title, 0, 200),
             'description' => mb_substr((string) ($payload['description'] ?? ('Erstellt durch Workflow-Lauf '.$step->run->public_id)), 0, 4000),
             'status' => 'open',
             'priority' => in_array($payload['priority'] ?? 'normal', Task::PRIORITIES, true) ? $payload['priority'] : 'normal',
             'project_ref_id' => $step->run->project_id,
+            'workflow_causation' => $step->run->context['_execution'] ?? [],
         ]);
 
         return ['task_id' => $task->id, 'external_id' => $task->external_id, 'title' => $task->title];
@@ -272,18 +285,32 @@ class WorkflowStepExecutor
     /** P15b — dispatch a client task as a signed device_job bundle. */
     private function startClientTask(WorkflowStep $step): void
     {
-        $payload = $step->payload ?? [];
-        $params = array_diff_key($payload, array_flip(['routes', 'title', 'list', 'timeout_seconds', 'device_id']));
-        $device = $this->resolveDevice($step, trim((string) ($payload['device_id'] ?? '')));
+        $payload = $step->resolved_payload ?? $step->payload ?? [];
+        $params = array_diff_key($payload, array_flip(['routes', 'title', 'list', 'device_id']));
+        $context = $step->run->context['_execution'] ?? [];
+        $deviceId = trim((string) ($context['device_id'] ?? $payload['device_id'] ?? ''));
+        $device = $this->resolveDevice($step, $deviceId);
+        if (! $device) {
+            $step->update(['status' => 'waiting_for_device', 'started_at' => null, 'error' => 'Waiting for the bound device.']);
+
+            return;
+        }
+        if (! empty($context['automatic'])) {
+            app(AutomationGrantService::class)->authorizeTask($step->run, $step->type, $payload);
+        }
         $job = $this->deviceJobs->createForWorkflow($step, $device, $params);
         $step->update(['external_run_type' => 'device_job', 'external_run_id' => $job->public_id]);
         $this->workflows->scheduleMonitor($step->run, 5);
     }
 
     /** Explicit payload.device_id, else the owner's most recently seen device. */
-    private function resolveDevice(WorkflowStep $step, string $deviceId): Device
+    private function resolveDevice(WorkflowStep $step, string $deviceId): ?Device
     {
         $query = Device::query()->where('user_id', $step->user_id)->whereNull('revoked_at');
+        $context = $step->run->context['_execution'] ?? [];
+        if (($context['strict_target'] ?? false) || ($context['automatic'] ?? false)) {
+            return $deviceId === '' ? null : $query->where('device_id', $deviceId)->whereIn('status', ['online', 'busy'])->first();
+        }
         $device = $deviceId !== ''
             ? (clone $query)->where('device_id', $deviceId)->first()
             : $query->orderByRaw("case when status = 'online' then 0 else 1 end")->orderByDesc('last_seen_at')->first();
@@ -294,10 +321,30 @@ class WorkflowStepExecutor
         return $device;
     }
 
+    private function condition(WorkflowStep $step): array
+    {
+        $payload = $step->resolved_payload ?? $step->payload ?? [];
+        $left = $payload['left'] ?? null;
+        $right = $payload['right'] ?? null;
+        $result = match ($payload['operator'] ?? 'eq') {
+            'eq' => $left === $right,
+            'neq' => $left !== $right,
+            'gt' => is_numeric($left) && is_numeric($right) && $left > $right,
+            'gte' => is_numeric($left) && is_numeric($right) && $left >= $right,
+            'lt' => is_numeric($left) && is_numeric($right) && $left < $right,
+            'lte' => is_numeric($left) && is_numeric($right) && $left <= $right,
+            'contains' => is_array($left) ? in_array($right, $left, true) : (is_string($left) && is_string($right) && str_contains($left, $right)),
+            'exists' => $left !== null,
+            default => throw new \RuntimeException('Invalid condition operator.'),
+        };
+
+        return ['outcome' => $result ? 'true' : 'false', 'value' => $result];
+    }
+
     /** @return array<string,mixed> */
     private function evaluate(WorkflowStep $step): array
     {
-        $payload = $step->payload ?? [];
+        $payload = $step->resolved_payload ?? $step->payload ?? [];
         $run = LlmRun::findOrFail((int) ($payload['llm_run_id'] ?? 0));
         abort_unless((int) $run->user_id === (int) $step->user_id, 404, 'LLM run was not found.');
         $evaluation = $payload['evaluation'] ?? null;
