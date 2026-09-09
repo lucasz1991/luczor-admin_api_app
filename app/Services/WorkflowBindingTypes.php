@@ -67,7 +67,7 @@ class WorkflowBindingTypes
         $schema = WorkflowTaskCatalog::task($step['type'])['output_schema'];
         $path = explode('.', substr($reference, strlen('steps.'.$key.'.')));
         $custom = $step['payload']['output_schema'] ?? null;
-        if (is_array($custom) && ($path[0] ?? '') === 'data') {
+        if (is_array($custom) && $path[0] === 'data') {
             // complete() validates the declared result schema on data (when present).
             return $this->at($custom, array_slice($path, 1));
         }

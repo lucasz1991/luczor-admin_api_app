@@ -30,7 +30,7 @@ class WorkflowTriggerDispatcher
                         return null;
                     }
                     $definition = WorkflowDefinition::whereKey($trigger->workflow_definition_id)->lockForUpdate()->firstOrFail();
-                    // Match authoring's definition-before-trigger lock order, then recheck after selection.
+                    // Serialize the workflow first, then recheck trigger eligibility under its own lock.
                     $trigger = WorkflowTrigger::whereKey($trigger->id)->lockForUpdate()->first();
                     if (! $trigger || ! $trigger->enabled) {
                         return null;

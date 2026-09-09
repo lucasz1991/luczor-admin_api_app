@@ -133,4 +133,32 @@ class WorkflowTypedBindingsTest extends TestCase
             $this->rejects(fn () => app(WorkflowDefinitionValidator::class)->validate(['schema_version' => 2, 'input_schema' => $schema, 'steps' => [['key' => 'one', 'type' => 'manual']]]), $schema === null || ($schema['type'] ?? null) !== 'object' ? 'Workflow input schema' : 'workflow_schema_');
         }
     }
+
+    public function test_real_runner_output_types_reject_mismatches_while_dynamic_script_data_remains_unknown(): void
+    {
+        $definition = ['schema_version' => 2, 'steps' => [
+            ['key' => 'page', 'type' => 'browser.read'],
+            ['key' => 'list', 'type' => 'data.collect', 'depends_on' => ['page'], 'payload' => ['items' => ['$ref' => 'steps.page.text']]],
+        ]];
+        $this->rejects(fn () => app(WorkflowDefinitionValidator::class)->validate($definition), 'workflow_binding_type_mismatch');
+        $definition['steps'][0] = ['key' => 'page', 'type' => 'node.run', 'payload' => ['code' => 'console.log("[]")']];
+        $definition['steps'][1]['payload']['items']['$ref'] = 'steps.page.data';
+        $steps = app(WorkflowDefinitionValidator::class)->validate($definition);
+        $proof = app(WorkflowBindingTypes::class)->inspect($definition, $steps);
+        $this->assertSame('runtime_required', $proof[0]['status']);
+        $this->assertNull($proof[0]['source_type']);
+        $this->assertSame('array', $proof[0]['target_type']);
+    }
+
+    public function test_integer_to_number_is_compatible_but_narrowing_number_to_integer_is_not(): void
+    {
+        $definition = ['schema_version' => 2, 'input_schema' => ['type' => 'object', 'properties' => ['value' => ['type' => 'integer']]],
+            'steps' => [['key' => 'agent', 'type' => 'agent.single', 'payload' => ['instruction' => 'Inspect', 'max_budget_usd' => ['$ref' => 'input.value']]]]];
+        $steps = app(WorkflowDefinitionValidator::class)->validate($definition);
+        $this->assertSame('types_compatible', app(WorkflowBindingTypes::class)->inspect($definition, $steps)[0]['status']);
+        $definition['input_schema']['properties']['value']['type'] = 'number';
+        unset($definition['steps'][0]['payload']['max_budget_usd']);
+        $definition['steps'][0]['payload']['max_turns'] = ['$ref' => 'input.value'];
+        $this->rejects(fn () => app(WorkflowDefinitionValidator::class)->validate($definition), 'workflow_binding_type_mismatch');
+    }
 }
