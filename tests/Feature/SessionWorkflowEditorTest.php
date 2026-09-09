@@ -10,8 +10,11 @@ use App\Models\WorkflowRun;
 use App\Models\WorkflowTestCase;
 use App\Models\WorkflowTestEvidence;
 use App\Models\WorkflowTrigger;
+use App\Services\WorkflowService;
+use App\Services\WorkflowBudgetService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -40,6 +43,63 @@ class SessionWorkflowEditorTest extends TestCase
     {
         return ['operation_id' => (string) Str::uuid(), 'name' => 'Definition fixture',
             'specification' => ['input' => [], 'fixtures' => [], 'assertions' => [['step_key' => 'a', 'path' => 'data.ok', 'operator' => 'eq', 'value' => true]]]];
+    }
+
+    public function test_session_boundary_stop_is_replayable_and_preserves_running_step_until_completion(): void
+    {
+        Queue::fake();
+        $admin = $this->admin();
+        $workflow = $this->workflow($admin);
+        $workflow->update(['definition' => ['schema_version' => 2, 'steps' => [['key' => 'work', 'type' => 'data.collect', 'payload' => ['items' => [1]]]]]]);
+        $service = app(WorkflowService::class);
+        $run = $service->advance($service->createRun($workflow));
+        $step = $run->steps()->sole();
+        app(WorkflowBudgetService::class)->claim($step);
+        $payload = ['operation_id' => (string) Str::uuid(), 'run_id' => $run->public_id, 'action' => 'stop_after_step'];
+        $url = route('dashboard.workflows.editor.run-controls', $workflow);
+        $this->actingAs($admin)->postJson($url, $payload)->assertOk()
+            ->assertJsonPath('data.run.status', 'running')->assertJsonPath('data.run.budget_state.boundary_stop.status', 'pending')
+            ->assertJsonMissingPath('data.run.context')->assertJsonMissingPath('data.run.input');
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('data.run.budget_state.boundary_stop.status', 'pending');
+        $this->assertSame(1, WorkflowOperation::where('operation_id', $payload['operation_id'])->count());
+        $this->getJson(route('dashboard.workflows.editor.operations', [$workflow, $payload['operation_id']]))
+            ->assertOk()->assertJsonPath('response.data.run.id', $run->id);
+        $this->assertSame('running', $step->fresh()->status);
+        $service->complete($step->fresh(), ['outcome' => 'success', 'data' => [1]]);
+        $this->getJson(route('dashboard.workflows.editor.state', $workflow))->assertOk()
+            ->assertJsonPath('runs.0.status', 'cancelled')->assertJsonPath('runs.0.budget_state.boundary_stop.status', 'completed');
+    }
+
+    public function test_session_run_control_rejects_other_workflow_and_cross_owner_operations(): void
+    {
+        $admin = $this->admin();
+        $workflow = $this->workflow($admin);
+        $other = $this->workflow($admin);
+        $run = app(WorkflowService::class)->createRun($other);
+        $payload = ['operation_id' => (string) Str::uuid(), 'run_id' => $run->public_id, 'action' => 'cancel'];
+        $this->actingAs($admin)->postJson(route('dashboard.workflows.editor.run-controls', $workflow), $payload)->assertNotFound();
+        $this->assertSame('queued', $run->fresh()->status);
+        $this->postJson(route('dashboard.workflows.editor.run-controls', $other), $payload)->assertOk()->assertJsonPath('data.run.status', 'cancelled');
+        $this->getJson(route('dashboard.workflows.editor.operations', [$workflow, $payload['operation_id']]))->assertOk()->assertJsonPath('status', 'not_found');
+        $this->flushSession();
+        $this->actingAs($this->admin())->postJson(route('dashboard.workflows.editor.run-controls', $other), $payload)->assertNotFound();
+    }
+
+    public function test_session_monitor_projects_owned_root_budget_without_private_data(): void
+    {
+        $admin = $this->admin();
+        $workflow = $this->workflow($admin);
+        $root = app(WorkflowService::class)->createRun($workflow);
+        $root->update(['status' => 'running', 'budget_state' => ['executions' => 175, 'active_ms' => 2000], 'context' => ['private' => 'secret'], 'input' => ['private' => 'secret']]);
+        $child = app(WorkflowService::class)->createRun($workflow);
+        $child->update(['root_workflow_run_id' => $root->id]);
+        $this->actingAs($admin)->getJson(route('dashboard.workflows.editor.state', $workflow))->assertOk()
+            ->assertJsonPath('runs.0.root_budget.id', $root->id)->assertJsonPath('runs.0.root_budget.budget_state.executions', 175)
+            ->assertJsonMissingPath('runs.0.root_budget.context')->assertJsonMissingPath('runs.0.root_budget.input')->assertJsonMissingPath('runs.1.user_id');
+        $foreignRoot = app(WorkflowService::class)->createRun($this->workflow($this->admin()));
+        $child->update(['root_workflow_run_id' => $foreignRoot->id]);
+        $this->getJson(route('dashboard.workflows.editor.state', $workflow))->assertOk()->assertJsonMissingPath('runs.0.root_budget');
+        $this->postJson(route('dashboard.workflows.editor.run-controls', $workflow), ['operation_id' => (string) Str::uuid(), 'run_id' => $child->public_id, 'action' => 'stop_after_step'])->assertNotFound();
     }
 
     public function test_state_and_editor_shell_are_owner_scoped_and_have_no_device_authority(): void

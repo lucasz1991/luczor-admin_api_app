@@ -9,6 +9,7 @@ use App\Models\WorkflowOperation;
 use App\Models\WorkflowRun;
 use App\Models\WorkflowStep;
 use App\Services\WorkflowAuthoringService;
+use App\Services\WorkflowBindingTypes;
 use App\Services\WorkflowBoundaryStop;
 use App\Services\WorkflowService;
 use App\Services\WorkflowTemplateService;
@@ -62,7 +63,8 @@ class WorkflowController extends Controller
         }
         $steps = $authoring->validate((int) $request->user()->id, $data['definition'], $authoring->projectId((int) $request->user()->id, $data['project_id'] ?? null), $data['workflow_definition_id'] ?? null);
 
-        return response()->json(['data' => ['valid' => true, 'definition' => $data['definition'], 'steps' => $steps]]);
+        return response()->json(['data' => ['valid' => true, 'definition' => $data['definition'], 'steps' => $steps,
+            'binding_validation' => app(WorkflowBindingTypes::class)->inspect($data['definition'], $steps)]]);
     }
 
     public function storeDefinition(Request $request, WorkflowAuthoringService $authoring)

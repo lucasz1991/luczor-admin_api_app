@@ -113,13 +113,21 @@ class WorkflowTaskContracts
             $props = ['artifact_id' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200],
                 'other_artifact_id' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200],
                 'language' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 40],
-                'monitor_id' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120],
+                'monitor_id' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 4294967295],
                 'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000]];
             if ($key !== 'image.capture') {
                 $required[] = 'artifact_id';
             }
             if ($key === 'image.compare') {
                 $required[] = 'other_artifact_id';
+            }
+            if ($key === 'image.vision') {
+                $props += ['instruction' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 12000],
+                    'inference' => ['type' => 'string', 'enum' => ['local', 'external']],
+                    'output_format' => ['type' => 'string', 'enum' => ['text', 'json']],
+                    'max_output_chars' => ['type' => 'integer', 'minimum' => 256, 'maximum' => 20000]];
+                $required[] = 'instruction';
+                $required[] = 'inference';
             }
         }
         if ($key === 'llm' || str_starts_with($key, 'llm.') || str_starts_with($key, 'agent.')) {
@@ -183,6 +191,102 @@ class WorkflowTaskContracts
         }
         if ($key === 'llm.evaluate') {
             $schema += ['required' => ['data'], 'properties' => ['data' => ['type' => 'object', 'required' => ['passed', 'checks'], 'properties' => ['passed' => ['type' => 'boolean'], 'checks' => ['type' => 'array']]]]];
+        }
+
+        // Optional fields describe the public runner output without tightening V1 presence rules.
+        // Nullable/dynamic values stay open in the existing bounded JSON Schema subset.
+        $nullableString = ['description' => 'String or null; the value must be checked at runtime.'];
+        $nullableInteger = ['description' => 'Integer or null; the value must be checked at runtime.'];
+        $dynamic = ['description' => 'Dynamic JSON value; the value must be checked at runtime.'];
+        $artifact = ['type' => 'object', 'additionalProperties' => true, 'properties' => [
+            'artifactId' => ['type' => 'string'], 'mime' => ['type' => 'string'],
+            'bytes' => ['type' => 'integer'], 'sha256' => ['type' => 'string'],
+            'name' => ['type' => 'string'], 'width' => $nullableInteger, 'height' => $nullableInteger,
+        ]];
+        if (str_starts_with($key, 'browser.')) {
+            $schema['properties'] = [
+                'ok' => ['type' => 'boolean'], 'sessionId' => ['type' => 'string'],
+                'tabId' => ['type' => 'string'], 'url' => ['type' => 'string'],
+            ];
+            if ($key === 'browser.read') {
+                // browser.ts intentionally lifts native data.text into the public text field.
+                $schema['properties'] += ['text' => ['type' => 'string'], 'truncated' => ['type' => 'boolean']];
+            } elseif (in_array($key, ['browser.screenshot', 'browser.download'], true)) {
+                $schema['properties']['data'] = $artifact;
+            } else {
+                $data = match ($key) {
+                    'browser.open', 'browser.open_url', 'browser.navigate' => ['opened' => ['type' => 'boolean'], 'readiness' => ['type' => 'string']],
+                    'browser.click' => ['ok' => ['type' => 'boolean'], 'clicked' => ['type' => 'boolean']],
+                    'browser.fill', 'browser.select' => ['ok' => ['type' => 'boolean'], 'applied' => ['type' => 'boolean']],
+                    'browser.wait' => ['ok' => ['type' => 'boolean'], 'ready' => ['type' => 'boolean']],
+                    default => [],
+                };
+                $schema['properties']['data'] = ['type' => 'object', 'additionalProperties' => true, 'properties' => $data];
+                if ($key === 'browser.open_url') {
+                    $schema['properties']['opened'] = ['type' => 'string'];
+                }
+                if ($key === 'browser.click') {
+                    $schema['properties']['clicked'] = ['type' => 'string'];
+                }
+            }
+        }
+        if ($key === 'image.capture') {
+            // capture returns the artifact itself, not an {ok, artifact} envelope.
+            $schema['properties'] = $artifact['properties'];
+        }
+        if ($key === 'image.ocr') {
+            $schema['properties'] = [
+                'ok' => ['type' => 'boolean'], 'text' => ['type' => 'string'],
+                'truncated' => ['type' => 'boolean'], 'language' => ['type' => 'string'], 'method' => ['type' => 'string'],
+            ];
+        }
+        if ($key === 'image.compare') {
+            $schema['properties'] = [
+                'ok' => ['type' => 'boolean'], 'identical' => ['type' => 'boolean'],
+                'sameDimensions' => ['type' => 'boolean'], 'changedPixels' => ['type' => 'integer'],
+                'totalPixels' => ['type' => 'integer'], 'differentFraction' => ['type' => 'number'], 'method' => ['type' => 'string'],
+            ];
+        }
+        if ($key === 'image.vision') {
+            $schema['properties'] = [
+                'ok' => ['type' => 'boolean'], 'outcome' => ['type' => 'string'],
+                'text' => ['type' => 'string'], 'data' => ['type' => 'object'],
+                'model' => ['type' => 'string'], 'provider' => ['type' => 'string'],
+                'request_id' => ['type' => 'string'], 'finish_reason' => ['type' => 'string'],
+                'inference_target' => ['type' => 'string'], 'thinking_application' => ['type' => 'string'],
+                'policy_revision' => ['type' => 'string'], 'artifact_sha256' => ['type' => 'string'],
+                'usage_source' => ['type' => 'string'], 'usage' => ['type' => 'object', 'properties' => array_fill_keys(
+                    ['input_tokens', 'output_tokens', 'total_tokens', 'prompt_tokens', 'completion_tokens'], ['type' => 'integer']
+                )],
+            ];
+        }
+        if (in_array($key, ['node.run', 'python.run'], true)) {
+            $schema['properties'] = [
+                'ok' => ['type' => 'boolean'], 'code' => ['type' => 'integer'],
+                'stdout' => ['type' => 'string'], 'stderr' => ['type' => 'string'],
+                'timed_out' => ['type' => 'boolean'], 'duration_ms' => ['type' => 'integer'],
+                'runtime' => ['type' => 'string'], 'interpreter' => ['type' => 'string'],
+                'runtime_version' => $nullableString, 'execution_profile' => ['type' => 'string'],
+                'input_mode' => ['type' => 'string'], 'code_sha256' => ['type' => 'string'],
+                'execution_environment' => ['type' => 'string'], 'data' => $dynamic,
+            ];
+        }
+        if (in_array($key, ['agent.single', 'agent.team'], true)) {
+            $schema['properties'] = [
+                'ok' => ['type' => 'boolean'], 'outcome' => ['type' => 'string'], 'text' => ['type' => 'string'],
+                'code' => ['type' => 'string'], 'agent' => ['type' => 'string'], 'model' => $nullableString,
+                'requested_model' => $nullableString, 'inference_target' => $nullableString,
+                'request_id' => $nullableString, 'thinking_tier' => ['type' => 'string'],
+                'thinking_application' => ['type' => 'string'], 'selection_reason' => ['type' => 'string'],
+                'duration_ms' => ['type' => 'integer'], 'continuation_available' => ['type' => 'boolean'],
+                'interruption_code' => $nullableString, 'data' => $dynamic,
+            ];
+        }
+        if ($key === 'agent.dispatch') {
+            $schema['properties'] = [
+                'ok' => ['type' => 'boolean'], 'code' => ['type' => 'integer'],
+                'stdout' => ['type' => 'string'], 'stderr' => ['type' => 'string'],
+            ];
         }
 
         return $schema;

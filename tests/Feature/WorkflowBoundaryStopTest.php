@@ -104,6 +104,8 @@ class WorkflowBoundaryStopTest extends TestCase
         $this->assertSame('cancelled', $run->fresh()->status);
         $this->assertSame('completed', $step->fresh()->status);
         $this->assertSame(1, WorkflowRun::where('parent_workflow_run_id', $run->id)->count());
+        $this->assertSame([1], $control->fresh()->control_state['results'][0]['work']['data']);
+        $this->assertSame('partial', $control->fresh()->output['outcome']);
     }
 
     public function test_claimed_but_undispatched_client_cannot_create_a_job_after_stop(): void
@@ -135,6 +137,24 @@ class WorkflowBoundaryStopTest extends TestCase
         $this->assertSame($child->public_id, $job->payload['workflow']['run']);
         $this->assertSame($step->execution_id, $job->payload['workflow']['execution_id']);
         $this->assertNotSame($job->payload['workflow']['run'], $job->payload['workflow']['resource_run']);
+    }
+
+    public function test_hard_server_timeout_during_boundary_wait_still_requires_the_worker_to_end(): void
+    {
+        $run = $this->fixtureRun([['key' => 'work', 'type' => 'data.collect', 'payload' => ['items' => [], 'timeout_seconds' => 1]]]);
+        $step = $run->steps()->sole();
+        app(WorkflowBudgetService::class)->claim($step);
+        app(WorkflowBoundaryStop::class)->request($run);
+        $this->travel(2)->seconds();
+        app(WorkflowService::class)->expireTimedOutSteps($run);
+        $this->assertSame('cancelling', $run->fresh()->status);
+        $this->assertSame('running', $step->fresh()->status);
+        $this->assertSame('pending', $run->fresh()->budget_state['boundary_stop']['status']);
+        app(WorkflowService::class)->complete($step->fresh(), ['outcome' => 'success', 'data' => [9]]);
+        $this->assertSame('cancelled', $run->fresh()->status);
+        $this->assertSame([9], $step->fresh()->output['data']);
+        $this->assertSame('completed', $run->fresh()->budget_state['boundary_stop']['status']);
+        $this->assertSame('step_timeout', $run->fresh()->budget_state['boundary_stop']['completion_reason']);
     }
 
     public function test_stop_api_is_idempotent_owner_scoped_and_show_has_root_budget_without_root_snapshot(): void

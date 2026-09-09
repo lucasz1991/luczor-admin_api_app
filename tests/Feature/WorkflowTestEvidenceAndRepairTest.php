@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ApiKey;
 use App\Models\Device;
+use App\Models\ModelUseCase;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRepairRevision;
@@ -79,6 +80,28 @@ class WorkflowTestEvidenceAndRepairTest extends TestCase
         app(WorkflowDeviceCapabilities::class)->report($device, ['schema_version' => 1, 'environment_hash' => str_repeat('b', 64), 'tasks' => []]);
         $this->expectException(HttpException::class);
         $this->expectExceptionMessage('workflow_repair_test_evidence_missing');
+        app(WorkflowRepairService::class)->activate($repair);
+    }
+
+    public function test_vision_policy_rotation_invalidates_previously_passed_repair_evidence(): void
+    {
+        $vision = ModelUseCase::updateOrCreate(['slug' => 'vision'], ['name' => 'Vision', 'active' => false, 'policy_version' => 1]);
+        [$definition, $device, $case, $repair] = $this->fixture();
+        $policy = $definition->repair_policy;
+        $policy['auto_activate'] = false;
+        $definition->update(['repair_policy' => $policy]);
+        $scope = $repair->scope;
+        $scope['policy'] = $policy;
+        $repair->update(['scope' => $scope]);
+        $tests = app(WorkflowTestService::class);
+        foreach (['definition', 'simulation', 'real'] as $mode) {
+            $this->assertSame('passed', $tests->start($definition, $case, $mode, $device, $repair)->status);
+        }
+        $before = $tests->environment($device);
+        $vision->update(['policy_version' => 2]);
+        $this->assertNotSame($before, $tests->environment($device));
+        $this->expectException(HttpException::class);
+        $this->expectExceptionMessage('workflow_repair_test_evidence_missing:definition');
         app(WorkflowRepairService::class)->activate($repair);
     }
 

@@ -9,6 +9,10 @@ class WorkflowDefinitionValidator
     {
         abort_if($depth > 8, 422, 'Workflow control nesting exceeds eight levels.');
         abort_unless(in_array($definition['schema_version'] ?? 1, [1, 2], true), 422, 'Unsupported workflow schema version.');
+        if (array_key_exists('input_schema', $definition)) {
+            abort_unless(is_array($definition['input_schema']) && ($definition['input_schema']['type'] ?? null) === 'object', 422, 'Workflow input schema must describe an object.');
+            WorkflowSchema::supported($definition['input_schema']);
+        }
         WorkflowBudgetService::policy($definition);
         abort_unless(in_array($definition['thinking_tier'] ?? 'balanced', ['fast', 'balanced', 'thorough', 'max', 'ultra'], true), 422, 'Invalid workflow thinking tier.');
         abort_unless(strlen(json_encode($definition, JSON_THROW_ON_ERROR)) <= 200000, 422, 'Workflow definition is too large.');
@@ -128,6 +132,10 @@ class WorkflowDefinitionValidator
                     abort_unless($sourceKey !== null && in_array($sourceKey, $predecessors, true), 422, 'Step binding must reference a declared predecessor.');
                 }
             }
+        }
+
+        if (($definition['schema_version'] ?? 1) === 2) {
+            app(WorkflowBindingTypes::class)->inspect($definition, $normalized);
         }
 
         return $normalized;

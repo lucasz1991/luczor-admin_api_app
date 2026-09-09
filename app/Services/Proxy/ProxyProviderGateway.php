@@ -60,6 +60,10 @@ final class ProxyProviderGateway
         $committedCostUsd = 0.0;
 
         foreach ($profiles as $index => [$profile, $credential]) {
+            if ($prepared->workflowVisionPolicyRevision !== null
+                && ! hash_equals(app(WorkflowVisionPolicy::class)->capabilities()['revision'], $prepared->workflowVisionPolicyRevision)) {
+                return $this->policyFailure($run, 'workflow_vision_policy_changed', 409);
+            }
             if (str_starts_with($prepared->taskType, 'agent.')
                 && ! hash_equals(app(AgentTeamPolicyService::class)->payload()['revision'], $prepared->agentTeamPolicyRevision ?? '')) {
                 return $this->policyFailure($run, 'agent_team_policy_changed', 409);
@@ -76,7 +80,7 @@ final class ProxyProviderGateway
             );
             $reservation = $this->providerPolicy->currentCostReservation(
                 array_map(static fn (array $candidate): ModelProfile => $candidate[0], $remainingProfiles),
-                $prepared->payload,
+                $prepared->budgetPayload ?? $prepared->payload,
                 $networkPolicy,
                 count($remainingProfiles),
             );
@@ -99,7 +103,7 @@ final class ProxyProviderGateway
             $providerPayload['model'] = $profile->model_id;
             $providerPayload['temperature'] = $profile->temperature;
             $providerPayload['max_tokens'] = $this->outputBudget($profile, $providerPayload, $networkPolicy);
-            if (str_starts_with($prepared->taskType, 'agent.') && $providerName === 'openrouter') {
+            if ((str_starts_with($prepared->taskType, 'agent.') || $prepared->workflowVisionPolicyRevision !== null) && $providerName === 'openrouter') {
                 $price = ProviderPriceSnapshot::current('openrouter', $profile->model_id);
                 if ($price === null) {
                     return $this->policyFailure($run, 'routing_price_unavailable', 503);
@@ -131,6 +135,9 @@ final class ProxyProviderGateway
             $committedCostUsd += $estimatedCost;
 
             try {
+                if ($prepared->beforeDispatch !== null) {
+                    ($prepared->beforeDispatch)();
+                }
                 $upstream = $client->request('POST', $driver->endpoint($baseUrl), [
                     'headers' => $driver->headers($credential->api_key, (bool) $providerPayload['stream']),
                     'json' => $driver->buildBody($providerPayload),

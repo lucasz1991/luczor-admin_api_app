@@ -2,18 +2,18 @@
 
 namespace App\Services\Proxy;
 
-use App\Http\Requests\Api\V1\ProxyChatRequest;
 use App\Models\ApiKey;
 use App\Models\ProviderCredential;
 use App\Services\ApiActor;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 
 final class ProxyRequestAdmissionService
 {
     public function __construct(private ApiActor $actor) {}
 
-    public function admit(ProxyChatRequest $request): void
+    public function admit(Request $request): void
     {
         $userId = $this->actor->userId($request);
         $apiKey = $request->attributes->get('apiKey');

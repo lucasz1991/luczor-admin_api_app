@@ -47,6 +47,9 @@ class WorkflowBoundaryStop
             DeviceJob::whereIn('workflow_execution_id', $executionIds)->whereIn('status', ['queued', 'approval_required'])
                 ->update(['status' => 'cancelled', 'cancel_requested_at' => now(), 'finished_at' => now()]);
             foreach ($steps as $step) {
+                if ($step->status === 'running' && in_array($step->type, ['workflow', 'control.foreach', 'control.until', 'control.parallel'], true)) {
+                    $this->captureChildProgress($step);
+                }
                 $waiting = in_array($step->status, ['queued', 'ready', 'awaiting_approval', 'waiting_for_device', 'waiting_for_capability'], true);
                 if ($step->status === 'running' && WorkflowTaskCatalog::isClientTask($step->type)) {
                     $job = DeviceJob::where('workflow_execution_id', $step->execution_id)->first();
@@ -72,5 +75,29 @@ class WorkflowBoundaryStop
 
             return app(WorkflowService::class)->cancel($root);
         }, 3);
+    }
+
+    private function captureChildProgress(WorkflowStep $step): void
+    {
+        $state = $step->control_state ?? [];
+        $children = WorkflowRun::where('parent_workflow_step_id', $step->id)->get()->keyBy('id');
+        $ids = $state['children'] ?? [];
+        if ($step->type === 'workflow') {
+            $ids = $children->filter(fn ($child) => $child->parent_execution_id === $step->execution_id)->pluck('id')->all();
+        }
+        foreach ($ids as $index => $id) {
+            $child = $children->get($id);
+            if (! $child) {
+                continue;
+            }
+            $outputs = $child->steps()->where('status', 'completed')->get()->mapWithKeys(fn ($item) => [$item->step_key => $item->output])->all();
+            if ($outputs !== []) {
+                $state['results'][$index] = $outputs;
+            }
+        }
+        if (($state['results'] ?? []) !== []) {
+            ksort($state['results'], SORT_NUMERIC);
+            $step->update(['control_state' => $state, 'output' => ['outcome' => 'partial', 'data' => array_values($state['results']), 'stopped_at_boundary' => true]]);
+        }
     }
 }

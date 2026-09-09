@@ -51,6 +51,9 @@ class WorkflowService
             $snapshot = $executionContext['_snapshot'] ?? $authoring->snapshot($definition, (int) $definition->user_id, $projectId);
             unset($executionContext['_snapshot']);
             $steps = $this->assertDefinition($snapshot['definition']);
+            if (isset($snapshot['definition']['input_schema'])) {
+                WorkflowSchema::validate($input, $snapshot['definition']['input_schema'], '$.input');
+            }
             $executionContext['project_id'] = $projectId ? Project::findOrFail($projectId)->external_id : null;
             $executionContext['root_workflow_definition_id'] ??= $definition->id;
             $executionContext['root_workflow_revision'] ??= $snapshot['version'];
@@ -332,7 +335,7 @@ class WorkflowService
     /** Schedule a delayed poll of an in-flight run (timeout expiry + advance). */
     public function scheduleMonitor(WorkflowRun $run, int $seconds = 10): void
     {
-        MonitorWorkflowStep::dispatch($run->id)->delay(now()->addSeconds(max(1, $seconds)));
+        MonitorWorkflowStep::dispatch($run->id)->delay(now()->addSeconds(max(1, $seconds)))->afterCommit();
     }
 
     /**
@@ -481,7 +484,18 @@ class WorkflowService
                 ?? WorkflowTaskCatalog::task($step->type)['timeout_seconds']
                 ?? 300);
             if ($step->started_at && $step->started_at->copy()->addSeconds($timeout)->isPast()) {
-                $this->fail($step, 'step_timeout', 'timeout');
+                if ((WorkflowTaskCatalog::task($step->type)['runner'] ?? '') === 'server' && WorkflowTaskCatalog::isAutoDispatch($step->type) && WorkflowBudgetService::occupiesSlot($step->type)) {
+                    // A timed out PHP worker can still be inside an effect; only its eventual callback confirms its end.
+                    DB::transaction(function () use ($step) {
+                        $root = app(WorkflowBudgetService::class)->root($step->run);
+                        $state = $root->budget_state ?? [];
+                        $state['stop_reason'] = 'step_timeout';
+                        $root->update(['budget_state' => $state]);
+                        $this->cancel($root);
+                    });
+                } else {
+                    $this->fail($step, 'step_timeout', 'timeout');
+                }
                 $expired++;
             }
         }
@@ -639,6 +653,13 @@ class WorkflowService
                 ]);
                 if (! $pending) {
                     DB::table('workflow_execution_records')->whereIn('workflow_step_id', $run->steps()->pluck('id'))->where('status', 'running')->update(['status' => 'cancelled', 'finished_at' => now()]);
+                    if ((int) $run->id === (int) $root->id && WorkflowBoundaryStop::requested($root)) {
+                        $state = $root->fresh()->budget_state;
+                        $state['boundary_stop']['status'] = 'completed';
+                        $state['boundary_stop']['finished_at'] ??= now()->toISOString();
+                        $state['boundary_stop']['completion_reason'] = $state['stop_reason'] ?? 'cancelled';
+                        $root->update(['budget_state' => $state]);
+                    }
                 }
             }
 

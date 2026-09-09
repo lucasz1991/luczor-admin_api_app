@@ -9,20 +9,39 @@ class WorkflowSchema
     {
         abort_if($depth > 16 || count($schema) > 30, 422, 'workflow_schema_depth');
         abort_if(array_diff(array_keys($schema), ['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength', 'default', 'description', 'title']) !== [], 422, 'workflow_schema_keyword_unsupported');
-        abort_if(isset($schema['type']) && ! in_array($schema['type'], ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'], true), 422, 'workflow_schema_type_unsupported');
-        if (isset($schema['properties'])) {
-            abort_unless(is_array($schema['properties']) && count($schema['properties']) <= 100, 422, 'workflow_schema_properties_invalid');
+        abort_if(array_key_exists('type', $schema) && ! in_array($schema['type'], ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'], true), 422, 'workflow_schema_type_unsupported');
+        if (array_key_exists('additionalProperties', $schema)) {
+            abort_unless(is_bool($schema['additionalProperties']), 422, 'workflow_schema_additional_properties_invalid');
+        }
+        foreach (['minItems', 'maxItems', 'minLength', 'maxLength'] as $bound) {
+            if (array_key_exists($bound, $schema)) {
+                abort_unless(is_int($schema[$bound]) && $schema[$bound] >= 0, 422, 'workflow_schema_bound_invalid');
+            }
+        }
+        foreach (['minimum', 'maximum'] as $bound) {
+            if (array_key_exists($bound, $schema)) {
+                abort_unless((is_int($schema[$bound]) || is_float($schema[$bound])) && is_finite((float) $schema[$bound]), 422, 'workflow_schema_bound_invalid');
+            }
+        }
+        foreach ([['minimum', 'maximum'], ['minItems', 'maxItems'], ['minLength', 'maxLength']] as [$minimum, $maximum]) {
+            abort_if(isset($schema[$minimum], $schema[$maximum]) && $schema[$minimum] > $schema[$maximum], 422, 'workflow_schema_bounds_reversed');
+        }
+        if (array_key_exists('enum', $schema)) {
+            abort_unless(is_array($schema['enum']) && array_is_list($schema['enum']) && count($schema['enum']) >= 1 && count($schema['enum']) <= 1000, 422, 'workflow_schema_enum_invalid');
+        }
+        if (array_key_exists('properties', $schema)) {
+            abort_unless(is_array($schema['properties']) && ($schema['properties'] === [] || ! array_is_list($schema['properties'])) && count($schema['properties']) <= 100, 422, 'workflow_schema_properties_invalid');
             foreach ($schema['properties'] as $property) {
                 abort_unless(is_array($property), 422, 'workflow_schema_property_invalid');
                 self::supported($property, $depth + 1);
             }
         }
-        if (isset($schema['items'])) {
+        if (array_key_exists('items', $schema)) {
             abort_unless(is_array($schema['items']), 422, 'workflow_schema_items_invalid');
             self::supported($schema['items'], $depth + 1);
         }
-        if (isset($schema['required'])) {
-            abort_unless(is_array($schema['required']) && count($schema['required']) <= 100, 422, 'workflow_schema_required_invalid');
+        if (array_key_exists('required', $schema)) {
+            abort_unless(is_array($schema['required']) && array_is_list($schema['required']) && count($schema['required']) <= 100, 422, 'workflow_schema_required_invalid');
             foreach ($schema['required'] as $key) {
                 abort_unless(is_string($key) && strlen($key) <= 120, 422, 'workflow_schema_required_invalid');
             }

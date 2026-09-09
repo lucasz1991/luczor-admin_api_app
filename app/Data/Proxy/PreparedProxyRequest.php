@@ -18,5 +18,9 @@ final readonly class PreparedProxyRequest
         public ?ModelUseCase $useCase,
         public array $requiredCapabilities,
         public ?string $agentTeamPolicyRevision = null,
+        /** Server-constructed token estimate; never sent to the provider. */
+        public ?array $budgetPayload = null,
+        public ?string $workflowVisionPolicyRevision = null,
+        public ?\Closure $beforeDispatch = null,
     ) {}
 }

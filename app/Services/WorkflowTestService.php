@@ -10,6 +10,7 @@ use App\Models\WorkflowRun;
 use App\Models\WorkflowStep;
 use App\Models\WorkflowTestCase;
 use App\Models\WorkflowTestEvidence;
+use App\Services\Proxy\WorkflowVisionPolicy;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -85,6 +86,9 @@ class WorkflowTestService
                 }
             }
         }
+        if (isset($snapshot['definition']['input_schema'])) {
+            WorkflowSchema::validate($spec['input'] ?? [], $snapshot['definition']['input_schema'], '$.input');
+        }
         $evidence = WorkflowTestEvidence::create([
             'user_id' => $definition->user_id, 'workflow_definition_id' => $definition->id, 'workflow_test_case_id' => $case->id,
             'repair_revision_id' => $repair?->id, 'mode' => $mode, 'status' => 'running',
@@ -94,8 +98,9 @@ class WorkflowTestService
                 'device_environment_hash' => $device?->meta['workflow_capabilities']['environment_hash'] ?? null],
         ]);
         if ($mode === 'definition') {
-            app(WorkflowDefinitionValidator::class)->validate($snapshot['definition']);
-            $evidence->update(['status' => 'passed', 'result' => ['definition_valid' => true], 'finished_at' => now()]);
+            $steps = app(WorkflowDefinitionValidator::class)->validate($snapshot['definition']);
+            $evidence->update(['status' => 'passed', 'result' => ['definition_valid' => true, 'input_valid' => true,
+                'binding_validation' => app(WorkflowBindingTypes::class)->inspect($snapshot['definition'], $steps)], 'finished_at' => now()]);
 
             return $evidence;
         }
@@ -202,7 +207,19 @@ class WorkflowTestService
             $sources[$service] = hash_file('sha256', app_path('Services/'.$service.'.php'));
         }
 
-        return self::hash(['server_contract' => 2, 'server_sources' => $sources, 'catalog' => WorkflowTaskCatalog::options(), 'device' => $device?->device_id, 'device_environment' => $device?->meta['workflow_capabilities']['environment_hash'] ?? null]);
+        foreach (['WorkflowVisionPolicy', 'WorkflowVisionService', 'ProxyProviderGateway'] as $service) {
+            $sources['Proxy/'.$service] = hash_file('sha256', app_path('Services/Proxy/'.$service.'.php'));
+        }
+        foreach (['Http/Requests/Api/V1/WorkflowVisionRequest', 'Data/Proxy/PreparedProxyRequest',
+            'Services/Proxy/ProxyRequestAdmissionService', 'Services/Proxy/BoundedBodyReader',
+            'Services/ProviderPolicyService', 'Services/ProviderHttpClientFactory',
+            'Services/Llm/OpenAiCompatDriver', 'Services/Llm/ProviderDriverRegistry', 'Services/Llm/ProviderWireFormat'] as $path) {
+            $sources[$path] = hash_file('sha256', app_path($path.'.php'));
+        }
+
+        return self::hash(['server_contract' => 2, 'server_sources' => $sources, 'catalog' => WorkflowTaskCatalog::options(),
+            'vision_revision' => app(WorkflowVisionPolicy::class)->capabilities()['revision'],
+            'device' => $device?->device_id, 'device_environment' => $device?->meta['workflow_capabilities']['environment_hash'] ?? null]);
     }
 
     private function device(WorkflowTestEvidence $evidence): ?Device

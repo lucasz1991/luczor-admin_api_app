@@ -16,7 +16,8 @@ class WorkflowTriggerDispatcher
     {
         $this->settleRuns($limit);
         $count = 0;
-        $ids = WorkflowTriggerDelivery::whereIn('status', ['pending', 'waiting'])->where('available_at', '<=', now())->orderBy('id')->limit($limit)->pluck('id');
+        $ids = WorkflowTriggerDelivery::whereIn('status', ['pending', 'waiting'])->where('available_at', '<=', now())
+            ->whereHas('trigger', fn ($query) => $query->where('enabled', true))->orderBy('id')->limit($limit)->pluck('id');
         foreach ($ids as $id) {
             try {
                 $run = DB::transaction(function () use ($id) {
@@ -29,6 +30,11 @@ class WorkflowTriggerDispatcher
                         return null;
                     }
                     $definition = WorkflowDefinition::whereKey($trigger->workflow_definition_id)->lockForUpdate()->firstOrFail();
+                    // Match authoring's definition-before-trigger lock order, then recheck after selection.
+                    $trigger = WorkflowTrigger::whereKey($trigger->id)->lockForUpdate()->first();
+                    if (! $trigger || ! $trigger->enabled) {
+                        return null;
+                    }
                     if ($definition->status !== 'active') {
                         $delivery->update(['status' => 'waiting', 'last_error' => 'Workflow is inactive.', 'available_at' => now()->addMinute()]);
 

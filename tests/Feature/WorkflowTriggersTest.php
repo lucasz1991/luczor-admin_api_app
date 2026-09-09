@@ -143,6 +143,27 @@ class WorkflowTriggersTest extends TestCase
         $this->assertCount(2, WorkflowTriggerDelivery::latest('id')->first()->event_payload['changes']);
     }
 
+    public function test_disabled_delivery_head_does_not_starve_an_enabled_trigger_with_a_small_limit(): void
+    {
+        Queue::fake();
+        $pausedDefinition = $this->definition();
+        $paused = $this->trigger($pausedDefinition, 'task.completed');
+        $activeDefinition = $this->definition();
+        $active = $this->trigger($activeDefinition, 'task.completed');
+        $events = app(WorkflowEventService::class);
+        foreach (['old-one', 'old-two'] as $key) {
+            $events->record($pausedDefinition->user_id, null, 'task.completed', 'test', $key, ['task_id' => 1]);
+        }
+        $events->publishPending();
+        $paused->update(['enabled' => false]);
+        $events->record($activeDefinition->user_id, null, 'task.completed', 'test', 'active-later', ['task_id' => 2]);
+        $events->publishPending();
+        $this->assertSame(1, app(WorkflowTriggerDispatcher::class)->dispatchPending(2));
+        $this->assertSame(['pending', 'pending'], WorkflowTriggerDelivery::where('workflow_trigger_id', $paused->id)->orderBy('id')->pluck('status')->all());
+        $this->assertSame('running', WorkflowTriggerDelivery::where('workflow_trigger_id', $active->id)->sole()->status);
+        $this->assertSame($activeDefinition->id, WorkflowRun::sole()->workflow_definition_id);
+    }
+
     private function approvedGrant(WorkflowDefinition $definition): array
     {
         Device::firstOrCreate(['user_id' => $definition->user_id, 'device_id' => 'device-a'], ['name' => 'A', 'status' => 'online']);

@@ -36,7 +36,7 @@ class ProviderPolicyService
      * @param  array<int,string>  $requiredCapabilities
      * @param  array<string,mixed>  $payload
      */
-    public function resolve(string $taskType, array $requiredCapabilities, array $payload): ProviderRoutingDecision
+    public function resolve(string $taskType, array $requiredCapabilities, array $payload, ?array $eligibleProfileIds = null, ?int $attemptLimit = null): ProviderRoutingDecision
     {
         $this->selectionSource = 'admin_policy_manual';
         $useCase = $this->useCaseFor($taskType);
@@ -53,6 +53,9 @@ class ProviderPolicyService
         $this->assertBudgetContract($useCase, $networkPolicy);
 
         $profiles = $this->baseProfiles($useCase, $requiredCapabilities);
+        if ($eligibleProfileIds !== null) {
+            $profiles = $profiles->filter(fn (ModelProfile $profile): bool => in_array((int) $profile->id, $eligibleProfileIds, true))->values();
+        }
         $maxCostUsd = $this->tightestFloat($networkPolicy->max_cost_usd, $useCase->max_cost_usd);
         $estimatedCosts = [];
         $excluded = [];
@@ -103,6 +106,7 @@ class ProviderPolicyService
             max(1, (int) $useCase->max_attempts),
             max(1, (int) $networkPolicy->max_attempts),
             $eligible->count(),
+            $attemptLimit === null ? PHP_INT_MAX : max(1, $attemptLimit),
         );
         $reservedCostUsd = $this->reservationFromKnownCosts(
             $eligible->all(),

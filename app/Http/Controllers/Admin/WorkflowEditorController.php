@@ -10,6 +10,8 @@ use App\Models\WorkflowTestCase;
 use App\Models\WorkflowTestEvidence;
 use App\Models\WorkflowTrigger;
 use App\Services\WorkflowAuthoringService;
+use App\Services\WorkflowBoundaryStop;
+use App\Services\WorkflowService;
 use App\Services\WorkflowRepairService;
 use App\Services\WorkflowTaskCatalog;
 use App\Services\WorkflowTestService;
@@ -35,8 +37,8 @@ class WorkflowEditorController extends AdminController
                 'id', 'source_run_id', 'base_version', 'definition', 'definition_hash', 'code_hash', 'status', 'activated_version', 'created_at',
             ]),
             'runs' => WorkflowRun::where('user_id', $owner)->where('workflow_definition_id', $workflowDefinition->id)->latest('id')->limit(50)->get([
-                'id', 'public_id', 'workflow_definition_id', 'workflow_revision_id', 'definition_snapshot', 'status', 'sandbox', 'test_mode', 'started_at', 'finished_at', 'created_at',
-            ])->map(fn (WorkflowRun $run) => $run->makeHidden('definition_snapshot')->toArray()),
+                'id', 'user_id', 'public_id', 'workflow_definition_id', 'workflow_revision_id', 'definition_snapshot', 'root_workflow_run_id', 'budgets', 'budget_state', 'status', 'sandbox', 'test_mode', 'started_at', 'finished_at', 'created_at',
+            ])->map(fn (WorkflowRun $run) => $this->runSummary($run)),
             'triggers' => WorkflowTrigger::where('user_id', $owner)->where('workflow_definition_id', $workflowDefinition->id)->latest('id')->limit(100)->get([
                 'id', 'name', 'kind', 'enabled', 'config', 'next_due_at', 'created_at',
             ]),
@@ -47,6 +49,7 @@ class WorkflowEditorController extends AdminController
                 'tests' => route('dashboard.workflows.editor.tests', $workflowDefinition),
                 'repairs' => route('dashboard.workflows.editor.repairs', $workflowDefinition),
                 'operation' => url('/dashboard/workflows/'.$workflowDefinition->id.'/operations'),
+                'runControls' => route('dashboard.workflows.editor.run-controls', $workflowDefinition),
             ],
         ])->header('Cache-Control', 'private, no-store');
     }
@@ -125,7 +128,7 @@ class WorkflowEditorController extends AdminController
         $data = $operation?->response;
         $workflowId = match ($operation?->action) {
             'update' => $data['id'] ?? null,
-            'test_case.create', 'test.start', 'repair.propose' => $data['workflow_definition_id'] ?? null,
+            'test_case.create', 'test.start', 'repair.propose', 'editor.run.stop_after_step', 'editor.run.cancel' => $data['workflow_definition_id'] ?? null,
             default => null,
         };
         if ((int) $workflowId !== (int) $workflowDefinition->id) {
@@ -135,6 +138,40 @@ class WorkflowEditorController extends AdminController
         return response()->json(['status' => $operation->status,
             'response' => $operation->action === 'update' ? ['workflow' => $data] : ['data' => $data],
         ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function controlRun(Request $request, WorkflowDefinition $workflowDefinition, WorkflowAuthoringService $authoring, WorkflowBoundaryStop $boundary, WorkflowService $workflows): JsonResponse
+    {
+        $this->owned($request, $workflowDefinition);
+        $data = $request->validate([
+            'operation_id' => 'required|uuid', 'run_id' => 'required|uuid', 'action' => 'required|in:stop_after_step,cancel',
+            'device_id' => 'prohibited', 'local_approved' => 'prohibited',
+        ]);
+        $result = $authoring->operate((int) $request->user()->id, $data['operation_id'], 'editor.run.'.$data['action'], $data + ['definition_id' => $workflowDefinition->id], function () use ($data, $workflowDefinition, $boundary, $workflows) {
+            $run = WorkflowRun::where('user_id', $workflowDefinition->user_id)->where('workflow_definition_id', $workflowDefinition->id)->where('public_id', $data['run_id'])->firstOrFail();
+            if ($run->root_workflow_run_id) {
+                abort_unless(WorkflowRun::where('user_id', $workflowDefinition->user_id)->where('project_id', $run->project_id)->whereKey($run->root_workflow_run_id)->exists(), 404);
+            }
+            $result = $data['action'] === 'stop_after_step' ? $boundary->request($run) : $workflows->cancel($run);
+
+            return ['workflow_definition_id' => $workflowDefinition->id, 'run' => $this->runSummary($result)];
+        });
+
+        return response()->json(['data' => $result]);
+    }
+
+    /** Public monitor data only; no inputs, execution grants, model output or snapshot code. */
+    private function runSummary(WorkflowRun $run): array
+    {
+        $summary = $run->only(['id', 'public_id', 'workflow_definition_id', 'workflow_revision_id', 'definition_version', 'root_workflow_run_id', 'status', 'sandbox', 'test_mode', 'started_at', 'finished_at', 'created_at', 'budgets', 'budget_state']);
+        if ($run->root_workflow_run_id && (int) $run->root_workflow_run_id !== (int) $run->id) {
+            $root = WorkflowRun::where('user_id', $run->user_id)->whereKey($run->root_workflow_run_id)->first();
+            if ($root) {
+                $summary['root_budget'] = $root->only(['id', 'public_id', 'status', 'budgets', 'budget_state']);
+            }
+        }
+
+        return $summary;
     }
 
     private function owned(Request $request, WorkflowDefinition $definition): void
