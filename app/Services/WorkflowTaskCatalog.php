@@ -25,7 +25,7 @@ class WorkflowTaskCatalog
     /** @return array<string,array<string,mixed>> keyed by task_key */
     public static function all(): array
     {
-        return [
+        $tasks = [
             // ── Server-safe step types (original seven) ──────────────────────
             'context' => self::entry('Kontext abrufen', 'server', 'data', true, ['auto_dispatch' => true]),
             'llm' => self::entry('KI-Schritt', 'client', 'ai', true, [
@@ -120,6 +120,14 @@ class WorkflowTaskCatalog
                 'params' => ['agent' => ['type' => 'string'], 'prompt' => ['type' => 'textarea']],
             ]),
         ];
+        foreach (WorkflowTaskContracts::additions() as $key => $contract) {
+            $tasks[$key] = self::entry($contract['label'], $contract['runner'], $contract['kind'], true, $contract);
+        }
+        foreach ($tasks as $key => &$task) {
+            $task = array_merge($task, WorkflowTaskContracts::describe($key, $task));
+        }
+
+        return $tasks;
     }
 
     /**
@@ -185,6 +193,7 @@ class WorkflowTaskCatalog
                 'requires_approval' => $def['requires_approval'],
                 'allowed_in_definition' => $def['allowed_in_definition'],
                 'params' => $def['params'],
+                ...array_intersect_key($def, array_flip(['type', 'version', 'input_schema', 'output_schema', 'required_capabilities', 'adapters', 'execution_location', 'resource_keys', 'outcomes', 'retry', 'cancel', 'test', 'timeout_seconds'])),
             ];
         }
 

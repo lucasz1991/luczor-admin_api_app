@@ -7,6 +7,7 @@ use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRun;
 use App\Services\WorkflowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /** SOLL §14 P16 — Board-Editor, Run-Preview und die zugehörigen Admin-Endpoints. */
@@ -46,9 +47,8 @@ class WorkflowEditorTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.page', ['page' => 'workflows', 'wf' => $wf->id]))
             ->assertOk()
-            ->assertSee('Task-Bibliothek')
-            ->assertSee('Neue Liste anlegen')
-            ->assertSee('Experten-Modus: JSON-Definition');
+            ->assertSee('data-luczor-workflow-editor', false)
+            ->assertSee('data-state-url', false);
     }
 
     public function test_update_workflow_replaces_definition_and_bumps_version(): void
@@ -59,7 +59,7 @@ class WorkflowEditorTest extends TestCase
         $next['steps'][] = ['key' => 'c', 'type' => 'llm', 'depends_on' => ['b'], 'payload' => ['list' => 'liste-1']];
 
         $this->actingAs($admin)
-            ->putJson(route('dashboard.workflows.update', $wf), ['name' => 'Demo v2', 'definition_json' => json_encode($next)])
+            ->putJson(route('dashboard.workflows.update', $wf), ['name' => 'Demo v2', 'definition_json' => json_encode($next), 'expected_version' => 1, 'operation_id' => (string) Str::uuid()])
             ->assertOk()
             ->assertJsonPath('workflow.version', 2);
 
@@ -75,7 +75,7 @@ class WorkflowEditorTest extends TestCase
         $bad = ['steps' => [['key' => 'x', 'type' => 'shell.exec']]]; // nicht im Katalog
 
         $this->actingAs($admin)
-            ->putJson(route('dashboard.workflows.update', $wf), ['name' => 'Demo', 'definition_json' => json_encode($bad)])
+            ->putJson(route('dashboard.workflows.update', $wf), ['name' => 'Demo', 'definition_json' => json_encode($bad), 'expected_version' => 1, 'operation_id' => (string) Str::uuid()])
             ->assertStatus(422);
 
         $this->assertSame(1, $wf->refresh()->version);
@@ -87,8 +87,8 @@ class WorkflowEditorTest extends TestCase
         $wf = $this->workflow($admin, null, ['is_locked' => true]);
 
         $this->actingAs($admin)
-            ->putJson(route('dashboard.workflows.update', $wf), ['name' => 'Neu', 'definition_json' => json_encode($this->definition())])
-            ->assertStatus(422);
+            ->putJson(route('dashboard.workflows.update', $wf), ['name' => 'Neu', 'definition_json' => json_encode($this->definition()), 'expected_version' => 1, 'operation_id' => (string) Str::uuid()])
+            ->assertConflict();
     }
 
     public function test_duplicate_creates_an_editable_copy(): void

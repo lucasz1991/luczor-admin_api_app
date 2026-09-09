@@ -39,11 +39,17 @@ class WorkflowAuthoringService
             $child = WorkflowDefinition::findOrFail($step['payload']['workflow_definition_id']);
             $this->snapshot($child, $userId, $projectId, $definitionId ? [$definitionId] : [], false);
         }
+        $count = 0;
+        $this->controlSnapshots(['definition_id' => $definitionId, 'revision_id' => null, 'version' => 1, 'definition' => $definition], $userId, $projectId, $definitionId ? [$definitionId] : [], false, $count);
 
         return $steps;
     }
 
-    /** Resolve all nested definitions now; execution never consults mutable child JSON. */
+    /**
+     * Resolve all nested definitions now; execution never consults mutable child JSON.
+     *
+     * @param-out int $nodeCount
+     */
     public function snapshot(WorkflowDefinition $definition, int $userId, ?int $projectId, array $ancestors = [], bool $requireActive = true, ?int &$nodeCount = null): array
     {
         $nodeCount ??= 0;
@@ -61,11 +67,41 @@ class WorkflowAuthoringService
             }
         }
 
-        return [
+        $snapshot = [
             'definition_id' => $definition->id, 'revision_id' => $definition->current_revision_id,
             'version' => (int) $definition->version, 'name' => $definition->name,
             'project_id' => $definition->project_id, 'definition' => $definition->definition, 'children' => $children,
         ];
+        $snapshot['controls'] = $this->controlSnapshots($snapshot, $userId, $projectId, [...$ancestors, $definition->id], $requireActive, $nodeCount);
+
+        return WorkflowSnapshotIdentity::annotate($snapshot);
+    }
+
+    public function controlSnapshots(array $base, int $userId, ?int $projectId, array $ancestors, bool $active, int &$count, int $depth = 0): array
+    {
+        abort_if($depth > 8, 422, 'Workflow control depth limit exceeded.');
+        $controls = [];
+        foreach ($base['definition']['steps'] ?? [] as $step) {
+            $bodies = match ($step['type'] ?? '') {
+                'control.foreach', 'control.until' => [$step['payload']['body']],
+                'control.parallel' => $step['payload']['branches'],
+                default => [],
+            };
+            foreach ($bodies as $index => $body) {
+                abort_if(++$count > 100, 422, 'Expanded workflow exceeds the definition limit.');
+                $snapshot = array_merge($base, ['definition' => array_merge(['thinking_tier' => $base['definition']['thinking_tier'] ?? 'balanced'], $body, ['schema_version' => 2]), 'children' => [], 'controls' => []]);
+                foreach ($this->validator->validate($snapshot['definition']) as $nested) {
+                    if ($nested['type'] === 'workflow') {
+                        $definition = WorkflowDefinition::query()->lockForUpdate()->findOrFail($nested['payload']['workflow_definition_id']);
+                        $snapshot['children'][$nested['key']] = $this->snapshot($definition, $userId, $projectId, $ancestors, $active, $count);
+                    }
+                }
+                $snapshot['controls'] = $this->controlSnapshots($snapshot, $userId, $projectId, $ancestors, $active, $count, $depth + 1);
+                $controls[$step['key']][$index] = $snapshot;
+            }
+        }
+
+        return $controls;
     }
 
     public function save(int $userId, array $data, ?int $definitionId = null): array
@@ -121,6 +157,7 @@ class WorkflowAuthoringService
         $data = $definition->only(['id', 'name', 'version', 'current_revision_id', 'status', 'is_locked', 'project_id', 'definition', 'change_summary', 'created_at', 'updated_at']);
         $data['project_external_id'] = $definition->project?->external_id;
         $data['is_edit_locked'] = $definition->is_edit_locked;
+        $data['repair_policy'] = $definition->repair_policy;
         if ($withRevisions) {
             $data['revisions'] = $definition->revisions()->orderByDesc('version')->limit(100)->get(['id', 'version', 'name', 'definition_hash', 'change_summary', 'created_at'])->toArray();
         }

@@ -4,9 +4,13 @@ namespace App\Services;
 
 class WorkflowDefinitionValidator
 {
-    /** @return array<int,array{key:string,type:string,depends_on:array<int,string>,requires_approval:bool,max_attempts:int,payload:array<string,mixed>}> */
-    public function validate(array $definition): array
+    /** @return array<int,array{key:string,type:string,version:int,depends_on:array<int,string>,requires_approval:bool,max_attempts:int,payload:array<string,mixed>}> */
+    public function validate(array $definition, int $depth = 0): array
     {
+        abort_if($depth > 8, 422, 'Workflow control nesting exceeds eight levels.');
+        abort_unless(in_array($definition['schema_version'] ?? 1, [1, 2], true), 422, 'Unsupported workflow schema version.');
+        WorkflowBudgetService::policy($definition);
+        abort_unless(in_array($definition['thinking_tier'] ?? 'balanced', ['fast', 'balanced', 'thorough', 'max', 'ultra'], true), 422, 'Invalid workflow thinking tier.');
         abort_unless(strlen(json_encode($definition, JSON_THROW_ON_ERROR)) <= 200000, 422, 'Workflow definition is too large.');
         $steps = $definition['steps'] ?? [];
         abort_unless(is_array($steps) && count($steps) > 0 && count($steps) <= 100, 422, 'A workflow requires between 1 and 100 steps.');
@@ -18,10 +22,30 @@ class WorkflowDefinitionValidator
             $type = trim((string) ($step['type'] ?? ''));
             abort_unless($key !== '' && preg_match('/^[A-Za-z0-9_.-]{1,120}$/', $key), 422, 'Invalid workflow step key.');
             abort_unless(WorkflowTaskCatalog::isAllowedInDefinition($type), 422, 'Invalid workflow step type.');
+            abort_if(isset(WorkflowTaskContracts::additions()[$type]) && ($definition['schema_version'] ?? 1) !== 2, 422, 'This workflow task requires schema version 2.');
+            abort_unless(($step['version'] ?? 1) === 1, 422, 'Unsupported workflow task version.');
             abort_unless(! isset($keys[$key]), 422, 'Workflow step keys must be unique.');
             $keys[$key] = true;
             $payload = is_array($step['payload'] ?? null) ? $step['payload'] : [];
             $this->validatePayload($type, $payload);
+            if (($definition['schema_version'] ?? 1) === 2) {
+                $boundInput = $payload;
+                foreach ($payload['input_bindings'] ?? [] as $target => $reference) {
+                    data_set($boundInput, $target, ['$ref' => $reference]);
+                }
+                WorkflowSchema::validate($boundInput, WorkflowTaskCatalog::task($type)['input_schema'], '$.'.$key, true);
+            }
+            if (in_array($type, ['control.foreach', 'control.until'], true)) {
+                abort_unless(is_array($payload['body'] ?? null), 422, 'Workflow control body is required.');
+                $this->validate(array_merge($payload['body'], ['schema_version' => 2]), $depth + 1);
+            }
+            if ($type === 'control.parallel') {
+                abort_unless(is_array($payload['branches'] ?? null) && count($payload['branches']) >= 1 && count($payload['branches']) <= 10, 422, 'Invalid parallel branches.');
+                foreach ($payload['branches'] as $branch) {
+                    abort_unless(is_array($branch), 422, 'Invalid parallel branch.');
+                    $this->validate(array_merge($branch, ['schema_version' => 2]), $depth + 1);
+                }
+            }
             $routes = $this->normalizeRoutes($step['routes'] ?? []);
             if ($routes !== []) {
                 $payload['routes'] = $routes;
@@ -29,6 +53,7 @@ class WorkflowDefinitionValidator
             $normalized[] = [
                 'key' => $key,
                 'type' => $type,
+                'version' => $step['version'] ?? 1,
                 'depends_on' => array_values(array_filter((array) ($step['depends_on'] ?? []), 'is_string')),
                 'requires_approval' => (bool) ($step['requires_approval'] ?? false)
                     || (bool) (WorkflowTaskCatalog::task($type)['requires_approval'] ?? false),
@@ -83,7 +108,11 @@ class WorkflowDefinitionValidator
                     $scan($child);
                 }
             };
-            $scan($step['payload']);
+            $referencePayload = $step['payload'];
+            if (str_starts_with($step['type'], 'control.')) {
+                unset($referencePayload['body'], $referencePayload['branches']);
+            }
+            $scan($referencePayload);
             $predecessors = $step['depends_on'];
             for ($index = 0; $index < count($predecessors); $index++) {
                 foreach ($dependencies[$predecessors[$index]] ?? [] as $ancestor) {
@@ -110,7 +139,7 @@ class WorkflowDefinitionValidator
         if (! is_array($raw) || $raw === []) {
             return [];
         }
-        $allowedOutcomes = ['success', 'failed', 'partial', 'timeout', 'default', 'true', 'false'];
+        $allowedOutcomes = ['success', 'failed', 'partial', 'timeout', 'cancelled', 'default', 'true', 'false'];
         $routes = [];
         foreach ($raw as $outcome => $route) {
             abort_unless(in_array($outcome, $allowedOutcomes, true), 422, 'Invalid workflow route outcome.');
@@ -132,6 +161,26 @@ class WorkflowDefinitionValidator
 
     public function validatePayload(string $type, array $payload): void
     {
+        if (isset($payload['output_schema'])) {
+            abort_unless(is_array($payload['output_schema']), 422, 'Invalid workflow output schema.');
+            WorkflowSchema::supported($payload['output_schema']);
+        }
+        if ($type === 'test.assert') {
+            abort_unless(is_array($payload['assertions'] ?? null), 422, 'workflow_assertions_required');
+            app(WorkflowDataTasks::class)->validateAssertions($payload['assertions']);
+        }
+        if (array_key_exists('thinking_tier', $payload)) {
+            abort_unless(in_array($payload['thinking_tier'], ['inherit', 'fast', 'balanced', 'thorough', 'max', 'ultra'], true), 422, 'Invalid workflow task thinking tier.');
+        }
+        if (array_key_exists('thinking_config', $payload)) {
+            $config = $payload['thinking_config'];
+            abort_unless(is_array($config) && count($config) === 3 && array_diff(array_keys($config), ['initialTokens', 'maxThinkingTokens', 'responseReserveTokens']) === [], 422, 'Invalid workflow thinking config.');
+            foreach ($config as $value) {
+                abort_unless(is_int($value), 422, 'Invalid workflow thinking token count.');
+            }
+            abort_unless($config['initialTokens'] >= 1 && $config['initialTokens'] <= $config['maxThinkingTokens'] && $config['maxThinkingTokens'] <= 65536
+                && $config['responseReserveTokens'] >= 256 && $config['maxThinkingTokens'] + $config['responseReserveTokens'] <= 131072, 422, 'Workflow thinking config exceeds bounds.');
+        }
         abort_unless(strlen(json_encode($payload, JSON_THROW_ON_ERROR)) <= 20000, 422, 'Workflow step payload is too large.');
         $bindings = $payload['input_bindings'] ?? [];
         abort_unless(is_array($bindings) && count($bindings) <= 50, 422, 'Invalid input bindings.');
@@ -139,6 +188,7 @@ class WorkflowDefinitionValidator
             abort_unless(is_string($target) && preg_match('/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/', $target)
                 && is_string($reference) && preg_match('/^(input|event|steps)(\.[A-Za-z0-9_-]+)+$/', $reference), 422, 'Invalid input binding.');
             abort_if(in_array(explode('.', $target)[0], ['device_id', 'workflow_definition_id', 'project_id', 'file_scope', 'workspace_root_id'], true), 422, 'Bindings cannot change execution identity.');
+            abort_if(in_array(explode('.', $target)[0], ['body', 'branches'], true), 422, 'Bindings cannot replace control definitions.');
         }
         if ($type === 'condition') {
             abort_unless(in_array($payload['operator'] ?? 'eq', ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'exists'], true), 422, 'Invalid condition operator.');

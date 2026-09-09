@@ -14,12 +14,14 @@ class WorkflowRun extends Model
         'current_workflow_step_id', 'status', 'sandbox', 'input', 'output', 'context',
         'started_at', 'finished_at', 'duration_ms',
         'workflow_revision_id', 'definition_snapshot', 'parent_execution_id',
+        'root_workflow_run_id', 'budgets', 'budget_state', 'test_mode',
     ];
 
     protected $casts = [
         'sandbox' => 'boolean',
         'input' => 'array', 'output' => 'array', 'context' => 'array',
         'definition_snapshot' => 'array',
+        'budgets' => 'array', 'budget_state' => 'array',
         'started_at' => 'datetime', 'finished_at' => 'datetime', 'duration_ms' => 'integer',
     ];
 

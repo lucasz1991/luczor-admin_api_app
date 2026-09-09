@@ -25,14 +25,32 @@ class WorkflowStepExecutor
     public function execute(int $stepId): void
     {
         $candidate = WorkflowStep::with('run')->find($stepId);
-        if (! $candidate || $candidate->run?->status !== 'running') {
+        if (! $candidate || $candidate->run?->status !== 'running' || $candidate->status !== 'ready') {
             return;
         }
-        // Claim atomically so parallel workers cannot run the same step twice.
-        $claimed = WorkflowStep::query()->whereKey($stepId)->where('status', 'ready')->update([
-            'status' => 'running', 'started_at' => now(),
-        ]);
-        if ($claimed !== 1) {
+        try {
+            app(WorkflowBindings::class)->resolve($candidate);
+            $candidate->refresh();
+            if (($candidate->run->definition_snapshot['definition']['schema_version'] ?? 1) === 2) {
+                WorkflowSchema::validate($candidate->resolved_payload, WorkflowTaskCatalog::task($candidate->type)['input_schema']);
+            }
+        } catch (Throwable $error) {
+            $this->workflows->fail($candidate, mb_substr($error->getMessage(), 0, 8000));
+
+            return;
+        }
+        // Capability absence is waiting, not an execution/retry or proof of support.
+        if (WorkflowTaskCatalog::isClientTask($candidate->type) && ! $candidate->run->sandbox
+            && app(WorkflowDeviceCapabilities::class)->required($candidate)) {
+            $device = $this->resolveDevice($candidate, (string) ($candidate->run->context['_execution']['device_id'] ?? $candidate->resolved_payload['device_id'] ?? ''));
+            if (! $device || ! app(WorkflowDeviceCapabilities::class)->admission($device, $candidate->type, $candidate->type_version)['ready']) {
+                WorkflowStep::whereKey($stepId)->where('status', 'ready')->update(['status' => 'waiting_for_capability', 'error' => 'workflow_task_capability_unavailable']);
+
+                return;
+            }
+            $candidate->update(['control_state' => ['admitted_device_id' => $device->device_id]]);
+        }
+        if (! app(WorkflowBudgetService::class)->claim($candidate)) {
             return;
         }
 
@@ -52,7 +70,14 @@ class WorkflowStepExecutor
         // (completed with a synthetic result) instead of performing real side
         // effects; read-only server tasks still run normally.
         if ($step->run?->sandbox && $this->isSandboxSuppressed($step->type)) {
-            $output = ['sandbox' => true, 'simulated' => $step->type, 'note' => 'In Sandbox nicht real ausgeführt.'];
+            try {
+                $output = $step->run->test_mode === 'simulation' ? app(WorkflowTestService::class)->simulation($step)
+                    : ['sandbox' => true, 'simulated' => $step->type, 'note' => 'In Sandbox nicht real ausgeführt.'];
+            } catch (Throwable $error) {
+                $this->workflows->fail($step->fresh(), mb_substr($error->getMessage(), 0, 8000));
+
+                return;
+            }
             $this->workflows->complete($step->fresh(), $output);
             $this->audit->record([
                 'actor_user_id' => $step->user_id,
@@ -73,6 +98,15 @@ class WorkflowStepExecutor
         if ($step->type === 'workflow') {
             try {
                 $this->workflows->startChildWorkflow($step->fresh());
+            } catch (Throwable $error) {
+                $this->workflows->fail($step->fresh(), mb_substr($error->getMessage(), 0, 8000));
+            }
+
+            return;
+        }
+        if (in_array($step->type, ['control.foreach', 'control.until', 'control.parallel'], true)) {
+            try {
+                app(WorkflowStructuredControl::class)->sync($step);
             } catch (Throwable $error) {
                 $this->workflows->fail($step->fresh(), mb_substr($error->getMessage(), 0, 8000));
             }
@@ -110,6 +144,7 @@ class WorkflowStepExecutor
                 'memory.recall' => $this->recall($step),
                 'task.create' => $this->createTask($step),
                 'condition' => $this->condition($step),
+                'data.map', 'data.filter', 'data.split', 'data.collect', 'data.merge', 'control.join', 'test.assert' => app(WorkflowDataTasks::class)->execute($step),
                 default => throw new \RuntimeException('This workflow step type requires an external approval or device result.'),
             };
             $this->workflows->complete($step->fresh(), $output);
@@ -287,16 +322,23 @@ class WorkflowStepExecutor
     {
         $payload = $step->resolved_payload ?? $step->payload ?? [];
         $params = array_diff_key($payload, array_flip(['routes', 'title', 'list', 'device_id']));
+        if (($params['thinking_tier'] ?? 'inherit') === 'inherit') {
+            $params['thinking_tier'] = $step->run->definition_snapshot['definition']['thinking_tier'] ?? 'balanced';
+        }
         $context = $step->run->context['_execution'] ?? [];
         $deviceId = trim((string) ($context['device_id'] ?? $payload['device_id'] ?? ''));
+        $deviceId = $step->control_state['admitted_device_id'] ?? $deviceId;
         $device = $this->resolveDevice($step, $deviceId);
         if (! $device) {
             $step->update(['status' => 'waiting_for_device', 'started_at' => null, 'error' => 'Waiting for the bound device.']);
 
             return;
         }
+        if (app(WorkflowDeviceCapabilities::class)->required($step)) {
+            abort_unless(app(WorkflowDeviceCapabilities::class)->admission($device, $step->type, $step->type_version)['ready'], 409, 'workflow_task_capability_changed');
+        }
         if (! empty($context['automatic'])) {
-            app(AutomationGrantService::class)->authorizeTask($step->run, $step->type, $payload);
+            app(AutomationGrantService::class)->authorizeTask($step->run, $step->type, $payload, $step);
         }
         $job = $this->deviceJobs->createForWorkflow($step, $device, $params);
         $step->update(['external_run_type' => 'device_job', 'external_run_id' => $job->public_id, 'started_at' => $job->started_at]);

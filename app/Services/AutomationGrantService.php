@@ -6,7 +6,9 @@ use App\Models\Device;
 use App\Models\Project;
 use App\Models\WorkflowAutomationGrant;
 use App\Models\WorkflowDefinition;
+use App\Models\WorkflowRepairRevision;
 use App\Models\WorkflowRun;
+use App\Models\WorkflowTestEvidence;
 use Illuminate\Support\Facades\DB;
 
 /** Standing consent is a bounded capability envelope, never permission supplied by event data. */
@@ -14,7 +16,7 @@ class AutomationGrantService
 {
     public function current(WorkflowDefinition $definition): ?WorkflowAutomationGrant
     {
-        return WorkflowAutomationGrant::where('workflow_definition_id', $definition->id)->latest('id')->first();
+        return WorkflowAutomationGrant::where('workflow_definition_id', $definition->id)->where('status', '!=', 'testing')->latest('id')->first();
     }
 
     public function configure(WorkflowDefinition $definition, array $data, int $userId, string $deviceId): WorkflowAutomationGrant
@@ -72,7 +74,7 @@ class AutomationGrantService
         abort_unless(count($steps) <= $config['max_steps'], 409, 'Automation step budget requires new approval.');
         abort_unless(! isset($executionContext['root_path']) || self::canonicalRoot((string) $executionContext['root_path']) === $config['root_path'], 409, 'Automation root exceeds the standing approval.');
         foreach ($steps as $step) {
-            $this->assertTask($grant, (string) ($step['type'] ?? ''), $step['payload'] ?? [], (string) ($step['key'] ?? ''), false);
+            $this->assertTask($grant, (string) ($step['type'] ?? ''), $step['payload'] ?? [], ($step['_definition_id'] ?? '').':'.($step['key'] ?? ''), false);
         }
         $activeHour = WorkflowRun::where('workflow_definition_id', $definition->id)->where('created_at', '>=', now()->subHour())->count();
         abort_unless($activeHour < $config['max_runs_per_hour'], 409, 'automation_hourly_budget');
@@ -81,7 +83,7 @@ class AutomationGrantService
         return $grant->toArray();
     }
 
-    public function authorizeTask(WorkflowRun $run, string $taskType, array $resolvedPayload): array
+    public function authorizeTask(WorkflowRun $run, string $taskType, array $resolvedPayload, ?\App\Models\WorkflowStep $step = null): array
     {
         $execution = $run->context['_execution'] ?? [];
         if (empty($execution['automatic'])) {
@@ -90,9 +92,34 @@ class AutomationGrantService
         $grantData = $execution['grant'] ?? [];
         $definition = WorkflowDefinition::findOrFail($grantData['workflow_definition_id'] ?? $run->workflow_definition_id);
         $grant = $this->current($definition);
-        abort_unless($grant && $grant->status === 'active' && (int) $grant->id === (int) ($grantData['id'] ?? 0), 409, 'Automation approval was revoked or replaced.');
+        $requested = WorkflowAutomationGrant::find($grantData['id'] ?? 0);
+        if ($requested?->status === 'testing') {
+            $binding = $requested->config['test_binding'] ?? [];
+            $evidence = WorkflowTestEvidence::find($binding['test_evidence_id'] ?? 0);
+            $repair = WorkflowRepairRevision::find($binding['repair_revision_id'] ?? 0);
+            abort_unless($run->test_mode === 'real' && ! $run->sandbox && $evidence?->status === 'running' && $repair?->status === 'proposed'
+                && (int) $evidence->user_id === (int) $run->user_id
+                && ($binding['run'] ?? null) === ($execution['_test_run_id'] ?? null)
+                && (int) $evidence->workflow_run_id === (int) ($run->root_workflow_run_id ?: $run->id)
+                && (int) $requested->predecessor_grant_id === (int) $grant?->id && $grant?->status === 'active'
+                && ($definition->repair_policy ?? null) === ($repair->scope['policy'] ?? null)
+                && hash_equals($repair->definition_hash, $binding['definition_hash'] ?? '')
+                && hash_equals($evidence->environment_hash, $binding['environment_hash'] ?? ''), 409, 'workflow_testing_grant_binding_invalid');
+            $grant = $requested;
+        } else {
+            // Only an explicitly authorized repair lineage preserves a frozen older run's grant.
+            $cursor = $grant;
+            for ($depth = 0; $cursor && $depth < 3 && (int) $cursor->id !== (int) ($grantData['id'] ?? 0); $depth++) {
+                $cursor = $cursor->status === 'active' && $cursor->predecessor_grant_id && $cursor->test_evidence_id
+                    ? WorkflowAutomationGrant::find($cursor->predecessor_grant_id) : null;
+            }
+            abort_unless($cursor && $cursor->status === 'active' && (int) $cursor->id === (int) ($grantData['id'] ?? 0), 409, 'Automation approval was revoked or replaced.');
+            $grant = $cursor;
+        }
         abort_unless(Device::where('user_id', $run->user_id)->where('device_id', $grant->device_id)->whereNull('revoked_at')->exists(), 409, 'Automation device was revoked.');
-        $this->assertTask($grant, $taskType, $resolvedPayload, (string) ($resolvedPayload['_step_key'] ?? ''), true);
+        abort_if($step !== null && (int) $step->workflow_run_id !== (int) $run->id, 409, 'workflow_grant_step_identity_mismatch');
+        $stepKey = $step ? $run->workflow_definition_id.':'.$step->step_key : (string) ($resolvedPayload['_step_key'] ?? '');
+        $this->assertTask($grant, $taskType, $resolvedPayload, $stepKey, true);
 
         return $grant->toArray();
     }
@@ -148,8 +175,10 @@ class AutomationGrantService
             if ($resolved || is_string($text)) {
                 $hash = is_string($text) ? hash('sha256', $text) : '';
                 abort_unless($hash !== '' && in_array($hash, array_values($config['script_hashes'] ?? []), true), 409, 'Changed script or agent prompt requires new approval.');
-                if ($stepKey !== '' && isset($config['script_hashes'][$stepKey])) {
-                    abort_unless(hash_equals($config['script_hashes'][$stepKey], $hash), 409, 'Changed script or agent prompt requires new approval.');
+                $legacyKey = str_contains($stepKey, ':') ? explode(':', $stepKey, 2)[1] : $stepKey;
+                $pinned = $config['script_hashes'][$stepKey] ?? $config['script_hashes'][$legacyKey] ?? null;
+                if ($stepKey !== '' && $pinned !== null) {
+                    abort_unless(hash_equals($pinned, $hash), 409, 'Changed script or agent prompt requires new approval.');
                 }
             }
         }
@@ -157,12 +186,16 @@ class AutomationGrantService
 
     private function collectSteps(array $graph): array
     {
-        $steps = $graph['definition']['steps'] ?? $graph['steps'] ?? [];
-        foreach ($graph['children'] ?? [] as $child) {
-            $steps = array_merge($steps, $this->collectSteps($child));
-        }
+        return WorkflowSnapshotIdentity::steps($graph);
+    }
 
-        return $steps;
+    public function assertGraph(WorkflowAutomationGrant $grant, array $graph): void
+    {
+        $steps = $this->collectSteps($graph);
+        abort_unless(count($steps) <= ($grant->config['max_steps'] ?? 100), 409, 'workflow_grant_step_budget');
+        foreach ($steps as $step) {
+            $this->assertTask($grant, $step['type'], $step['payload'] ?? [], ($step['_definition_id'] ?? '').':'.$step['key'], false);
+        }
     }
 
     public static function canonicalRoot(string $path): string
@@ -186,5 +219,14 @@ class AutomationGrantService
         };
 
         return json_encode($sort($value), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function configHash(array $config): string
+    {
+        if (($config['script_hashes'] ?? null) === []) {
+            $config['script_hashes'] = (object) [];
+        }
+
+        return hash('sha256', self::canonicalJson($config));
     }
 }

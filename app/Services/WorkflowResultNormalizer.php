@@ -9,11 +9,14 @@ namespace App\Services;
  */
 class WorkflowResultNormalizer
 {
-    public const OUTCOMES = ['success', 'failed', 'partial', 'timeout', 'true', 'false'];
+    public const OUTCOMES = ['success', 'failed', 'partial', 'timeout', 'cancelled', 'true', 'false'];
 
     /** @param array<string,mixed> $output */
     public static function outcome(array $output, string $fallback = 'success'): string
     {
+        if (($output['ok'] ?? null) === false) {
+            return 'failed';
+        }
         $raw = strtolower(trim((string) ($output['outcome'] ?? $output['status'] ?? '')));
 
         return in_array($raw, self::OUTCOMES, true) ? $raw : $fallback;

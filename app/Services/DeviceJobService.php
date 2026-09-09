@@ -37,6 +37,7 @@ class DeviceJobService
     /** @param array{device_id:string,project_id?:string|null,agent_run_id?:int|null,tool_profile:string,payload?:array<string,mixed>} $data */
     public function create(Request $request, array $data): DeviceJob
     {
+        abort_if($data['tool_profile'] === 'workflow.task', 422, 'Workflow bundles can only be issued by the persistent workflow scheduler.');
         $actor = app(ApiActor::class);
         $tools = app(DeviceToolPolicy::class);
         $signer = app(DeviceJobSigner::class);
@@ -141,6 +142,7 @@ class DeviceJobService
             $context = $run->context['_execution'] ?? [];
             $payload = $tools->normalize('workflow.task', [
                 'task_key' => $step->type,
+                'task_version' => $step->type_version,
                 'params' => $params,
                 'workflow' => [
                     'run' => $run->public_id, 'step_id' => $step->id, 'step_key' => $step->step_key,
@@ -151,6 +153,9 @@ class DeviceJobService
                     'device_id' => $device->device_id,
                     'file_scope' => $params['file_scope'] ?? 'legacy', 'workspace_root_id' => $params['workspace_root_id'] ?? null,
                     'automatic' => (bool) ($context['automatic'] ?? false), 'grant' => $context['grant'] ?? null,
+                    'test_mode' => $run->test_mode, 'test_binding' => $context['grant']['config']['test_binding'] ?? null,
+                    'test_run' => $context['_test_run_id'] ?? null,
+                    'thinking_tier' => $params['thinking_tier'] ?? $run->definition_snapshot['definition']['thinking_tier'] ?? 'balanced',
                     'workspace_root_path' => $params['workspace_root_id'] ?? null,
                     'input_sources' => $this->workflowInputSources($step->payload ?? []),
                     'output_keys' => [$step->step_key],

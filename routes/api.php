@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V1\DeviceJobController;
 use App\Http\Controllers\Api\V1\GithubController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\LlmController;
+use App\Http\Controllers\Api\V1\LocalModelAssetController;
 use App\Http\Controllers\Api\V1\LocalModelManifestController;
 use App\Http\Controllers\Api\V1\McpController;
 use App\Http\Controllers\Api\V1\MemoryController;
@@ -52,7 +53,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/voice/releases/{version}/{file}', VoiceAssetController::class)
         ->where(['version' => '[A-Za-z0-9._-]+', 'file' => '[A-Za-z0-9._-]+'])
         ->name('api.v1.voice.asset');
-    Route::get('/local-model/assets/{hash}', \App\Http\Controllers\Api\V1\LocalModelAssetController::class)
+    Route::get('/local-model/assets/{hash}', LocalModelAssetController::class)
         ->where('hash', '[a-f0-9]{64}')->middleware('throttle:30,1');
     // Public verification material only; TLS authenticates this bootstrap endpoint.
     Route::get('/local-model/signing-key', [LocalModelManifestController::class, 'signingKey'])
@@ -267,3 +268,4 @@ Route::prefix('v1')->group(function () {
 });
 
 require __DIR__.'/workflow-triggers.php';
+require __DIR__.'/workflow-execution.php';

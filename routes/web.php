@@ -84,7 +84,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::post('/dashboard/workflows/{workflowDefinition}/start', [WorkflowController::class, 'startWorkflow'])->name('dashboard.workflows.start');
         Route::get('/dashboard/workflows/{workflowDefinition}/export', [WorkflowController::class, 'exportWorkflow'])->name('dashboard.workflows.export');
         Route::delete('/dashboard/workflows/{workflowDefinition}', [WorkflowController::class, 'deleteWorkflow'])->name('dashboard.workflows.destroy');
-        Route::put('/dashboard/workflows/{workflowDefinition}', [WorkflowController::class, 'updateWorkflow'])->name('dashboard.workflows.update');
+        require __DIR__.'/workflow-editor-web.php';
         Route::post('/dashboard/workflows/{workflowDefinition}/duplicate', [WorkflowController::class, 'duplicateWorkflow'])->name('dashboard.workflows.duplicate');
         Route::post('/dashboard/workflows/{workflowDefinition}/toggle', [WorkflowController::class, 'toggleWorkflow'])->name('dashboard.workflows.toggle');
         Route::post('/dashboard/workflows/{workflowDefinition}/lock', [WorkflowController::class, 'toggleWorkflowLock'])->name('dashboard.workflows.lock');

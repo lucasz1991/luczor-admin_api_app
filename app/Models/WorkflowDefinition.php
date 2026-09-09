@@ -8,11 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
+/** @property array<string,mixed>|null $repair_policy */
 class WorkflowDefinition extends Model
 {
-    protected $fillable = ['user_id', 'project_id', 'name', 'version', 'status', 'is_locked', 'definition', 'current_revision_id', 'change_summary'];
+    protected $fillable = ['user_id', 'project_id', 'name', 'version', 'status', 'is_locked', 'definition', 'current_revision_id', 'change_summary', 'repair_policy'];
 
-    protected $casts = ['definition' => 'array', 'is_locked' => 'boolean'];
+    protected $casts = ['definition' => 'array', 'is_locked' => 'boolean', 'repair_policy' => 'array'];
 
     protected static function booted(): void
     {
@@ -84,8 +85,27 @@ class WorkflowDefinition extends Model
         if (! $this->exists) {
             return;
         }
-        $childIds = collect($this->definition['steps'] ?? [])
-            ->filter(fn ($step) => is_array($step) && ($step['type'] ?? null) === 'workflow')
+        $flat = [];
+        $walk = function (mixed $definition, int $depth = 0) use (&$walk, &$flat): void {
+            if ($depth > 8 || ! is_array($definition)) {
+                return;
+            }
+            foreach ($definition['steps'] ?? [] as $step) {
+                if (! is_array($step)) {
+                    continue;
+                }
+                $flat[] = $step;
+                if (is_array($step['payload']['body'] ?? null)) {
+                    $walk($step['payload']['body'], $depth + 1);
+                }
+                foreach ($step['payload']['branches'] ?? [] as $branch) {
+                    $walk($branch, $depth + 1);
+                }
+            }
+        };
+        $walk($this->definition ?? []);
+        $childIds = collect($flat)
+            ->filter(fn ($step) => ($step['type'] ?? null) === 'workflow')
             ->map(fn ($step) => (int) ($step['payload']['workflow_definition_id'] ?? 0))
             ->filter(fn ($id) => $id > 0 && $id !== $this->id)
             ->unique()

@@ -77,12 +77,14 @@ class DeviceToolPolicy
     {
         $key = (string) ($payload['task_key'] ?? '');
         abort_unless(WorkflowTaskCatalog::isClientTask($key), 422, 'The workflow client task is not in the catalog.');
+        abort_unless(($payload['task_version'] ?? 1) === 1, 422, 'Unsupported workflow task version.');
         $params = is_array($payload['params'] ?? null) ? $payload['params'] : [];
         abort_unless(strlen((string) json_encode($params)) <= 20000, 422, 'Workflow task params are too large.');
         $workflow = is_array($payload['workflow'] ?? null) ? $payload['workflow'] : [];
 
         return [
             'task_key' => $key,
+            'task_version' => $payload['task_version'] ?? 1,
             'params' => $params,
             'workflow' => [
                 'run' => (string) ($workflow['run'] ?? ''),
@@ -102,6 +104,10 @@ class DeviceToolPolicy
                 'output_keys' => array_values((array) ($workflow['output_keys'] ?? [])),
                 'automatic' => (bool) ($workflow['automatic'] ?? false),
                 'grant' => is_array($workflow['grant'] ?? null) ? $workflow['grant'] : null,
+                'test_mode' => in_array($workflow['test_mode'] ?? null, ['definition', 'simulation', 'real'], true) ? $workflow['test_mode'] : null,
+                'test_binding' => is_array($workflow['test_binding'] ?? null) ? $workflow['test_binding'] : null,
+                'test_run' => is_string($workflow['test_run'] ?? null) ? $workflow['test_run'] : null,
+                'thinking_tier' => in_array($workflow['thinking_tier'] ?? null, ['fast', 'balanced', 'thorough', 'max', 'ultra'], true) ? $workflow['thinking_tier'] : 'balanced',
             ],
         ];
     }
