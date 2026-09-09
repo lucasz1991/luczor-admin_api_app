@@ -102,6 +102,8 @@ class AdminDashboardData
             return $this->archivesPageData();
         }
 
+        $agentTeamSetup = $page === 'agents' ? app(AgentTeamSetupService::class)->inspect() : [];
+
         return [
             'page' => $page,
             'operations' => ['users' => User::count(), 'devices_online' => Device::where('status', 'online')->count(), 'device_jobs_open' => DeviceJob::whereIn('status', ['approval_required', 'queued', 'running'])->count(), 'llm_runs_24h' => LlmRun::where('created_at', '>=', now()->subDay())->count(), 'evaluations_24h' => EvaluationResult::where('created_at', '>=', now()->subDay())->count(), 'audit_events_24h' => AuditEvent::where('created_at', '>=', now()->subDay())->count()],
@@ -125,8 +127,9 @@ class AdminDashboardData
                 ? EvaluationResult::with('llmRun')->latest()->limit(20)->get()
                 : collect(),
             'agentRuns' => $page === 'agents' ? AgentRun::withCount('tasks')->latest()->limit(30)->get() : collect(),
-            'agentTeamPolicy' => $page === 'agents' ? app(AgentTeamPolicyService::class)->payload() : [],
-            'agentModelCatalog' => $page === 'agents' ? app(AgentTeamPolicyService::class)->catalog() : [],
+            'agentTeamPolicy' => $agentTeamSetup['policy'] ?? [],
+            'agentModelCatalog' => $agentTeamSetup['catalog'] ?? [],
+            'agentTeamSetup' => $agentTeamSetup,
             'agentEvents' => $page === 'agents' ? AuditEvent::latest()->limit(50)->get() : collect(),
             'workflowDefinitions' => $page === 'workflows'
                 ? WorkflowDefinition::withCount(['runs',

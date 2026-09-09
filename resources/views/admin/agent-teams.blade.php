@@ -1,3 +1,29 @@
+@if(session('agent_team_setup_result'))
+    <x-ui.alert :tone="session('agent_team_setup_result.tone')">{{ session('agent_team_setup_result.message') }}</x-ui.alert>
+@endif
+<x-ui.panel title="Einrichtung vervollständigen" description="Der Team-Schalter allein legt noch keine Rollenmodelle an. Diese Prüfung liest nur die aktuelle Konfiguration.">
+    <p class="text-sm"><strong>{{ $agentTeamSetup['configured_count'] }} von {{ $agentTeamSetup['requested_count'] }} externen Rollen konfiguriert</strong> · {{ $agentTeamSetup['selected_label'] }}</p>
+    <ol class="mt-4 space-y-3 text-sm list-decimal pl-5">
+        <li>
+            <strong>Katalog und Rollenabdeckung prüfen.</strong>
+            <span>{{ $agentTeamSetup['catalog_current'] ? 'Der gespeicherte Katalog liegt innerhalb des 14-Tage-Zeitraums.' : 'Der Katalog muss neu geprüft werden, bevor Rollen ergänzt werden.' }}</span>
+            <form method="POST" action="{{ route('dashboard.agent-teams.research') }}" class="mt-2">@csrf<x-ui.button type="submit" variant="secondary">OpenRouter-Katalog neu prüfen</x-ui.button></form>
+            <p class="mt-2 text-xs text-slate-400">Geprüfte Kandidaten: @foreach($agentTeamSetup['roles'] as $role){{ $role['label'] }} {{ $role['catalog_candidates'] }}{{ $loop->last ? '.' : ' · ' }}@endforeach</p>
+            @if(collect($agentTeamSetup['roles'])->contains(fn ($role) => $role['catalog_candidates'] === 0))
+                <p class="mt-2 text-amber-200">Für Rollen mit 0 Kandidaten kann „Teams ergänzen“ keine Modellroute anlegen. Katalog neu prüfen oder unter <a class="underline" href="{{ route('admin.page', 'models') }}">Modelle und Rollenketten</a> eine eigene passende Auswahl konfigurieren.</p>
+            @endif
+        </li>
+        <li>
+            <strong>Provider-Zugang zuordnen.</strong>
+            @if($agentTeamSetup['credential_count'] === 0)
+                <span>Kein aktiver OpenRouter-Zugang mit Chat Completions vorhanden.</span> <a class="underline" href="{{ route('admin.page', 'providers') }}">Zugänge verwalten</a>
+            @else
+                <span>{{ $agentTeamSetup['credential_count'] }} aktive Zugänge mit passendem Anfrageformat vorhanden. Gewünschten Zugang im Formular unten auswählen; Schlüssel und Rollenroute werden gesondert geprüft.</span>
+            @endif
+        </li>
+        <li><strong>„Teams ergänzen“ ausführen und Ergebnis prüfen.</strong> Fehlende Rollen werden ergänzt. Vorhandene leere aktive Ketten werden nur mit der zusätzlichen Checkbox befüllt. Der Rollenstatus darunter nennt verbleibende Hindernisse.</li>
+    </ol>
+</x-ui.panel>
 <x-ui.panel title="Agententeams und Modellrecherche">
     <p class="mt-2 text-sm text-slate-400">Das lokale Modell koordiniert und führt freigegebene Tools aus. Externe Modelle liefern begrenzte Recherche, Codeentwürfe und Prüfberichte. Nur ausdrücklich freigegebener Kontext verlässt den Desktop.</p>
     <div class="mt-4 grid gap-4 lg:grid-cols-2">

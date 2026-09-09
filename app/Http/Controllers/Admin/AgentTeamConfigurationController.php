@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Models\AgentProfile;
 use App\Services\AgentTeamDefaultsService;
 use App\Services\AgentTeamPolicyService;
+use App\Services\AgentTeamSetupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 
@@ -16,7 +17,9 @@ class AgentTeamConfigurationController extends AdminController
         $data = $request->validate(['provider_credential_id' => ['required', 'integer'], 'fill_empty_routes' => ['sometimes', 'boolean']]);
         $counts = $defaults->prepare((int) $data['provider_credential_id'], (bool) ($data['fill_empty_routes'] ?? false));
 
-        return Redirect::route('admin.page', 'agents')->with('status', sprintf('Agententeams ergänzt: %d Modelle, %d Rollen, %d Routingeinträge. Bestehende Konfiguration bleibt erhalten.', ...array_values($counts)));
+        $message = sprintf('Ergänzt: %d Modelle, %d Rollen, %d Routingeinträge. Bestehende Konfiguration bleibt erhalten.', ...array_values($counts));
+
+        return Redirect::route('admin.page', 'agents')->with('agent_team_setup_result', app(AgentTeamSetupService::class)->result($message));
     }
 
     public function research(Request $request, AgentTeamDefaultsService $defaults)
@@ -39,6 +42,6 @@ class AgentTeamConfigurationController extends AdminController
             'config' => ['default_preset' => $data['default_preset'], 'max_parallel' => (int) $data['max_parallel']],
         ]);
 
-        return Redirect::route('admin.page', 'agents')->with('status', 'Agententeam-Konfiguration gespeichert.');
+        return Redirect::route('admin.page', 'agents')->with('agent_team_setup_result', app(AgentTeamSetupService::class)->result('Agententeam-Konfiguration gespeichert.'));
     }
 }

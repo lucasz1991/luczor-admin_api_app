@@ -345,3 +345,6 @@ Append-only communication log. Source and runtime evidence override stale entrie
 - WorkflowTaskCatalog enriched for usable visual editing: required AI instruction and script code, object output_schema, explicit inference/output-format/condition/file-scope enums, required file path/content and nested workflow ID. General KI-Schritt label preserves external/local choice. Existing validation stays unchanged; advertised enum acceptance and invalid/root rejection are regression tested.
 - Final targeted backend catalog/dynamic/template suite25 tests/161 assertions, catalog PHPStan/Pint/diff checks passed. Full desktop vue-tsc --build --force passed after correcting malformed ToolResult test fixtures; enum metadata typed for StepEditor.
 - All source ownership returned. No further changes planned, no deployment/live migration or commit.
+
+## 2026-09-08 | Codex/root | Workflow integration completed-local
+- Combined implementation/release verified. All root and subagent source ownership released; see E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-dynamic-workflows-implementation.md for final evidence and acceptance boundaries. No deployment or own commit.
