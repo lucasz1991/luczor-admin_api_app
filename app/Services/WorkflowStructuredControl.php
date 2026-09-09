@@ -25,6 +25,9 @@ class WorkflowStructuredControl
             $payload = $step->resolved_payload ?? $step->payload;
             $state = $step->control_state ?? ['next' => 0, 'children' => [], 'results' => []];
             $root = app(WorkflowBudgetService::class)->root($parent);
+            if (WorkflowBoundaryStop::requested($root)) {
+                return;
+            }
             $limit = min($root->budgets['max_loop_iterations'] ?? 10, $payload['max_iterations'] ?? 10);
             $children = WorkflowRun::whereIn('id', array_values($state['children']))->get()->keyBy('id');
             foreach ($state['children'] as $index => $id) {

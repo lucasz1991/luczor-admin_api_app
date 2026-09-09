@@ -6,10 +6,12 @@ use App\Http\Middleware\VerifyCsrfToken;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowOperation;
+use App\Models\WorkflowRun;
 use App\Models\WorkflowTestCase;
 use App\Models\WorkflowTestEvidence;
 use App\Models\WorkflowTrigger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -65,6 +67,33 @@ class SessionWorkflowEditorTest extends TestCase
         $member = User::factory()->create(['email_verified_at' => now()]);
         $this->actingAs($member)->getJson(route('dashboard.workflows.editor.state', $workflow))->assertForbidden();
         $this->putJson(route('dashboard.workflows.update', $workflow), $this->savePayload($workflow))->assertForbidden();
+    }
+
+    public function test_run_version_is_derived_from_frozen_snapshot_without_selecting_a_nonexistent_column(): void
+    {
+        $admin = $this->admin();
+        $workflow = $this->workflow($admin);
+        $workflow->update(['version' => 7]);
+        WorkflowRun::create(['public_id' => (string) Str::uuid(), 'user_id' => $admin->id,
+            'workflow_definition_id' => $workflow->id, 'status' => 'completed', 'sandbox' => false,
+            'definition_snapshot' => ['version' => 2, 'definition' => $workflow->definition, 'private_snapshot_data' => 'not-for-editor-state']]);
+        WorkflowRun::create(['public_id' => (string) Str::uuid(), 'user_id' => $admin->id,
+            'workflow_definition_id' => $workflow->id, 'status' => 'completed', 'sandbox' => false]);
+        $runQueries = [];
+        DB::listen(function ($query) use (&$runQueries) {
+            if (str_contains($query->sql, 'workflow_runs')) {
+                $runQueries[] = $query->sql;
+            }
+        });
+        $this->actingAs($admin)->getJson(route('dashboard.workflows.editor.state', $workflow))
+            ->assertOk()->assertJsonPath('workflow.version', 7)
+            ->assertJsonPath('runs.0.definition_version', null)->assertJsonPath('runs.1.definition_version', 2)
+            ->assertJsonPath('runs.1.workflow_definition_id', $workflow->id)
+            ->assertJsonMissingPath('runs.0.definition_snapshot')->assertJsonMissingPath('runs.1.definition_snapshot');
+        $this->assertNotEmpty($runQueries);
+        foreach ($runQueries as $sql) {
+            $this->assertStringNotContainsString('definition_version', $sql);
+        }
     }
 
     public function test_save_is_owner_bound_replayable_and_preserves_real_conflict_status(): void

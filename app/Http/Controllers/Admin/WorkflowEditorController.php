@@ -35,8 +35,8 @@ class WorkflowEditorController extends AdminController
                 'id', 'source_run_id', 'base_version', 'definition', 'definition_hash', 'code_hash', 'status', 'activated_version', 'created_at',
             ]),
             'runs' => WorkflowRun::where('user_id', $owner)->where('workflow_definition_id', $workflowDefinition->id)->latest('id')->limit(50)->get([
-                'id', 'public_id', 'definition_version', 'status', 'sandbox', 'test_mode', 'started_at', 'finished_at', 'created_at',
-            ]),
+                'id', 'public_id', 'workflow_definition_id', 'workflow_revision_id', 'definition_snapshot', 'status', 'sandbox', 'test_mode', 'started_at', 'finished_at', 'created_at',
+            ])->map(fn (WorkflowRun $run) => $run->makeHidden('definition_snapshot')->toArray()),
             'triggers' => WorkflowTrigger::where('user_id', $owner)->where('workflow_definition_id', $workflowDefinition->id)->latest('id')->limit(100)->get([
                 'id', 'name', 'kind', 'enabled', 'config', 'next_due_at', 'created_at',
             ]),

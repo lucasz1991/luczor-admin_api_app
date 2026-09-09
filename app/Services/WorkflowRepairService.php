@@ -153,6 +153,14 @@ class WorkflowRepairService
         // Type/key identities and every permission/cost-bearing field are fixed. Only code and declarative data/conditions may be repaired.
         $oldScope = $this->scope($old);
         abort_unless($oldScope === $this->scope($new), 409, 'workflow_repair_rights_or_cost_scope_changed');
+        foreach ($new as $step) {
+            if (WorkflowTaskCatalog::isClientTask($step['type'])) {
+                $protected = $step['payload'] ?? [];
+                unset($protected['code'], $protected['instruction'], $protected['input_bindings']);
+                // A fixed reference is not a fixed right: editable data/control inputs can change its eventual provider, path or model.
+                abort_if($this->containsBinding($protected), 409, 'workflow_repair_dynamic_scope_requires_review');
+            }
+        }
         $oldAssertions = array_values(array_filter($old, fn ($step) => ($step['type'] ?? '') === 'test.assert'));
         $newAssertions = array_values(array_filter($new, fn ($step) => ($step['type'] ?? '') === 'test.assert'));
         abort_unless(WorkflowTestService::hash($oldAssertions) === WorkflowTestService::hash($newAssertions), 409, 'workflow_repair_assertions_changed');
@@ -166,13 +174,16 @@ class WorkflowRepairService
         }
         $oldBudgets = [];
         foreach (WorkflowSnapshotIdentity::entries($source) as $entry) {
-            $oldBudgets[WorkflowTestService::hash($entry['graph_path'])] = WorkflowBudgetService::policy($entry['definition']);
+            $oldBudgets[WorkflowTestService::hash($entry['graph_path'])] = ['budgets' => WorkflowBudgetService::policy($entry['definition']),
+                'schema_version' => $entry['definition']['schema_version'] ?? 1, 'thinking_tier' => $entry['definition']['thinking_tier'] ?? 'balanced'];
         }
         foreach (WorkflowSnapshotIdentity::entries($candidate) as $entry) {
             $path = WorkflowTestService::hash($entry['graph_path']);
             abort_unless(isset($oldBudgets[$path]), 409, 'workflow_repair_nested_scope_changed');
+            abort_unless(($entry['definition']['schema_version'] ?? 1) === $oldBudgets[$path]['schema_version']
+                && ($entry['definition']['thinking_tier'] ?? 'balanced') === $oldBudgets[$path]['thinking_tier'], 409, 'workflow_repair_execution_policy_changed');
             foreach (WorkflowBudgetService::policy($entry['definition']) as $key => $limit) {
-                abort_if($limit > $oldBudgets[$path][$key], 409, 'workflow_repair_nested_budget_expansion');
+                abort_if($limit > $oldBudgets[$path]['budgets'][$key], 409, 'workflow_repair_nested_budget_expansion');
             }
         }
     }
@@ -191,6 +202,23 @@ class WorkflowRepairService
         }
 
         return $scope;
+    }
+
+    private function containsBinding(mixed $value): bool
+    {
+        if (! is_array($value)) {
+            return false;
+        }
+        if (array_key_exists('$ref', $value)) {
+            return true;
+        }
+        foreach ($value as $item) {
+            if ($this->containsBinding($item)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function scriptHashes(array $snapshot, array $existing): array

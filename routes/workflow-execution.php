@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\WorkflowExecutionController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->middleware('luczor.api:brain.write')->group(function () {
+    Route::post('/workflow-runs/{workflowRun}/stop-after-step', [WorkflowExecutionController::class, 'stopAfterStep']);
     Route::post('/workflows/device-capabilities', [WorkflowExecutionController::class, 'capabilities']);
     Route::post('/workflows/{workflowDefinition}/test-cases', [WorkflowExecutionController::class, 'storeCase'])->whereNumber('workflowDefinition');
     Route::post('/workflows/{workflowDefinition}/tests', [WorkflowExecutionController::class, 'startTest'])->whereNumber('workflowDefinition');

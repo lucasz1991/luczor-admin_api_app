@@ -9,6 +9,7 @@ use App\Models\WorkflowOperation;
 use App\Models\WorkflowRun;
 use App\Models\WorkflowStep;
 use App\Services\WorkflowAuthoringService;
+use App\Services\WorkflowBoundaryStop;
 use App\Services\WorkflowService;
 use App\Services\WorkflowTemplateService;
 use Illuminate\Http\Request;
@@ -127,7 +128,12 @@ class WorkflowController extends Controller
         $run = $this->ownedRun($request, $workflowRun);
         app(WorkflowService::class)->settleCancellation($run);
 
-        return response()->json(['data' => $run->fresh(['steps', 'artifacts'])]);
+        $root = WorkflowRun::where('user_id', $request->user()->id)->findOrFail($run->root_workflow_run_id ?: $run->id);
+        if (WorkflowBoundaryStop::requested($root)) {
+            $root = app(WorkflowBoundaryStop::class)->settle($root);
+        }
+
+        return response()->json(['data' => array_merge($run->fresh(['steps', 'artifacts'])->toArray(), ['root_budget' => $root->only(['id', 'public_id', 'status', 'budgets', 'budget_state'])])]);
     }
 
     public function advance(Request $request, string $workflowRun, WorkflowService $workflows)

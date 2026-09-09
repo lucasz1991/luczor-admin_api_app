@@ -98,6 +98,30 @@ class WorkflowTaskContracts
         if (str_starts_with($key, 'llm.') || str_starts_with($key, 'agent.')) {
             $props += ['instruction' => ['type' => 'string'], 'agent_selection' => ['type' => 'string', 'enum' => ['auto', 'override']], 'model' => ['type' => 'string'], 'output_schema' => ['type' => 'object']];
         }
+        if (str_starts_with($key, 'agent.')) {
+            $props += ['agent' => ['type' => 'string', 'enum' => ['local', 'codex', 'claude']],
+                'team_preset' => ['type' => 'string', 'enum' => ['server', 'local', 'free', 'budget']],
+                'max_turns' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 64],
+                'max_rounds' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 64],
+                'max_budget_usd' => ['type' => 'number', 'minimum' => 0.000001, 'maximum' => 1000],
+                'input_bindings' => ['type' => 'object'], 'timeout_seconds' => ['type' => 'integer', 'minimum' => 5, 'maximum' => 2700],
+                'max_output_chars' => ['type' => 'integer', 'minimum' => 256, 'maximum' => 20000]];
+            $props['instruction'] = ['type' => 'string', 'minLength' => 1, 'maxLength' => 12000];
+            $required[] = 'instruction';
+        }
+        if (str_starts_with($key, 'image.')) {
+            $props = ['artifact_id' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200],
+                'other_artifact_id' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200],
+                'language' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 40],
+                'monitor_id' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120],
+                'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000]];
+            if ($key !== 'image.capture') {
+                $required[] = 'artifact_id';
+            }
+            if ($key === 'image.compare') {
+                $required[] = 'other_artifact_id';
+            }
+        }
         if ($key === 'llm' || str_starts_with($key, 'llm.') || str_starts_with($key, 'agent.')) {
             $props['thinking_tier'] = ['type' => 'string', 'enum' => ['inherit', 'fast', 'balanced', 'thorough', 'max', 'ultra']];
             $props['thinking_config'] = ['type' => 'object', 'properties' => ['initialTokens' => ['type' => 'integer'], 'maxThinkingTokens' => ['type' => 'integer'], 'responseReserveTokens' => ['type' => 'integer']], 'required' => ['initialTokens', 'maxThinkingTokens', 'responseReserveTokens'], 'additionalProperties' => false];

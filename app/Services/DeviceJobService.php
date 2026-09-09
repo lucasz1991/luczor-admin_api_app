@@ -126,6 +126,8 @@ class DeviceJobService
     public function createForWorkflow(WorkflowStep $step, Device $device, array $params): DeviceJob
     {
         return DB::transaction(function () use ($step, $device, $params) {
+            $root = app(WorkflowBudgetService::class)->root($step->run);
+            abort_if(WorkflowBoundaryStop::requested($root), 409, 'workflow_boundary_stop_pending');
             $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
             abort_unless($step->run->status === 'running' && $step->status === 'running', 409, 'Workflow step is no longer running.');
             if ($step->execution_id && ($existing = DeviceJob::where('workflow_execution_id', $step->execution_id)->first())) {
@@ -146,6 +148,7 @@ class DeviceJobService
                 'params' => $params,
                 'workflow' => [
                     'run' => $run->public_id, 'step_id' => $step->id, 'step_key' => $step->step_key,
+                    'resource_run' => $root->public_id,
                     'execution_id' => $step->execution_id, 'definition_id' => $context['root_workflow_definition_id'] ?? $run->workflow_definition_id,
                     'revision' => $context['root_workflow_revision'] ?? $run->definition_snapshot['version'] ?? 1,
                     'child_definition_id' => $run->workflow_definition_id, 'child_revision' => $run->definition_snapshot['version'] ?? 1,

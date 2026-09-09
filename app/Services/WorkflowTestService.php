@@ -10,6 +10,7 @@ use App\Models\WorkflowRun;
 use App\Models\WorkflowStep;
 use App\Models\WorkflowTestCase;
 use App\Models\WorkflowTestEvidence;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class WorkflowTestService
@@ -19,10 +20,26 @@ class WorkflowTestService
         $definition = WorkflowDefinition::findOrFail($evidence->workflow_definition_id);
         $repair = $evidence->repair_revision_id ? WorkflowRepairRevision::find($evidence->repair_revision_id) : null;
         $run = $evidence->workflow_run_id ? WorkflowRun::find($evidence->workflow_run_id) : null;
+
+        return $this->serializeContext($evidence, $definition, $repair, $run);
+    }
+
+    public function serializeMany(Collection $evidence): array
+    {
+        $definitions = WorkflowDefinition::whereIn('id', $evidence->pluck('workflow_definition_id')->unique())->get()->keyBy('id');
+        $repairs = WorkflowRepairRevision::whereIn('id', $evidence->pluck('repair_revision_id')->filter()->unique())->get()->keyBy('id');
+        $runs = WorkflowRun::whereIn('id', $evidence->pluck('workflow_run_id')->filter()->unique())->get()->keyBy('id');
+
+        return $evidence->map(fn (WorkflowTestEvidence $item) => $this->serializeContext($item, $definitions->get($item->workflow_definition_id), $repairs->get($item->repair_revision_id), $runs->get($item->workflow_run_id)))->all();
+    }
+
+    private function serializeContext(WorkflowTestEvidence $evidence, WorkflowDefinition $definition, ?WorkflowRepairRevision $repair, ?WorkflowRun $run): array
+    {
         $policy = $definition->repair_policy;
 
         return array_merge($evidence->toArray(), [
             'run_public_id' => $run?->public_id, 'device_id' => $evidence->snapshot['device_id'] ?? null,
+            'device_environment_hash' => $evidence->snapshot['device_environment_hash'] ?? null,
             'definition_version' => $evidence->snapshot['workflow']['version'] ?? null,
             'repair_status' => $repair?->status, 'repair_policy' => $policy,
             'repair_policy_hash' => $policy ? self::hash($policy) : null,
@@ -73,7 +90,8 @@ class WorkflowTestService
             'repair_revision_id' => $repair?->id, 'mode' => $mode, 'status' => 'running',
             'definition_hash' => $hash, 'code_hash' => self::codeHash($snapshot), 'assertions_hash' => $case->assertions_hash,
             'fixture_hash' => $case->fixture_hash, 'environment_hash' => $environment,
-            'snapshot' => ['workflow' => $snapshot, 'test_case' => $spec, 'device_id' => $device?->device_id],
+            'snapshot' => ['workflow' => $snapshot, 'test_case' => $spec, 'device_id' => $device?->device_id,
+                'device_environment_hash' => $device?->meta['workflow_capabilities']['environment_hash'] ?? null],
         ]);
         if ($mode === 'definition') {
             app(WorkflowDefinitionValidator::class)->validate($snapshot['definition']);
@@ -180,7 +198,7 @@ class WorkflowTestService
         }
 
         $sources = [];
-        foreach (['WorkflowStepExecutor', 'WorkflowDataTasks', 'WorkflowStructuredControl', 'WorkflowBindings', 'WorkflowSchema', 'WorkflowSnapshotIdentity', 'WorkflowBudgetService', 'WorkflowTaskContracts', 'DeviceToolPolicy', 'DeviceJobService', 'WorkflowDefinitionValidator', 'WorkflowResultNormalizer', 'WorkflowService'] as $service) {
+        foreach (['WorkflowStepExecutor', 'WorkflowDataTasks', 'WorkflowStructuredControl', 'WorkflowBindings', 'WorkflowSchema', 'WorkflowSnapshotIdentity', 'WorkflowBudgetService', 'WorkflowBoundaryStop', 'WorkflowTaskContracts', 'DeviceToolPolicy', 'DeviceJobService', 'WorkflowDefinitionValidator', 'WorkflowResultNormalizer', 'WorkflowService'] as $service) {
             $sources[$service] = hash_file('sha256', app_path('Services/'.$service.'.php'));
         }
 

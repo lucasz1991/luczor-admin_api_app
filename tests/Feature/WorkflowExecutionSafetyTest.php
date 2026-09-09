@@ -84,6 +84,19 @@ class WorkflowExecutionSafetyTest extends TestCase
         $this->assertCount(2, $children->pluck('parent_execution_id')->unique());
     }
 
+    public function test_v2_parent_requires_a_device_capability_even_for_a_legacy_child(): void
+    {
+        $user = User::factory()->create();
+        Device::create(['user_id' => $user->id, 'device_id' => 'legacy-device', 'name' => 'No adapter evidence', 'status' => 'online']);
+        $child = WorkflowDefinition::create(['user_id' => $user->id, 'name' => 'Legacy device', 'version' => 1, 'status' => 'active', 'definition' => ['steps' => [['key' => 'browser', 'type' => 'browser.read']]]]);
+        $parent = $this->definition([['key' => 'nested', 'type' => 'workflow', 'payload' => ['workflow_definition_id' => $child->id]]], [], $user->id);
+        $run = app(WorkflowService::class)->advance(app(WorkflowService::class)->createRun($parent, [], null, false, ['device_id' => 'legacy-device']));
+        $childRun = WorkflowRun::where('parent_workflow_run_id', $run->id)->sole();
+        $this->assertSame('waiting_for_capability', $childRun->steps()->sole()->status);
+        $this->assertDatabaseCount('device_jobs', 0);
+        $this->assertSame(1, $run->fresh()->budget_state['executions']);
+    }
+
     public function test_route_loop_cannot_exceed_the_root_loop_policy(): void
     {
         $definition = $this->definition([['key' => 'again', 'type' => 'data.collect', 'payload' => ['items' => []], 'routes' => ['success' => ['type' => 'step', 'step_key' => 'again', 'max_iterations' => 50]]]], ['max_loop_iterations' => 1]);

@@ -8,6 +8,7 @@ use App\Models\WorkflowAutomationGrant;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowRepairRevision;
 use App\Models\WorkflowRun;
+use App\Models\WorkflowStep;
 use App\Models\WorkflowTestEvidence;
 use Illuminate\Support\Facades\DB;
 
@@ -83,7 +84,7 @@ class AutomationGrantService
         return $grant->toArray();
     }
 
-    public function authorizeTask(WorkflowRun $run, string $taskType, array $resolvedPayload, ?\App\Models\WorkflowStep $step = null): array
+    public function authorizeTask(WorkflowRun $run, string $taskType, array $resolvedPayload, ?WorkflowStep $step = null): array
     {
         $execution = $run->context['_execution'] ?? [];
         if (empty($execution['automatic'])) {
@@ -109,7 +110,13 @@ class AutomationGrantService
         } else {
             // Only an explicitly authorized repair lineage preserves a frozen older run's grant.
             $cursor = $grant;
-            for ($depth = 0; $cursor && $depth < 3 && (int) $cursor->id !== (int) ($grantData['id'] ?? 0); $depth++) {
+            $seen = [];
+            for ($depth = 0; $cursor && $depth < 1024 && (int) $cursor->id !== (int) ($grantData['id'] ?? 0); $depth++) {
+                if (isset($seen[$cursor->id])) {
+                    $cursor = null;
+                    break;
+                }
+                $seen[$cursor->id] = true;
                 $cursor = $cursor->status === 'active' && $cursor->predecessor_grant_id && $cursor->test_evidence_id
                     ? WorkflowAutomationGrant::find($cursor->predecessor_grant_id) : null;
             }

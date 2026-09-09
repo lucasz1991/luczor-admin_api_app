@@ -116,6 +116,11 @@ class WorkflowService
             $budget = app(WorkflowBudgetService::class);
             $root = $budget->root($run);
             $budget->account($root);
+            if (WorkflowBoundaryStop::requested($root)) {
+                app(WorkflowBoundaryStop::class)->settle($root);
+
+                return $run->fresh(['steps', 'definition']);
+            }
             if (($root->budget_state['active_ms'] ?? 0) >= ($root->budgets['active_seconds'] ?? 2700) * 1000) {
                 $state = $root->budget_state;
                 $state['stop_reason'] = 'workflow_active_budget_exhausted';
@@ -240,7 +245,8 @@ class WorkflowService
             ]);
 
             // P13 — outcome-based routing (branch / loop / terminate) if declared.
-            $routed = $this->applyRoutes($step->fresh(), WorkflowResultNormalizer::outcome($output, 'success'));
+            $routed = WorkflowBoundaryStop::requested(app(WorkflowBudgetService::class)->root($step->run))
+                ? null : $this->applyRoutes($step->fresh(), WorkflowResultNormalizer::outcome($output, 'success'));
 
             $result = $routed ?? $this->advance($step->run);
             $this->notifyTerminalRun($result);
@@ -252,6 +258,7 @@ class WorkflowService
     public function approve(WorkflowStep $step, int $userId): WorkflowRun
     {
         return DB::transaction(function () use ($step, $userId) {
+            app(WorkflowBudgetService::class)->root($step->run);
             $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
             abort_unless((int) $step->user_id === $userId, 404);
             abort_unless($step->run->status === 'running', 409, 'Workflow is not running.');
@@ -296,6 +303,8 @@ class WorkflowService
             $attempts = $step->attempts + 1;
             app(WorkflowBudgetService::class)->settle($step, $outcome, ['error' => mb_substr($error, 0, 8000)]);
             $retry = $attempts < $step->max_attempts && ! ($step->external_run_type === 'device_job' && $step->external_run_id);
+            $stopping = WorkflowBoundaryStop::requested(app(WorkflowBudgetService::class)->root($step->run));
+            $retry = $retry && ! $stopping;
             $step->update([
                 'attempts' => $attempts,
                 'status' => $retry ? 'queued' : 'failed',
@@ -307,7 +316,7 @@ class WorkflowService
 
             // P13 — on final failure, an on-error route (e.g. to a cleanup step) wins
             // over the default "one failed step fails the run" behaviour.
-            if (! $retry) {
+            if (! $retry && ! $stopping) {
                 $routed = $this->applyRoutes($step->fresh(), $outcome);
                 if ($routed) {
                     $this->notifyTerminalRun($routed);
@@ -341,6 +350,7 @@ class WorkflowService
             if ($child = WorkflowRun::where('parent_execution_id', $parentStep->execution_id)->first()) {
                 return $child;
             }
+            abort_if(WorkflowBoundaryStop::requested(app(WorkflowBudgetService::class)->root($parentRun)), 409, 'workflow_boundary_stop_pending');
             $payload = $parentStep->resolved_payload ?? $parentStep->payload;
             $childDef = WorkflowDefinition::findOrFail((int) ($payload['workflow_definition_id'] ?? 0));
             $snapshot = $parentRun->definition_snapshot['children'][$parentStep->step_key]

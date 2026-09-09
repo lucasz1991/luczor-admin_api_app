@@ -53,7 +53,7 @@ class WorkflowRepairGrantSuccessionTest extends TestCase
         $case = $tests->createCase($definition, ['name' => 'Output contract', 'specification' => ['real_test_authorized' => true, 'device_id' => $device->device_id,
             'fixtures' => ['script' => ['data' => ['value' => 2]]], 'assertions' => [['step_key' => 'script', 'path' => 'data.value', 'operator' => 'eq', 'value' => 2]]]]);
         $repairs = app(WorkflowRepairService::class);
-        $repairs->configure($definition, ['enabled' => true, 'auto_activate' => true, 'allow_script_repair' => true, 'test_case_id' => $case->id,
+        $repairs->configure($definition, ['enabled' => true, 'auto_activate' => false, 'allow_script_repair' => true, 'test_case_id' => $case->id,
             'expected_version' => 1, 'local_approved' => true, 'device_id' => $device->device_id], $device->device_id);
         $candidate = $definition->definition;
         $candidate['steps'][0]['payload']['code'] = $newCode;
@@ -85,6 +85,17 @@ class WorkflowRepairGrantSuccessionTest extends TestCase
         $realJob->update(['status' => 'completed', 'started_at' => now(), 'finished_at' => now(), 'result' => ['data' => ['value' => 2]]]);
         $workflows->syncDeviceJobSteps($realRun);
         $this->assertSame('passed', $real->fresh()->status);
+        $this->assertSame('proposed', $repair->fresh()->status);
+        $snapshot = $realRun->definition_snapshot;
+        $realRun->update(['definition_snapshot' => array_merge($snapshot, ['graph_path' => ['workflow:wrong-occurrence']])]);
+        try {
+            $repairs->activate($repair);
+            $this->fail('Code from a different frozen graph occurrence was accepted.');
+        } catch (HttpException $error) {
+            $this->assertSame('workflow_repair_changed_script_not_real_tested', $error->getMessage());
+        }
+        $realRun->update(['definition_snapshot' => $snapshot]);
+        $repairs->activate($repair);
         $this->assertSame('activated', $repair->fresh()->status);
         $current = $grants->current($definition);
         $this->assertSame($testing->id, $current->id);
@@ -93,6 +104,15 @@ class WorkflowRepairGrantSuccessionTest extends TestCase
         $this->assertArrayNotHasKey('test_binding', $current->config);
         $this->assertSame(hash('sha256', $oldCode), $base->fresh()->config['script_hashes']['script']);
         $this->assertSame(2, $definition->fresh()->version);
+        $this->assertSame($base->id, $grants->authorizeTask($source, 'node.run', ['code' => $oldCode])['id']);
+        $latest = $current;
+        for ($index = 0; $index < 4; $index++) {
+            $successor = $latest->replicate();
+            $successor->predecessor_grant_id = $latest->id;
+            $successor->operation_id = (string) Str::uuid();
+            $successor->save();
+            $latest = $successor;
+        }
         $this->assertSame($base->id, $grants->authorizeTask($source, 'node.run', ['code' => $oldCode])['id']);
         $current->update(['status' => 'revoked']);
         $this->expectExceptionMessage('Automation approval was revoked or replaced.');

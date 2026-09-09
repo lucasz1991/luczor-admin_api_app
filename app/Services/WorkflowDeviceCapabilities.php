@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Device;
+use App\Models\WorkflowRun;
 use App\Models\WorkflowStep;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -60,6 +61,11 @@ class WorkflowDeviceCapabilities
 
     public function required(WorkflowStep $step): bool
     {
-        return ($step->run->definition_snapshot['definition']['schema_version'] ?? 1) >= 2;
+        $run = $step->run;
+        if (($run->definition_snapshot['definition']['schema_version'] ?? 1) >= 2) {
+            return true;
+        }
+
+        return $run->root_workflow_run_id && (WorkflowRun::find($run->root_workflow_run_id)?->definition_snapshot['definition']['schema_version'] ?? 1) >= 2;
     }
 }

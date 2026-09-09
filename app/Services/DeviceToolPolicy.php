@@ -88,6 +88,7 @@ class DeviceToolPolicy
             'params' => $params,
             'workflow' => [
                 'run' => (string) ($workflow['run'] ?? ''),
+                'resource_run' => (string) ($workflow['resource_run'] ?? $workflow['run'] ?? ''),
                 'step_id' => (int) ($workflow['step_id'] ?? 0),
                 'step_key' => (string) ($workflow['step_key'] ?? ''),
                 'execution_id' => (string) ($workflow['execution_id'] ?? ''),

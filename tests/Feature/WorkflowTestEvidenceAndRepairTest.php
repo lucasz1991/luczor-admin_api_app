@@ -82,6 +82,56 @@ class WorkflowTestEvidenceAndRepairTest extends TestCase
         app(WorkflowRepairService::class)->activate($repair);
     }
 
+    public function test_device_environment_is_frozen_and_list_returns_the_same_evidence_metadata(): void
+    {
+        [$definition, $device, $case, $repair] = $this->fixture();
+        $tests = app(WorkflowTestService::class);
+        $evidence = $tests->start($definition, $case, 'simulation', $device, $repair);
+        app(WorkflowDeviceCapabilities::class)->report($device, ['schema_version' => 1, 'environment_hash' => str_repeat('b', 64), 'tasks' => []]);
+        $key = ApiKey::mint(['user_id' => $definition->user_id, 'name' => 'Evidence', 'abilities' => ['brain.read'], 'active' => true]);
+        $this->withHeader('X-Api-Key', $key['plain']);
+        $detail = $this->getJson('/api/v1/workflow-tests/'.$evidence->id)->assertOk()->json('data');
+        $list = $this->getJson('/api/v1/workflows/'.$definition->id.'/tests')->assertOk()->json('data.0');
+        $this->assertSame(str_repeat('a', 64), $detail['device_environment_hash']);
+        $this->assertSame($detail['device_environment_hash'], $detail['snapshot']['device_environment_hash']);
+        foreach (['id', 'run_public_id', 'device_id', 'device_environment_hash', 'definition_version', 'repair_status', 'repair_policy_hash'] as $field) {
+            $this->assertSame($detail[$field], $list[$field]);
+        }
+        $this->assertNotNull($list['run_public_id']);
+    }
+
+    public function test_repair_cannot_expand_a_nested_control_body_budget(): void
+    {
+        [$definition, $device, $case, $repair, $source] = $this->fixture();
+        $nested = ['schema_version' => 2, 'steps' => [['key' => 'select', 'type' => 'data.filter', 'max_attempts' => 1, 'payload' => ['items' => [1], 'condition' => ['operator' => 'invalid', 'value' => 1]]]], 'budgets' => ['max_executions' => 1]];
+        $definition->update(['definition' => ['schema_version' => 2, 'steps' => [['key' => 'body', 'type' => 'control.foreach', 'max_attempts' => 1, 'payload' => ['items' => [1], 'body' => $nested]]]]]);
+        $source = app(WorkflowService::class)->advance(app(WorkflowService::class)->createRun($definition))->fresh();
+        $this->assertSame('failed', $source->status);
+        $candidate = $definition->definition;
+        $candidate['steps'][0]['payload']['body']['budgets']['max_executions'] = 2;
+        $this->expectExceptionMessage('workflow_repair_nested_budget_expansion');
+        app(WorkflowRepairService::class)->propose($definition, $source, $candidate, (int) $definition->version);
+    }
+
+    public function test_repair_cannot_downgrade_schema_or_expand_inherited_thinking_policy(): void
+    {
+        [$definition, $device, $case, $repair, $source] = $this->fixture();
+        $legacy = ['schema_version' => 2, 'steps' => [['key' => 'condition', 'type' => 'condition', 'max_attempts' => 1, 'payload' => ['left' => '1', 'right' => '1']]]];
+        $definition->update(['definition' => $legacy]);
+        $source = app(WorkflowService::class)->createRun($definition);
+        $source->update(['status' => 'failed']);
+        foreach ([['schema_version', 1], ['thinking_tier', 'ultra']] as [$field, $value]) {
+            $candidate = $definition->definition;
+            $candidate[$field] = $value;
+            try {
+                app(WorkflowRepairService::class)->propose($definition, $source, $candidate, (int) $definition->version);
+                $this->fail('Repair changed execution policy.');
+            } catch (HttpException $failure) {
+                $this->assertSame('workflow_repair_execution_policy_changed', $failure->getMessage());
+            }
+        }
+    }
+
     public function test_repair_policy_does_not_opt_in_existing_workflows_and_limits_copies(): void
     {
         [$definition, $device, $case, $repair, $source] = $this->fixture();
@@ -97,6 +147,21 @@ class WorkflowTestEvidenceAndRepairTest extends TestCase
         $definition->update(['repair_policy' => null]);
         $this->expectExceptionMessage('workflow_repair_not_opted_in');
         $service->propose($definition, $source, $repair->definition, 1);
+    }
+
+    public function test_unchanged_binding_cannot_change_provider_through_repaired_data(): void
+    {
+        [$definition] = $this->fixture();
+        $definition->update(['definition' => ['schema_version' => 2, 'steps' => [
+            ['key' => 'config', 'type' => 'data.collect', 'payload' => ['items' => ['local']]],
+            ['key' => 'answer', 'type' => 'llm.text', 'depends_on' => ['config'], 'payload' => ['instruction' => 'Return a value', 'inference' => ['$ref' => 'steps.config.data.0']]],
+        ]]]);
+        $source = app(WorkflowService::class)->createRun($definition);
+        $source->update(['status' => 'failed']);
+        $candidate = $definition->definition;
+        $candidate['steps'][0]['payload']['items'] = ['external'];
+        $this->expectExceptionMessage('workflow_repair_dynamic_scope_requires_review');
+        app(WorkflowRepairService::class)->propose($definition, $source, $candidate, (int) $definition->version);
     }
 
     public function test_changed_permissions_assertions_and_code_cannot_bypass_authorized_scope(): void

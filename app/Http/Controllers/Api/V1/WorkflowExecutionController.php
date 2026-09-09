@@ -11,6 +11,7 @@ use App\Models\WorkflowTestCase;
 use App\Models\WorkflowTestEvidence;
 use App\Services\ApiActor;
 use App\Services\WorkflowAuthoringService;
+use App\Services\WorkflowBoundaryStop;
 use App\Services\WorkflowDeviceCapabilities;
 use App\Services\WorkflowRepairService;
 use App\Services\WorkflowTestService;
@@ -18,6 +19,15 @@ use Illuminate\Http\Request;
 
 class WorkflowExecutionController extends Controller
 {
+    public function stopAfterStep(Request $request, string $workflowRun, WorkflowAuthoringService $authoring, WorkflowBoundaryStop $stop)
+    {
+        $run = WorkflowRun::where('user_id', $request->user()->id)->where(ctype_digit($workflowRun) ? 'id' : 'public_id', $workflowRun)->firstOrFail();
+        $data = $request->validate(['operation_id' => 'required|uuid']);
+        $result = $authoring->operate((int) $request->user()->id, $data['operation_id'], 'run.stop_after_step', $data + ['run_id' => $run->id], fn () => $stop->request($run)->toArray());
+
+        return response()->json(['data' => $result]);
+    }
+
     public function capabilities(Request $request, ApiActor $actor, WorkflowDeviceCapabilities $capabilities)
     {
         $data = $request->validate(['device_id' => 'required|string|max:120', 'capabilities' => 'required|array']);
@@ -43,11 +53,11 @@ class WorkflowExecutionController extends Controller
         return response()->json(['data' => $result], 201);
     }
 
-    public function tests(Request $request, WorkflowDefinition $workflowDefinition)
+    public function tests(Request $request, WorkflowDefinition $workflowDefinition, WorkflowTestService $tests)
     {
         $this->owned($request, $workflowDefinition);
 
-        return response()->json(['data' => WorkflowTestEvidence::where('workflow_definition_id', $workflowDefinition->id)->latest('id')->limit(100)->get()]);
+        return response()->json(['data' => $tests->serializeMany(WorkflowTestEvidence::where('workflow_definition_id', $workflowDefinition->id)->latest('id')->limit(100)->get())]);
     }
 
     public function startTest(Request $request, WorkflowDefinition $workflowDefinition, WorkflowAuthoringService $authoring, WorkflowTestService $tests)

@@ -40,7 +40,7 @@ class WorkflowBudgetService
             $root = $this->root($candidate->run);
             $step = WorkflowStep::query()->lockForUpdate()->findOrFail($candidate->id);
             $run = $step->run()->firstOrFail();
-            if ($root->status !== 'running' || $run->status !== 'running' || $step->status !== 'ready') {
+            if ($root->status !== 'running' || $run->status !== 'running' || $step->status !== 'ready' || WorkflowBoundaryStop::requested($root)) {
                 return false;
             }
             if (($root->definition_snapshot['definition']['schema_version'] ?? 1) === 1 && ($run->definition_snapshot['definition']['schema_version'] ?? 1) === 1) {
