@@ -169,6 +169,10 @@ class WorkflowDefinitionValidator
 
     public function validatePayload(string $type, array $payload): void
     {
+        if (array_key_exists('environment', $payload)) {
+            abort_unless(in_array($type, ['node.run', 'python.run'], true), 422, 'workflow_script_environment_task_invalid');
+            WorkflowScriptEnvironment::validate($type, $payload['environment']);
+        }
         if (isset($payload['output_schema'])) {
             abort_unless(is_array($payload['output_schema']), 422, 'Invalid workflow output schema.');
             WorkflowSchema::supported($payload['output_schema']);
@@ -197,6 +201,7 @@ class WorkflowDefinitionValidator
                 && is_string($reference) && preg_match('/^(input|event|steps)(\.[A-Za-z0-9_-]+)+$/', $reference), 422, 'Invalid input binding.');
             abort_if(in_array(explode('.', $target)[0], ['device_id', 'workflow_definition_id', 'project_id', 'file_scope', 'workspace_root_id'], true), 422, 'Bindings cannot change execution identity.');
             abort_if(in_array(explode('.', $target)[0], ['body', 'branches'], true), 422, 'Bindings cannot replace control definitions.');
+            abort_if(explode('.', $target)[0] === 'environment', 422, 'Bindings cannot change the approved script environment.');
         }
         if ($type === 'condition') {
             abort_unless(in_array($payload['operator'] ?? 'eq', ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'exists'], true), 422, 'Invalid condition operator.');

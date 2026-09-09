@@ -46,6 +46,8 @@ class WorkflowTaskOutputContractsTest extends TestCase
             'legacy script' => ['node.run', ['ok' => true, 'code' => 0, 'stdout' => 'done', 'stderr' => '', 'timed_out' => false]],
             'script metadata and dynamic json' => ['python.run', ['ok' => true, 'code' => 0, 'stdout' => '[1,2]', 'stderr' => '', 'timed_out' => false, 'duration_ms' => 10, 'runtime' => 'python', 'runtime_version' => null, 'data' => [1, 2], 'execution_environment' => 'windows_user']],
             'script json can be scalar' => ['node.run', ['ok' => true, 'code' => 0, 'stdout' => '42', 'stderr' => '', 'data' => 42]],
+            'script verified package content' => ['node.run', ['ok' => true, 'code' => 0, 'environment' => ['revision' => str_repeat('b', 64), 'lock_sha256' => str_repeat('c', 64), 'dependency_count' => 2, 'reused' => true, 'installed_sha256' => str_repeat('d', 64)]]],
+            'script without dependencies' => ['python.run', ['ok' => true, 'code' => 0, 'environment' => ['revision' => str_repeat('b', 64), 'lock_sha256' => null, 'dependency_count' => 0, 'reused' => false]]],
             'managed agent unconfirmed model' => ['agent.single', ['ok' => true, 'outcome' => 'success', 'text' => 'Done', 'agent' => 'codex', 'requested_model' => 'model', 'model' => null, 'duration_ms' => 10]],
             'local team with reported model' => ['agent.team', ['ok' => true, 'outcome' => 'success', 'text' => 'Done', 'agent' => 'local_orchestrated_team', 'model' => 'local-model', 'request_id' => null, 'interruption_code' => null, 'data' => ['answer' => true]]],
             'legacy agent dispatch' => ['agent.dispatch', ['ok' => true, 'code' => 0, 'stdout' => 'Done', 'stderr' => '']],
@@ -95,6 +97,7 @@ class WorkflowTaskOutputContractsTest extends TestCase
             ['image.compare', ['differentFraction' => '0.5']],
             ['image.vision', ['usage' => ['input_tokens' => '123']]],
             ['node.run', ['code' => '0']],
+            ['node.run', ['environment' => ['installed_sha256' => 123]]],
             ['agent.single', ['text' => []]],
             ['agent.dispatch', ['stdout' => []]],
         ];
@@ -107,6 +110,13 @@ class WorkflowTaskOutputContractsTest extends TestCase
         $this->assertSame(['data'], $this->schema('llm.classify')['required']);
         $this->assertSame(['outcome', 'data'], $this->schema('data.map')['required']);
         $this->assertSame(['outcome', 'data'], $this->schema('control.foreach')['required']);
+    }
+
+    public function test_installed_package_hash_keeps_its_exact_length(): void
+    {
+        $this->expectException(HttpException::class);
+        $this->expectExceptionMessage('workflow_schema_string_size:$.environment.installed_sha256');
+        WorkflowSchema::validate(['environment' => ['installed_sha256' => str_repeat('a', 63)]], $this->schema('python.run'));
     }
 
     private function schema(string $task): array

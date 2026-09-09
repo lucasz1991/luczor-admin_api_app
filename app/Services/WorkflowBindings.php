@@ -20,16 +20,23 @@ class WorkflowBindings
         $payload = $step->payload ?? [];
         $bindings = $payload['input_bindings'] ?? [];
         unset($payload['input_bindings']);
+        $environment = [];
+        if (array_key_exists('environment', $payload)) {
+            WorkflowScriptEnvironment::assertLiteral($payload['environment']);
+            $environment = ['environment' => $payload['environment']];
+            unset($payload['environment']);
+        }
         $bodies = [];
         if (str_starts_with($step->type, 'control.')) {
             $bodies = array_intersect_key($payload, array_flip(['body', 'branches']));
             unset($payload['body'], $payload['branches']);
         }
         $payload = $this->walk($payload, $scope);
-        $payload = array_merge($payload, $bodies);
+        $payload = array_merge($payload, $bodies, $environment);
         foreach ($bindings as $target => $reference) {
             abort_if(in_array(explode('.', $target)[0], self::IDENTITY_FIELDS, true), 422, 'Workflow bindings cannot change execution identity.');
             abort_if(in_array(explode('.', $target)[0], ['body', 'branches'], true), 422, 'Bindings cannot replace control definitions.');
+            abort_if(explode('.', $target)[0] === 'environment', 422, 'Bindings cannot change the approved script environment.');
             data_set($payload, $target, $this->reference($reference, $scope));
         }
         abort_if(strlen(json_encode($payload, JSON_THROW_ON_ERROR)) > 20000, 422, 'Resolved workflow payload is too large.');

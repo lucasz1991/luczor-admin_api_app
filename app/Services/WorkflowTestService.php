@@ -203,7 +203,7 @@ class WorkflowTestService
         }
 
         $sources = [];
-        foreach (['WorkflowStepExecutor', 'WorkflowDataTasks', 'WorkflowStructuredControl', 'WorkflowBindings', 'WorkflowSchema', 'WorkflowSnapshotIdentity', 'WorkflowBudgetService', 'WorkflowBoundaryStop', 'WorkflowTaskContracts', 'DeviceToolPolicy', 'DeviceJobService', 'WorkflowDefinitionValidator', 'WorkflowResultNormalizer', 'WorkflowService'] as $service) {
+        foreach (['WorkflowStepExecutor', 'WorkflowDataTasks', 'WorkflowStructuredControl', 'WorkflowBindings', 'WorkflowSchema', 'WorkflowSnapshotIdentity', 'WorkflowBudgetService', 'WorkflowBoundaryStop', 'WorkflowTaskContracts', 'DeviceToolPolicy', 'DeviceJobService', 'WorkflowDefinitionValidator', 'WorkflowResultNormalizer', 'WorkflowService', 'WorkflowAgentEvidence', 'WorkflowBindingTypes', 'WorkflowScriptEnvironment'] as $service) {
             $sources[$service] = hash_file('sha256', app_path('Services/'.$service.'.php'));
         }
 

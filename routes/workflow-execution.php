@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\WorkflowAgentEvidenceController;
 use App\Http\Controllers\Api\V1\WorkflowExecutionController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,7 @@ Route::prefix('v1')->middleware('luczor.api:brain.write')->group(function () {
     Route::post('/workflow-repairs/{workflowRepair}/activate', [WorkflowExecutionController::class, 'activate'])->whereNumber('workflowRepair');
 });
 Route::prefix('v1')->middleware('luczor.api:brain.read')->group(function () {
+    Route::get('/workflow-runs/{runPublicId}/steps/{stepId}/agent-evidence', [WorkflowAgentEvidenceController::class, 'show'])->whereUuid('runPublicId')->whereNumber('stepId');
     Route::get('/workflows/{workflowDefinition}/test-cases', [WorkflowExecutionController::class, 'cases'])->whereNumber('workflowDefinition');
     Route::get('/workflows/{workflowDefinition}/tests', [WorkflowExecutionController::class, 'tests'])->whereNumber('workflowDefinition');
     Route::get('/workflows/{workflowDefinition}/repairs', [WorkflowExecutionController::class, 'repairs'])->whereNumber('workflowDefinition');

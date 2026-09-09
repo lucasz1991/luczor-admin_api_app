@@ -153,6 +153,15 @@ class WorkflowTaskContracts
         }
         if (in_array($key, ['node.run', 'python.run'], true)) {
             $props += ['input' => ['type' => 'object'], 'output_schema' => ['type' => 'object'], 'execution_environment' => ['type' => 'string', 'enum' => ['windows_user']]];
+            $props['environment'] = ['type' => 'object', 'additionalProperties' => false,
+                'required' => ['version', 'runtime_version', 'dependencies'], 'properties' => [
+                    'version' => ['type' => 'integer', 'enum' => [1]],
+                    'runtime_version' => ['type' => 'string'],
+                    'dependencies' => ['type' => 'array', 'maxItems' => 64, 'items' => ['type' => 'object', 'additionalProperties' => false,
+                        'required' => ['name', 'version'], 'properties' => ['name' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 160], 'version' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 60]]]],
+                    'lock_path' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 500],
+                    'lock_sha256' => ['type' => 'string', 'minLength' => 64, 'maxLength' => 64],
+                ]];
         }
         if (str_starts_with($key, 'data.')) {
             $props = ['items' => ['type' => 'array'], 'mapping' => ['type' => 'object'], 'condition' => ['type' => 'object'], 'size' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 1000]];
@@ -269,6 +278,11 @@ class WorkflowTaskContracts
                 'runtime_version' => $nullableString, 'execution_profile' => ['type' => 'string'],
                 'input_mode' => ['type' => 'string'], 'code_sha256' => ['type' => 'string'],
                 'execution_environment' => ['type' => 'string'], 'data' => $dynamic,
+                'environment' => ['type' => 'object', 'properties' => [
+                    'revision' => ['type' => 'string'], 'lock_sha256' => $nullableString,
+                    'dependency_count' => ['type' => 'integer'], 'reused' => ['type' => 'boolean'],
+                    'installed_sha256' => ['type' => 'string', 'minLength' => 64, 'maxLength' => 64],
+                ]],
             ];
         }
         if (in_array($key, ['agent.single', 'agent.team'], true)) {
