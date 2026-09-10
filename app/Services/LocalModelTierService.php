@@ -6,6 +6,37 @@ use App\Models\LocalModelCatalog;
 
 class LocalModelTierService
 {
+    /** Official Qwen metadata pinned to a repository revision; runtime evaluation remains required. */
+    public function laptopProfile(array $slot): array
+    {
+        return array_replace($slot, [
+            'display_name' => 'Laptop · Qwen3-4B Q4_K_M',
+            'enabled' => false,
+            'context_limit' => 8192,
+            'artifact' => [
+                'url' => 'https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf',
+                'sha256' => '7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5',
+                'size_bytes' => 2497280256,
+                'format' => 'gguf',
+                'quantization' => 'Q4_K_M',
+                'storage_class' => 'fixed_storage',
+            ],
+            'runtime' => null,
+            'capacity_policy' => [
+                // Conservative proposal, not measured device acceptance.
+                'min_total_ram_bytes' => 8 * 1024 ** 3,
+                'min_available_ram_bytes' => 4 * 1024 ** 3,
+                'min_vram_bytes' => 0,
+                'min_storage_free_bytes' => 6 * 1024 ** 3,
+                'max_startup_seconds' => 180,
+                'benchmark_thresholds' => null,
+            ],
+            'chat_template_hash' => null,
+            'evaluation_report_hash' => null,
+            'license' => 'Apache-2.0',
+        ]);
+    }
+
     public function defaults(): array
     {
         $existing = collect(config('local_models.models'))->firstWhere('id', config('local_models.routing.default_model_id'));

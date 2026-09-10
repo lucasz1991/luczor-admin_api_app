@@ -24,8 +24,16 @@
                 <p role="alert">Modellsignatur nicht verfügbar: <code>{{ $signingError }}</code></p>
             @endif
         </section>
-        <x-ui.panel title="Ein Modell, fünf Startprofile" description="Zum Start verwenden alle fünf Stufen dasselbe bisherige Modell mit denselben geprüften Speicheranforderungen. Identische Modelldateien werden gemeinsam genutzt und nicht fünfmal gespeichert.">
+        <x-ui.panel title="Modelle und Startprofile" description="Die fünf Stufen können unterschiedliche Modelle enthalten. Identische Modelldateien werden gemeinsam genutzt.">
             <div class="flex flex-wrap items-center gap-3"><x-ui.badge tone="info">Katalogschema 2</x-ui.badge><x-ui.badge>Revision {{ $revision }}</x-ui.badge><span class="text-sm text-slate-400">Ein geladenes Modell bleibt für Folgeanfragen im Speicher.</span></div>
+        </x-ui.panel>
+        <x-ui.panel title="Laptop-Modell hinzufügen" description="Qwen3-4B Q4_K_M · offizielle Qwen-Datei · etwa 2,50 GB Download · Apache-2.0">
+            <p class="text-sm text-slate-400">Ersetzt Stufe 1 im Entwurf durch das kleinere Modell. SHA-256 und Downloadgröße sind vom offiziellen Repository übernommen. 8 GiB RAM, 4 GiB freier RAM und 8.192 Kontexttokens sind Startvorschläge, keine gemessene Leistungszusage. CPU/RAM und GPU-Hybrid sind vorgesehen. Die Freigabe benötigt eine passende Runtime, Templateprüfung und Benchmarknachweise.</p>
+            <form method="POST" action="{{ route('admin.local-models.laptop') }}" class="mt-4">
+                @csrf
+                <input type="hidden" name="revision" value="{{ $revision }}">
+                <x-ui.button type="submit" variant="secondary">Stufe 1 als Laptop-Modell vorbereiten</x-ui.button>
+            </form>
         </x-ui.panel>
         <form method="POST" action="{{ route('admin.local-models.update') }}" class="space-y-6">
             @csrf @method('PUT')

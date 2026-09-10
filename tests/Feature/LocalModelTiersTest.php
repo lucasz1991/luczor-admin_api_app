@@ -13,6 +13,32 @@ class LocalModelTiersTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_laptop_profile_is_a_disabled_pinned_draft_and_keeps_active_models(): void
+    {
+        $this->configureExistingModel();
+        $tiers = app(LocalModelTierService::class);
+        $draft = $tiers->defaults();
+        LocalModelCatalog::create(['id' => 1, 'draft' => $draft, 'published' => $draft, 'revision' => 1]);
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->post('/admin/local-model-tiers/laptop', ['revision' => 1])->assertRedirect()->assertSessionHasNoErrors();
+        $catalog = LocalModelCatalog::find(1);
+        $this->assertSame($draft, $catalog->published);
+        $model = $catalog->draft['models'][0];
+        $this->assertSame($draft['models'][0]['id'], $model['id']);
+        $this->assertFalse($model['enabled']);
+        $this->assertNull($model['runtime']);
+        $this->assertNull($model['evaluation_report_hash']);
+        $this->assertSame(2497280256, $model['artifact']['size_bytes']);
+        $this->assertSame(0, $model['capacity_policy']['min_vram_bytes']);
+        $this->post('/admin/local-model-tiers/laptop', ['revision' => 1])->assertStatus(409);
+    }
+
+    public function test_regular_user_cannot_prepare_laptop_profile(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'user']))
+            ->post('/admin/local-model-tiers/laptop', ['revision' => 2])->assertForbidden();
+    }
+
     private function configureExistingModel(): void
     {
         $fixtures = json_decode(file_get_contents(base_path('tests/Fixtures/local-model-manifest-v1.json')), true);

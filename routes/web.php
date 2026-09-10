@@ -34,6 +34,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/admin/users', [UserManagementController::class, 'index'])->name('admin.users.index');
         Route::get('/admin/users/{user}', [UserManagementController::class, 'show'])->whereNumber('user')->name('admin.users.show');
         Route::get('/admin/local-model-tiers', [LocalModelTierController::class, 'index'])->name('admin.local-models');
+        Route::post('/admin/local-model-tiers/laptop', [LocalModelTierController::class, 'laptop'])->name('admin.local-models.laptop');
         Route::put('/admin/local-model-tiers', [LocalModelTierController::class, 'update'])->name('admin.local-models.update');
         Route::post('/dashboard/users', [UserManagementController::class, 'store'])->name('dashboard.users.store');
         Route::patch('/dashboard/users/{user}', [UserManagementController::class, 'update'])->name('dashboard.users.update');

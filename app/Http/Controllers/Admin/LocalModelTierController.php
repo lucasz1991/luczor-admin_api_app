@@ -14,6 +14,25 @@ use Illuminate\Validation\ValidationException;
 
 class LocalModelTierController extends AdminController
 {
+    public function laptop(Request $request, LocalModelTierService $tiers)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate(['revision' => ['required', 'integer', 'min:0']]);
+
+        return DB::transaction(function () use ($request, $data, $tiers) {
+            User::whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
+            $catalog = LocalModelCatalog::firstOrCreate(['id' => 1], ['draft' => $tiers->defaults(), 'revision' => 0]);
+            $catalog = LocalModelCatalog::whereKey(1)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $data['revision'] === $catalog->revision, 409, 'Bitte den aktuellen Katalog neu laden.');
+            $draft = $catalog->draft;
+            $draft['models'][0] = $tiers->laptopProfile($draft['models'][0]);
+            $catalog->update(['draft' => $draft, 'revision' => $catalog->revision + 1]);
+            app(AuditLogger::class)->record(['actor_user_id' => $request->user()->id, 'event_type' => 'local_model_catalog.laptop_drafted', 'payload' => ['revision' => $catalog->revision]]);
+
+            return back()->with('status', 'Laptop-Modell in Stufe 1 vorbereitet. Runtime, Template und Benchmark prüfen, danach signieren und aktivieren.');
+        });
+    }
+
     public function index(Request $request, LocalModelTierService $tiers, LocalModelManifestService $manifest)
     {
         $this->ensureAdmin($request);
