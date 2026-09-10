@@ -193,7 +193,7 @@ class WorkflowTaskCatalog
                 'requires_approval' => $def['requires_approval'],
                 'allowed_in_definition' => $def['allowed_in_definition'],
                 'params' => $def['params'],
-                ...array_intersect_key($def, array_flip(['type', 'version', 'input_schema', 'output_schema', 'required_capabilities', 'adapters', 'execution_location', 'resource_keys', 'outcomes', 'retry', 'cancel', 'test', 'timeout_seconds'])),
+                ...array_intersect_key($def, array_flip(['type', 'version', 'input_schema', 'output_schema', 'required_capabilities', 'adapters', 'execution_location', 'resource_keys', 'outcomes', 'retry', 'cancel', 'test', 'timeout_seconds', 'capability_group', 'result_handling', 'session_kind', 'approval_mode', 'ui_statuses'])),
             ];
         }
 

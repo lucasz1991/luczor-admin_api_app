@@ -63,6 +63,7 @@ class WorkflowTaskContracts
             'agent' => 'agent.orchestrator',
             default => $client ? 'desktop.tools' : 'laravel.scheduler',
         };
+        $ui = self::uiMetadata($key, $task, $group, $client);
 
         return [
             'type' => $key, 'version' => 1,
@@ -70,6 +71,7 @@ class WorkflowTaskContracts
             'output_schema' => self::output($key),
             'required_capabilities' => $client ? [$key.':1'] : [],
             'adapters' => [$adapter], 'execution_location' => $client ? 'device' : 'server',
+            ...$ui,
             'resource_keys' => match ($group) {
                 'browser' => ['device', 'browser_session_id'], 'llm', 'agent' => ['device', 'local_inference'], default => [],
             },
@@ -78,6 +80,38 @@ class WorkflowTaskContracts
                 'terminal_device_failure' => 'repair_or_new_user_run_required', 'unconfirmed_device_stop' => 'cancel_and_wait_for_ack'],
             'cancel' => ['mode' => $client ? 'request_and_confirm_device_stop' : 'cooperative', 'terminal_after_confirmation' => true],
             'test' => ['modes' => ['definition', 'simulation', 'real'], 'fixtures_required_for_simulated_effects' => true, 'real_requires_capability' => $client],
+        ];
+    }
+
+    /**
+     * Stable, additive metadata used by the Tool Center. These fields describe
+     * presentation and session semantics only; execution remains governed by
+     * the existing runner, capability and approval contracts above.
+     */
+    private static function uiMetadata(string $key, array $task, string $group, bool $client): array
+    {
+        $capabilityGroup = match ($group) {
+            'browser' => 'browser',
+            'image' => 'vision',
+            'code', 'node', 'python' => 'terminal',
+            'llm', 'agent' => 'model',
+            default => $group,
+        };
+        $sessionKind = match ($capabilityGroup) {
+            'browser', 'vision', 'terminal', 'model' => $capabilityGroup,
+            default => null,
+        };
+
+        return [
+            'capability_group' => $capabilityGroup,
+            'result_handling' => $client || in_array($group, ['llm', 'agent', 'image', 'browser', 'code'], true)
+                ? 'ephemeral'
+                : 'syncable',
+            'session_kind' => $sessionKind,
+            'approval_mode' => ($task['requires_approval'] ?? false) || ($task['mutating'] ?? false)
+                ? 'session'
+                : 'call',
+            'ui_statuses' => ['unavailable', 'ready', 'approval_open', 'running', 'waiting', 'succeeded', 'failed', 'aborted'],
         ];
     }
 

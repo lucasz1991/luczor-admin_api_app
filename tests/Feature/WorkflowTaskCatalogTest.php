@@ -86,6 +86,22 @@ class WorkflowTaskCatalogTest extends TestCase
         $this->assertTrue($catalog['file.write']['params']['content']['required']);
     }
 
+    public function test_tool_center_metadata_is_present_without_changing_execution_contracts(): void
+    {
+        $catalog = collect(WorkflowTaskCatalog::options())->keyBy('key');
+
+        $this->assertSame('browser', $catalog['browser.open']['capability_group']);
+        $this->assertSame('browser', $catalog['browser.open']['session_kind']);
+        $this->assertSame('ephemeral', $catalog['browser.open']['result_handling']);
+        $this->assertSame('session', $catalog['browser.open']['approval_mode']);
+
+        $this->assertSame('vision', $catalog['image.vision']['capability_group']);
+        $this->assertSame('model', $catalog['llm.text']['session_kind']);
+        $this->assertSame('terminal', $catalog['node.run']['capability_group']);
+        $this->assertSame('syncable', $catalog['context']['result_handling']);
+        $this->assertContains('approval_open', $catalog['browser.open']['ui_statuses']);
+    }
+
     public function test_catalog_enumerations_match_definition_validation_without_bypassing_root_requirements(): void
     {
         $validator = new WorkflowDefinitionValidator;
