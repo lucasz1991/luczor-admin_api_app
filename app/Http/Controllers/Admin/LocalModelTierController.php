@@ -25,7 +25,7 @@ class LocalModelTierController extends AdminController
             $catalog = LocalModelCatalog::whereKey(1)->lockForUpdate()->firstOrFail();
             abort_unless((int) $data['revision'] === $catalog->revision, 409, 'Bitte den aktuellen Katalog neu laden.');
             $draft = $catalog->draft;
-            $draft['models'][0] = $tiers->laptopProfile($draft['models'][0]);
+            $draft['models'][0] = $tiers->laptopProfile($draft['models'][0], $catalog->published['models'][0] ?? null);
             $catalog->update(['draft' => $draft, 'revision' => $catalog->revision + 1]);
             app(AuditLogger::class)->record(['actor_user_id' => $request->user()->id, 'event_type' => 'local_model_catalog.laptop_drafted', 'payload' => ['revision' => $catalog->revision]]);
 
@@ -95,7 +95,7 @@ class LocalModelTierController extends AdminController
             try {
                 $manifest->validateCatalog($draft);
             } catch (LocalModelManifestConfigurationException $error) {
-                throw ValidationException::withMessages(['models' => 'Modellkonfiguration unvollständig oder ungültig: '.$error->getMessage()]);
+                throw ValidationException::withMessages(['models' => 'Modellkonfiguration unvollständig oder ungültig: '.($error->reasonCode === 'local_model_enabled_metadata_incomplete' ? 'Runtime, Template-Hash, Benchmarkwerte oder Evaluationsnachweis fehlen. Laptop-Profil erneut vorbereiten, um vorhandene veroeffentlichte Nachweise wiederherzustellen. ['.$error->reasonCode.']' : $error->reasonCode)]);
             }
             $updates = ['draft' => $draft, 'revision' => $version];
             if ($request->boolean('publish')) {
@@ -105,7 +105,7 @@ class LocalModelTierController extends AdminController
                 try {
                     $manifest->validateCatalog($draft, true);
                 } catch (LocalModelManifestConfigurationException $error) {
-                    throw ValidationException::withMessages(['models' => 'Der Katalog konnte nicht signiert werden: '.$error->getMessage()]);
+                    throw ValidationException::withMessages(['models' => 'Der Katalog konnte nicht signiert werden: '.($error->reasonCode === 'local_model_enabled_metadata_incomplete' ? 'Runtime, Template-Hash, Benchmarkwerte oder Evaluationsnachweis fehlen. Laptop-Profil erneut vorbereiten, um vorhandene veroeffentlichte Nachweise wiederherzustellen. ['.$error->reasonCode.']' : $error->reasonCode)]);
                 }
                 $updates['published'] = $draft;
             }

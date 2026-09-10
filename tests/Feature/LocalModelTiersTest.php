@@ -33,6 +33,27 @@ class LocalModelTiersTest extends TestCase
         $this->post('/admin/local-model-tiers/laptop', ['revision' => 1])->assertStatus(409);
     }
 
+    public function test_preparing_laptop_again_preserves_or_restores_published_evidence(): void
+    {
+        $this->configureExistingModel();
+        $tiers = app(LocalModelTierService::class);
+        $published = $tiers->defaults();
+        $published['models'][0]['artifact'] = $tiers->laptopProfile($published['models'][0])['artifact'];
+        $verified = $published['models'][0];
+        $this->assertSame($verified, $tiers->laptopProfile($verified));
+        $draft = $published;
+        $draft['models'][0]['runtime'] = null;
+        $draft['models'][0]['enabled'] = false;
+        $draft['models'][2]['display_name'] = 'Keep my other edits';
+        LocalModelCatalog::create(['id' => 1, 'draft' => $draft, 'published' => $published, 'revision' => 1]);
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->post('/admin/local-model-tiers/laptop', ['revision' => 1])->assertRedirect()->assertSessionHasNoErrors();
+        $catalog = LocalModelCatalog::find(1);
+        $this->assertSame($verified, $catalog->draft['models'][0]);
+        $this->assertSame('Keep my other edits', $catalog->draft['models'][2]['display_name']);
+        $this->assertSame($published, $catalog->published);
+    }
+
     public function test_regular_user_cannot_prepare_laptop_profile(): void
     {
         $this->actingAs(User::factory()->create(['role' => 'user']))
@@ -83,6 +104,7 @@ class LocalModelTiersTest extends TestCase
         $this->put('/admin/local-model-tiers', $body)->assertStatus(409);
         $draft['models'][0]['artifact'] = null;
         $this->put('/admin/local-model-tiers', ['revision' => LocalModelCatalog::find(1)->revision, 'models' => array_map('json_encode', $draft['models'])])->assertSessionHasErrors('models');
+        $this->assertStringContainsString('local_model_enabled_metadata_incomplete', session('errors')->first('models'));
         $this->assertNotNull(LocalModelCatalog::find(1)->published['models'][0]['artifact']);
     }
 

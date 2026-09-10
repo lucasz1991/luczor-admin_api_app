@@ -7,8 +7,20 @@ use App\Models\LocalModelCatalog;
 class LocalModelTierService
 {
     /** Official Qwen metadata pinned to a repository revision; runtime evaluation remains required. */
-    public function laptopProfile(array $slot): array
+    public function laptopProfile(array $slot, ?array $published = null): array
     {
+        // Repeated preparation must not erase verified runtime/template evidence.
+        foreach ([$slot, $published] as $candidate) {
+            if (($candidate['id'] ?? null) === ($slot['id'] ?? null)
+                && ($candidate['artifact']['sha256'] ?? null) === '7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5'
+                && is_array($candidate['runtime'] ?? null)
+                && ! empty($candidate['chat_template_hash'])
+                && ! empty($candidate['evaluation_report_hash'])
+                && is_array($candidate['capacity_policy']['benchmark_thresholds'] ?? null)) {
+                return $candidate;
+            }
+        }
+
         return array_replace($slot, [
             'display_name' => 'Laptop · Qwen3-4B Q4_K_M',
             'enabled' => false,
