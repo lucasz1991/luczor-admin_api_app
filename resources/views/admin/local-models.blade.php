@@ -61,7 +61,8 @@
                                         </x-ui.select>
                                         <span id="accelerator-memory-scope-{{ $index }}" class="text-sm text-slate-400">Standard: Eine GPU muss die VRAM-Grenze erfüllen. Gemeinsamer Speicher zählt nur bei einer kompatiblen, von der Runtime unterstützten GPU-Gruppe. Die RAM-Mindestwerte gelten weiterhin.</span>
                                     </label>
-                                    <label class="ui-field">Kontextfenster (Tokens)<x-ui.input name="profiles[{{ $index }}][context]" type="number" min="512" max="2000000" value="{{ old('profiles.'.$index.'.context', $model['context_limit'] ?? 32768) }}" required /></label>
+                                    <label class="ui-field">Start-Kontextfenster (Tokens)<x-ui.input name="profiles[{{ $index }}][context]" type="number" min="512" max="{{ $model['runtime']['max_context_tokens'] ?? 2000000 }}" value="{{ old('profiles.'.$index.'.context', $model['context_limit'] ?? 32768) }}" required /></label>
+                                    <p class="text-sm">Aktualisierte Desktops erweitern bei Bedarf bis zur signierten Runtime-Grenze ({{ number_format($model['runtime']['max_context_tokens'] ?? $model['context_limit'] ?? 32768, 0, ',', '.') }} Tokens). Eine Erweiterung benötigt Speicher und kann das Modell neu laden. Das Denkziel wird separat eingestellt. Ältere Desktops verwenden das Startfenster als feste Grenze.</p>
                                 </div>
                                 <div class="ui-record flex flex-wrap items-center justify-between gap-3">
                                     <input type="hidden" name="profiles[{{ $index }}][enabled]" value="0">
