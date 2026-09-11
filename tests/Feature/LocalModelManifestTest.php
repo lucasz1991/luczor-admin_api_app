@@ -451,6 +451,24 @@ class LocalModelManifestTest extends TestCase
         }
     }
 
+    public function test_enabled_model_context_must_be_inside_its_runtime_range(): void
+    {
+        $baseline = $this->fixtureCase('explicit_experiment');
+        foreach ([
+            $baseline['models'][0]['runtime']['min_context_tokens'] - 1,
+            $baseline['models'][0]['runtime']['max_context_tokens'] + 1,
+        ] as $contextLimit) {
+            $catalog = $baseline;
+            $catalog['models'][0]['context_limit'] = $contextLimit;
+            try {
+                app(LocalModelManifestService::class)->validateCatalog($catalog);
+                $this->fail('An enabled model must use a context supported by its signed runtime.');
+            } catch (LocalModelManifestConfigurationException $exception) {
+                $this->assertSame('local_model_context_outside_runtime_range', $exception->reasonCode);
+            }
+        }
+    }
+
     public function test_accelerator_memory_scope_is_optional_and_covered_by_the_signature(): void
     {
         $payload = $this->fixtureCase('explicit_experiment');

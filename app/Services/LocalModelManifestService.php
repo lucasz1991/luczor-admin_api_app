@@ -248,6 +248,10 @@ final class LocalModelManifestService
         )) {
             throw new LocalModelManifestConfigurationException('local_model_enabled_metadata_incomplete');
         }
+        if ($enabled && $contextLimit !== null && $runtime !== null
+            && ($contextLimit < $runtime['min_context_tokens'] || $contextLimit > $runtime['max_context_tokens'])) {
+            throw new LocalModelManifestConfigurationException('local_model_context_outside_runtime_range');
+        }
 
         return [
             'id' => $id,
