@@ -52,6 +52,7 @@ class LocalModelTierController extends AdminController
     {
         $this->ensureAdmin($request);
         $data = $request->validate(['revision' => ['required', 'integer', 'min:0'], 'models' => ['required', 'array', 'size:5'], 'models.*' => ['required', 'json', 'max:20000'], 'publish' => ['nullable', 'boolean'],
+            'platform_profiles' => ['sometimes', 'array', 'size:5'], 'platform_profiles.*' => ['nullable', 'json', 'max:20000'],
             'profiles' => ['sometimes', 'array', 'size:5'], 'profiles.*.name' => ['required', 'string', 'max:160'],
             'profiles.*.enabled' => ['required', 'boolean'], 'profiles.*.context' => ['required', 'integer', 'min:512', 'max:2000000'],
             'profiles.*.total_ram' => ['required', 'numeric', 'min:1', 'max:1024'], 'profiles.*.free_ram' => ['required', 'numeric', 'min:0.5', 'max:1024'],
@@ -83,6 +84,14 @@ class LocalModelTierController extends AdminController
                     } else {
                         $models[$index]['capacity_policy']['accelerator_memory_scope'] = $profile['accelerator_memory_scope'];
                     }
+                }
+            }
+            foreach ($data['platform_profiles'] ?? [] as $index => $json) {
+                abort_unless(isset($models[$index]), 422);
+                if ($json === null || trim($json) === '') {
+                    unset($models[$index]['platform_profiles']);
+                } else {
+                    $models[$index]['platform_profiles'] = json_decode($json, true, 32, JSON_THROW_ON_ERROR);
                 }
             }
             if (array_column($models, 'id') !== array_column($draft['models'], 'id')) {

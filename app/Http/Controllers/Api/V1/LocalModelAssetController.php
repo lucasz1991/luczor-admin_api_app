@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\LocalModelManifestService;
+use App\Services\LocalModelPlatformProfile;
 
 final class LocalModelAssetController extends Controller
 {
@@ -11,7 +12,11 @@ final class LocalModelAssetController extends Controller
     {
         abort_unless(preg_match('/\A[a-f0-9]{64}\z/', $hash) === 1, 404);
         $allowed = [];
-        foreach ($manifest->payload()['models'] as $model) {
+        $models = $manifest->payload()['models'];
+        foreach (LocalModelPlatformProfile::TARGETS as $target) {
+            $models = array_merge($models, $manifest->forPlatform($target)->payload()['models']);
+        }
+        foreach ($models as $model) {
             if (! $model['enabled'] || ! is_array($model['runtime'])) {
                 continue;
             }

@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Exceptions\LocalModelManifestConfigurationException;
 use App\Http\Controllers\Controller;
 use App\Services\LocalModelManifestService;
+use App\Services\LocalModelPlatformProfile;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 final class LocalModelManifestController extends Controller
 {
@@ -23,9 +26,14 @@ final class LocalModelManifestController extends Controller
         }
     }
 
-    public function __invoke(LocalModelManifestService $manifest): JsonResponse
+    public function __invoke(LocalModelManifestService $manifest, Request $request): JsonResponse
     {
+        $input = $request->validate(['platform' => ['sometimes', 'string', Rule::in(LocalModelPlatformProfile::TARGETS)]]);
         try {
+            if (isset($input['platform'])) {
+                $manifest = $manifest->forPlatform($input['platform']);
+            }
+
             return response()->json(
                 $manifest->envelope(),
                 200,

@@ -70,6 +70,13 @@
                                     <span class="break-all font-mono text-xs text-slate-400">Profil: {{ $model['id'] }}</span>
                                 </div>
                                 <details class="ui-disclosure">
+                                    <summary>Windows- und Linux-Runtimes dieser Modellstufe</summary>
+                                    <p class="mt-4 text-sm">Die Modelldatei bleibt identisch. Hier können geprüfte Runtime-Profile je Betriebssystem hinterlegt werden: <code>windows-x86_64</code> und <code>linux-x86_64</code>. Jedes Profil benötigt <code>runtime</code>; optional sind eigene <code>capacity_policy</code>, <code>context_limit</code>, <code>chat_template_hash</code> und <code>evaluation_report_hash</code> möglich. Fehlende Plattformen sind bei eingerichteten Profilen nicht freigegeben. Leer verwendet die bisherige einzelne Runtime.</p>
+                                    <label class="ui-field mt-5">Plattformprofile (JSON)
+                                        <x-ui.textarea class="font-mono text-xs" name="platform_profiles[{{ $index }}]" rows="10">{{ old('platform_profiles.'.$index, isset($model['platform_profiles']) ? json_encode($model['platform_profiles'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : '') }}</x-ui.textarea>
+                                    </label>
+                                </details>
+                                <details class="ui-disclosure">
                                     <summary>Modelldatei, Runtime, Lizenz und Prüfnachweise bearbeiten</summary>
                                     <p class="mt-4 text-sm text-slate-400">GPU-Beschleunigung benötigt einen passenden llama.cpp-Build. Optional legt <code>runtime.backend</code> die Variante fest: <code>auto</code>, <code>cuda</code> (NVIDIA), <code>vulkan</code>, <code>metal</code> oder <code>cpu</code>. Begleitbibliotheken können unter <code>runtime.files</code> mit Dateiname und SHA-256 verifiziert werden. Der Desktop meldet die tatsächlich genutzte Beschleunigung.</p>
                                     <label class="ui-field mt-5">Modell, Kontext, RAM/VRAM-Grenzen und verifizierte Dateien

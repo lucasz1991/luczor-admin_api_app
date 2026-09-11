@@ -34,6 +34,8 @@ class LocalModelTierService
                 'storage_class' => 'fixed_storage',
             ],
             'runtime' => null,
+            // Evidence for other weights must not survive a model replacement.
+            'platform_profiles' => [],
             'capacity_policy' => [
                 // Conservative proposal, not measured device acceptance.
                 'min_total_ram_bytes' => 8 * 1024 ** 3,

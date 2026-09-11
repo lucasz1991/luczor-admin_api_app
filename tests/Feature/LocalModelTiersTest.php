@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\LocalModelManifestConfigurationException;
 use App\Models\LocalModelCatalog;
 use App\Models\User;
 use App\Services\LocalModelManifestService;
@@ -12,6 +13,64 @@ use Tests\TestCase;
 class LocalModelTiersTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_invalid_secondary_platform_cannot_replace_the_published_catalog(): void
+    {
+        $this->configureExistingModel();
+        $draft = app(LocalModelTierService::class)->defaults();
+        LocalModelCatalog::create(['id' => 1, 'draft' => $draft, 'published' => $draft, 'revision' => 1]);
+        $modified = $draft['models'];
+        $modified[0]['platform_profiles'] = ['linux-x86_64' => ['runtime' => array_replace($modified[0]['runtime'], ['sha256' => 'invalid'])]];
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->put('/admin/local-model-tiers', ['revision' => 1, 'models' => array_map(fn ($model) => json_encode($model), $modified), 'publish' => true])
+            ->assertRedirect()->assertSessionHasErrors('models');
+        $stored = LocalModelCatalog::find(1);
+        $this->assertSame($draft, $stored->published);
+        $this->assertSame(1, $stored->revision);
+    }
+
+    public function test_platform_projection_rejects_malformed_model_lists_with_a_configuration_error(): void
+    {
+        config(['local_models.models' => ['malformed']]);
+        $this->expectException(LocalModelManifestConfigurationException::class);
+        (new LocalModelManifestService)->forPlatform('windows-x86_64');
+    }
+
+    public function test_replacing_weights_discards_previous_platform_evidence(): void
+    {
+        $this->configureExistingModel();
+        $tiers = app(LocalModelTierService::class);
+        $slot = $tiers->defaults()['models'][0];
+        $slot['platform_profiles'] = ['windows-x86_64' => ['runtime' => $slot['runtime']]];
+        $laptop = $tiers->laptopProfile($slot);
+        $this->assertSame([], $laptop['platform_profiles']);
+        $this->assertNull($laptop['runtime']);
+        $this->assertFalse($laptop['enabled']);
+    }
+
+    public function test_platform_profiles_are_saved_and_projected_without_changing_weights(): void
+    {
+        $this->configureExistingModel();
+        $draft = app(LocalModelTierService::class)->defaults();
+        LocalModelCatalog::create(['id' => 1, 'draft' => $draft, 'revision' => 1]);
+        $profiles = array_fill(0, 5, null);
+        $windows = $draft['models'][0]['runtime'];
+        $linux = array_replace($windows, ['version' => 'test-linux-runtime']);
+        $profiles[0] = json_encode(['windows-x86_64' => ['runtime' => $windows], 'linux-x86_64' => ['runtime' => $linux]]);
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->put('/admin/local-model-tiers', ['revision' => 1, 'models' => array_map(fn ($model) => json_encode($model), $draft['models']), 'platform_profiles' => $profiles, 'publish' => false])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $saved = LocalModelCatalog::find(1)->draft;
+        $this->assertSame($linux, $saved['models'][0]['platform_profiles']['linux-x86_64']['runtime']);
+        LocalModelCatalog::find(1)->update(['published' => $saved]);
+        $manifest = new LocalModelManifestService;
+        $linuxPayload = $manifest->forPlatform('linux-x86_64')->payload();
+        $windowsPayload = $manifest->forPlatform('windows-x86_64')->payload();
+        $this->assertSame('test-linux-runtime', $linuxPayload['models'][0]['runtime']['version']);
+        $this->assertSame($windows['version'], $windowsPayload['models'][0]['runtime']['version']);
+        $this->assertSame($linuxPayload['models'][0]['artifact'], $windowsPayload['models'][0]['artifact']);
+        $this->assertArrayNotHasKey('platform_profiles', $linuxPayload['models'][0]);
+    }
 
     public function test_laptop_profile_is_a_disabled_pinned_draft_and_keeps_active_models(): void
     {

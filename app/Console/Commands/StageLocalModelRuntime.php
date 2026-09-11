@@ -6,25 +6,31 @@ use Illuminate\Console\Command;
 
 final class StageLocalModelRuntime extends Command
 {
-    protected $signature = 'luczor:stage-model-runtime {binary} {--library=*}';
+    protected $signature = 'luczor:stage-model-runtime {binary} {--library=*} {--platform=linux-x86_64}';
 
-    protected $description = 'Stage verified Linux runtime files and print their catalog hashes without publishing a policy';
+    protected $description = 'Stage matching Windows/Linux runtime files and print catalog hashes without executing or publishing them';
 
     public function handle(): int
     {
+        $platform = (string) $this->option('platform');
+        if (! in_array($platform, ['windows-x86_64', 'linux-x86_64', 'linux-aarch64'], true)) {
+            $this->error('Unsupported runtime target.');
+
+            return self::FAILURE;
+        }
+        $windows = $platform === 'windows-x86_64';
         $paths = array_merge([(string) $this->argument('binary')], $this->option('library'));
         $root = (string) config('local_models.asset_directory');
         $result = [];
         foreach ($paths as $index => $path) {
             if (! is_file($path) || ! is_readable($path) || is_link($path)
-                || ($index > 0 && ! preg_match('/\A[A-Za-z0-9][A-Za-z0-9._+\-]*\.so\z/', basename($path)))) {
-                $this->error('Expected a Linux executable and optional unversioned .so libraries.');
+                || ($index > 0 && ! preg_match($windows ? '/\A[A-Za-z0-9][A-Za-z0-9._+\-]*\.dll\z/i' : '/\A[A-Za-z0-9][A-Za-z0-9._+\-]*\.so\z/', basename($path)))) {
+                $this->error('Expected a native executable and matching .dll or unversioned .so libraries.');
 
                 return self::FAILURE;
             }
-            $header = file_get_contents($path, false, null, 0, 20);
-            if (strlen($header) !== 20 || substr($header, 0, 6) !== "\x7fELF\x02\x01") {
-                $this->error('Only 64-bit little-endian ELF files can be staged.');
+            if (! $this->matchesTarget($path, $platform)) {
+                $this->error('Runtime binary format or architecture does not match the selected platform.');
 
                 return self::FAILURE;
             }
@@ -61,5 +67,26 @@ final class StageLocalModelRuntime extends Command
         $this->line(json_encode(['sha256' => $result[0]['sha256'], 'files' => array_slice($result, 1)], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 
         return self::SUCCESS;
+    }
+
+    private function matchesTarget(string $path, string $platform): bool
+    {
+        $header = file_get_contents($path, false, null, 0, 64);
+        if ($platform !== 'windows-x86_64') {
+            return strlen($header) >= 20 && substr($header, 0, 6) === "\x7fELF\x02\x01"
+                && unpack('v', substr($header, 18, 2))[1] === ($platform === 'linux-aarch64' ? 183 : 62);
+        }
+        if (strlen($header) < 64 || substr($header, 0, 2) !== 'MZ') {
+            return false;
+        }
+        $offset = unpack('V', substr($header, 60, 4))[1];
+        if ($offset < 64 || $offset > filesize($path) - 26) {
+            return false;
+        }
+        $pe = file_get_contents($path, false, null, $offset, 26);
+
+        return strlen($pe) === 26 && substr($pe, 0, 4) === "PE\0\0"
+            && unpack('v', substr($pe, 4, 2))[1] === 0x8664
+            && unpack('v', substr($pe, 24, 2))[1] === 0x20B;
     }
 }

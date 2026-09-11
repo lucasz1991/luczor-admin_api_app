@@ -31,7 +31,28 @@ final class LocalModelManifestService
         $validator->catalogLoaded = true;
         $validator->publishedCatalog = $catalog;
 
+        foreach (LocalModelPlatformProfile::TARGETS as $target) {
+            $validator->forPlatform($target)->payload();
+        }
+
         return $sign ? $validator->envelope() : $validator->payload();
+    }
+
+    public function forPlatform(string $target): self
+    {
+        $models = $this->catalogValue('models');
+        if (! is_array($models) || array_filter($models, fn ($model): bool => ! is_array($model)) !== []) {
+            throw new LocalModelManifestConfigurationException('local_model_models_invalid');
+        }
+        $copy = clone $this;
+        $copy->catalogLoaded = true;
+        $copy->publishedCatalog = $this->publishedCatalog ?? [];
+        $copy->publishedCatalog['models'] = array_map(
+            fn (array $model): array => (new LocalModelPlatformProfile)->select($model, $target),
+            $models,
+        );
+
+        return $copy;
     }
 
     private const FLASH_MODEL_ID = 'qwen3.8-flash-next';
@@ -197,6 +218,7 @@ final class LocalModelManifestService
      */
     private function model(array $model): array
     {
+        $model = (new LocalModelPlatformProfile)->select($model, null);
         $id = $this->requiredIdentifier($model['id'] ?? null, 'local_model_id_invalid');
         $displayName = $this->requiredString($model['display_name'] ?? null, 160, 'local_model_display_name_invalid');
         $executionTarget = $this->enum($model['execution_target'] ?? null, ['local_llama_cpp'], 'local_model_execution_target_invalid');
