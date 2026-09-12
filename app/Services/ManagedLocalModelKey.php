@@ -12,7 +12,7 @@ final class ManagedLocalModelKey
         $lock = null;
         $temporary = null;
         try {
-            if (! str_starts_with($directory, '/') || is_link($directory)) {
+            if ((! str_starts_with($directory, '/') && preg_match('/\A[A-Za-z]:[\\\\\/]/', $directory) !== 1) || is_link($directory)) {
                 throw new \RuntimeException;
             }
             if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
@@ -23,7 +23,7 @@ final class ManagedLocalModelKey
             if ($real === false || $checkout === false || $real === $checkout || str_starts_with($real, $checkout.'/')) {
                 throw new \RuntimeException;
             }
-            if ((fileperms($real) & 0077) !== 0) {
+            if (DIRECTORY_SEPARATOR !== '\\' && (fileperms($real) & 0077) !== 0) {
                 throw new \RuntimeException;
             }
             $path = $real.'/local-model-private.pem';
