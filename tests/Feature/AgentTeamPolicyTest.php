@@ -275,6 +275,150 @@ class AgentTeamPolicyTest extends TestCase
         $this->assertDatabaseHas('llm_runs', ['task_type' => 'agent.coding', 'model_id' => 'cohere/north-mini-code:free']);
     }
 
+    public function test_selected_context_tools_and_complete_results_reach_a_capable_specialist(): void
+    {
+        app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);
+        // Capability changes are isolated to this fixture; production defaults are not rewritten.
+        ModelProfile::where('model_id', 'cohere/north-mini-code:free')->update(['capabilities' => ['chat', 'tools']]);
+        $tools = [$this->contextTool('context_search'), $this->contextTool('context_read')];
+        $calls = [
+            ['id' => 'context-call-1', 'type' => 'function', 'function' => ['name' => 'context_search', 'arguments' => '{"query":"Architecture"}']],
+            ['id' => 'context-call-2', 'type' => 'function', 'function' => ['name' => 'context_read', 'arguments' => '{"artifact_id":"approved-summary"}']],
+        ];
+        $forwarded = [];
+        $http = Mockery::mock(ClientInterface::class);
+        $http->shouldReceive('request')->twice()->andReturnUsing(function (string $method, string $url, array $options) use (&$forwarded, $calls, $tools): Response {
+            $payload = $options['json'];
+            $forwarded[] = $payload;
+            $this->assertSame('cohere/north-mini-code:free', $payload['model']);
+            $this->assertSame($tools, $payload['tools']);
+            $this->assertSame('auto', $payload['tool_choice']);
+            $this->assertEquals(['prompt' => 0, 'completion' => 0, 'request' => 0], $payload['provider']['max_price']);
+            $message = count($forwarded) === 1
+                ? ['role' => 'assistant', 'content' => null, 'tool_calls' => $calls]
+                : ['role' => 'assistant', 'content' => 'Reviewed the approved project context.'];
+
+            return new Response(200, ['Content-Type' => 'application/json'], json_encode([
+                'choices' => [['message' => $message, 'finish_reason' => count($forwarded) === 1 ? 'tool_calls' : 'stop']],
+                'usage' => ['prompt_tokens' => 30, 'completion_tokens' => 20],
+            ]));
+        });
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldReceive('make')->twice()->andReturn($http);
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+        $base = [
+            'task_type' => 'agent.coding', 'agent_team_policy_revision' => app(AgentTeamPolicyService::class)->payload()['revision'],
+            'tools' => $tools, 'tool_choice' => 'auto',
+            'messages' => [['role' => 'user', 'content' => 'Review the selected context.']],
+        ];
+        $this->withHeader('X-Api-Key', $this->token(['proxy.use']))->postJson('/api/v1/proxy/chat', $base)
+            ->assertOk()->assertJsonPath('choices.0.message.tool_calls.0.function.name', 'context_search');
+        $base['messages'][] = ['role' => 'assistant', 'content' => null, 'tool_calls' => $calls];
+        $base['messages'][] = ['role' => 'tool', 'name' => 'context_search', 'tool_call_id' => 'context-call-1', 'content' => '{"artifact_id":"approved-summary"}'];
+        $base['messages'][] = ['role' => 'tool', 'name' => 'context_read', 'tool_call_id' => 'context-call-2', 'content' => 'Approved project summary.'];
+        $this->postJson('/api/v1/proxy/chat', $base)->assertOk()
+            ->assertJsonPath('choices.0.message.content', 'Reviewed the approved project context.');
+        $this->assertEquals($base['messages'], array_slice($forwarded[1]['messages'], -4));
+        $this->assertDatabaseCount('llm_attempts', 2);
+    }
+
+    public function test_context_tool_readiness_uses_the_configured_route_and_is_revision_bound(): void
+    {
+        Http::preventStrayRequests();
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldNotReceive('make');
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+        app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);
+        $policy = app(AgentTeamPolicyService::class);
+        $textOnly = $policy->payload();
+        $this->assertTrue($textOnly['models_by_role']['coding']['ready']);
+        $this->assertFalse($textOnly['models_by_role']['coding']['tools_ready']);
+        $this->assertNotNull($textOnly['models_by_role']['coding']['tools_reason_code']);
+
+        ModelProfile::where('model_id', 'cohere/north-mini-code:free')->update(['capabilities' => ['chat', 'tools']]);
+        $withTools = $policy->payload();
+        $this->assertTrue($withTools['models_by_role']['coding']['tools_ready']);
+        $this->assertNull($withTools['models_by_role']['coding']['tools_reason_code']);
+        $this->assertNotSame($textOnly['revision'], $withTools['revision']);
+        $this->withHeader('X-Api-Key', $this->token(['settings.read']))->getJson('/api/v1/agent-team-policy')
+            ->assertOk()->assertJsonPath('models_by_role.coding.tools_ready', true);
+
+        // A capability flag alone is insufficient if the active route is no longer usable.
+        ModelUseCase::where('slug', 'agent-coding')->update(['active' => false]);
+        $disabled = $policy->payload();
+        $this->assertFalse($disabled['models_by_role']['coding']['tools_ready']);
+        $this->assertSame('agent_role_disabled', $disabled['models_by_role']['coding']['tools_reason_code']);
+        $this->assertNotSame($withTools['revision'], $disabled['revision']);
+        $this->assertDatabaseCount('llm_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_unselected_context_calls_unrelated_tools_and_broken_call_links_never_dispatch(): void
+    {
+        app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);
+        $factory = Mockery::mock(ProviderHttpClientFactory::class);
+        $factory->shouldNotReceive('make');
+        $this->app->instance(ProviderHttpClientFactory::class, $factory);
+        $base = [
+            'task_type' => 'agent.coding', 'agent_team_policy_revision' => app(AgentTeamPolicyService::class)->payload()['revision'],
+            'tools' => [$this->contextTool('context_read')], 'tool_choice' => 'auto',
+            'messages' => [['role' => 'user', 'content' => 'Review.']],
+        ];
+        $this->withHeader('X-Api-Key', $this->token(['proxy.use']));
+        $invalid = $base;
+        $invalid['tools'] = [$this->contextTool('fs_write')];
+        $this->postJson('/api/v1/proxy/chat', $invalid)->assertUnprocessable()->assertJsonValidationErrors('tools');
+        foreach (['context_search', 'fs_write'] as $unselected) {
+            $invalid = $base;
+            $invalid['messages'][] = ['role' => 'assistant', 'content' => null, 'tool_calls' => [[
+                'id' => 'unexpected-call', 'type' => 'function', 'function' => ['name' => $unselected, 'arguments' => '{}'],
+            ]]];
+            $invalid['messages'][] = ['role' => 'tool', 'name' => $unselected, 'tool_call_id' => 'unexpected-call', 'content' => 'unselected result'];
+            $this->postJson('/api/v1/proxy/chat', $invalid)->assertUnprocessable()->assertJsonValidationErrors('messages.1');
+        }
+        $invalid = $base;
+        $invalid['messages'][] = ['role' => 'tool', 'name' => 'context_read', 'tool_call_id' => 'never-issued', 'content' => 'orphan result'];
+        $this->postJson('/api/v1/proxy/chat', $invalid)->assertUnprocessable()->assertJsonValidationErrors('messages.1');
+        $invalid = $base;
+        $invalid['messages'][] = ['role' => 'assistant', 'content' => null, 'tool_calls' => [[
+            'id' => 'unresolved', 'type' => 'function', 'function' => ['name' => 'context_read', 'arguments' => '{}'],
+        ]]];
+        $this->postJson('/api/v1/proxy/chat', $invalid)->assertUnprocessable()->assertJsonValidationErrors('messages');
+        $this->assertDatabaseCount('llm_attempts', 0);
+    }
+
+    public function test_malformed_specialist_shapes_return_validation_errors_instead_of_server_errors(): void
+    {
+        $this->credential();
+        $base = [
+            'task_type' => 'agent.coding', 'agent_team_policy_revision' => str_repeat('a', 64),
+            'tools' => [$this->contextTool('context_read')],
+            'messages' => [['role' => 'user', 'content' => 'Review.']],
+        ];
+        $cases = [
+            ['task_type' => ['unexpected']], ['tools' => ['malformed']],
+            ['tools' => [['type' => 'function', 'function' => 'scalar']]],
+            ['tools' => [['type' => 'function', 'function' => ['name' => 'context_read', 'parameters' => 'not-a-schema']]]],
+            ['messages' => 'not-a-list'], ['messages' => ['malformed']],
+            ['messages' => [['role' => 'assistant', 'tool_calls' => 'scalar']]],
+            ['messages' => [['role' => 'assistant', 'tool_calls' => [['id' => [], 'type' => 'function', 'function' => 'scalar']]]]],
+            ['messages' => [['role' => 'tool', 'tool_call_id' => ['unexpected'], 'name' => 'context_read']]],
+        ];
+        $this->withHeader('X-Api-Key', $this->token(['proxy.use']));
+        foreach ($cases as $case) {
+            $this->postJson('/api/v1/proxy/chat', array_replace($base, $case))->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('llm_attempts', 0);
+    }
+
+    private function contextTool(string $name): array
+    {
+        return ['type' => 'function', 'function' => [
+            'name' => $name, 'description' => 'Read explicitly selected project context.',
+            'parameters' => ['type' => 'object', 'properties' => ['query' => ['type' => 'string'], 'artifact_id' => ['type' => 'string']]],
+        ]];
+    }
+
     public function test_changed_policy_between_free_fallbacks_prevents_the_second_dispatch(): void
     {
         app(AgentTeamDefaultsService::class)->prepare($this->credential()->id);

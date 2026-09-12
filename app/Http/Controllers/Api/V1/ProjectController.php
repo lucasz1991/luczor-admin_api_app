@@ -7,13 +7,18 @@ use App\Models\Project;
 use App\Services\ApiActor;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ProjectController extends Controller
 {
     public function index(Request $request, ApiActor $actor)
     {
+        $request->validate(['scope' => ['sometimes', 'in:cloud']]);
         $query = Project::query()->withCount('repositories')->latest('updated_at');
-        if (! $request->user()?->isAdmin()) {
+        if ($request->query('scope') === 'cloud') {
+            $query->where('cloud_enabled', true);
+        }
+        if ($request->query('scope') === 'cloud' || ! $request->user()?->isAdmin()) {
             $query->where('user_id', $actor->userId($request));
         }
 
@@ -63,12 +68,23 @@ class ProjectController extends Controller
             'status' => ['sometimes', 'string', 'in:active,archived'],
             'meta' => ['sometimes', 'nullable', 'array'],
         ]);
-        $project->update($data);
-        $audit->record([
-            'actor_user_id' => $actor->userId($request), 'project_id' => $project->id,
-            'event_type' => 'project.updated', 'outcome' => 'completed', 'payload' => array_keys($data),
-        ]);
 
-        return response()->json(['data' => $project->fresh()]);
+        return DB::transaction(function () use ($request, $project, $actor, $audit, $data) {
+            $current = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
+            $actor->assertOwned($request, $current);
+            if ($current->cloud_enabled && (array_key_exists('name', $data) || array_key_exists('status', $data))) {
+                return response()->json([
+                    'code' => 'project_revision_required',
+                    'message' => 'Use the cloud project endpoint with its current revision to update a shared project.',
+                ], 409);
+            }
+            $current->update($data);
+            $audit->record([
+                'actor_user_id' => $actor->userId($request), 'project_id' => $current->id,
+                'event_type' => 'project.updated', 'outcome' => 'completed', 'payload' => array_keys($data),
+            ]);
+
+            return response()->json(['data' => $current->fresh()]);
+        }, 3);
     }
 }

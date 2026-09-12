@@ -64,7 +64,10 @@ final class AgentTeamPolicyService
                 ];
             }
             $reasonCode = $this->readinessReason($profile, $case, $taskType);
+            $toolsReasonCode = $reasonCode ?? $this->readinessReason($profile, $case, $taskType, ['tools']);
             $modelsByRole[$role] = ['task_type' => $taskType, 'candidates' => $candidates, 'ready' => $reasonCode === null,
+                'tools_ready' => $toolsReasonCode === null,
+                'tools_reason_code' => $toolsReasonCode,
                 'reason_code' => $reasonCode, 'reason' => $this->readinessMessage($reasonCode),
                 'max_cost_usd' => $this->tightest($case?->max_cost_usd, $network?->max_cost_usd),
                 'max_output_tokens' => $network?->max_output_tokens === null ? null : (int) $network->max_output_tokens,
@@ -97,7 +100,7 @@ final class AgentTeamPolicyService
     }
 
     /** Configuration preflight only; no network request and no inference or availability claim. */
-    private function readinessReason(?AgentProfile $profile, ?ModelUseCase $case, string $taskType): ?string
+    private function readinessReason(?AgentProfile $profile, ?ModelUseCase $case, string $taskType, array $requiredCapabilities = []): ?string
     {
         if (! $profile || $profile->type !== 'team_policy') {
             return 'agent_team_not_configured';
@@ -112,7 +115,7 @@ final class AgentTeamPolicyService
             return 'agent_role_disabled';
         }
         try {
-            app(ProviderPolicyService::class)->resolve($taskType, [], [
+            app(ProviderPolicyService::class)->resolve($taskType, $requiredCapabilities, [
                 'messages' => [['role' => 'user', 'content' => 'Konfigurationsprüfung']],
             ]);
         } catch (RoutingPolicyException $exception) {

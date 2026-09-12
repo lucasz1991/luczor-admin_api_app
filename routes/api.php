@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\V1\AgentRunController;
 use App\Http\Controllers\Api\V1\AgentTeamPolicyController;
 use App\Http\Controllers\Api\V1\AppNotificationController;
 use App\Http\Controllers\Api\V1\BootstrapController;
+use App\Http\Controllers\Api\V1\CloudProjectController;
+use App\Http\Controllers\Api\V1\CloudProjectFileController;
 use App\Http\Controllers\Api\V1\ContextController;
 use App\Http\Controllers\Api\V1\ConversationController;
 use App\Http\Controllers\Api\V1\DeviceController;
@@ -135,6 +137,18 @@ Route::prefix('v1')->group(function () {
         ->middleware('luczor.api:brain.read')->name('api.v1.projects.show');
     Route::patch('/projects/{project}', [ProjectController::class, 'update'])
         ->middleware('luczor.api:brain.write')->name('api.v1.projects.update');
+    Route::get('/projects/{project}/cloud', [CloudProjectController::class, 'show'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.projects.cloud.show');
+    Route::put('/projects/{project}/cloud', [CloudProjectController::class, 'update'])
+        ->middleware('luczor.api:brain.write')->name('api.v1.projects.cloud.update');
+    Route::get('/projects/{project}/files', [CloudProjectFileController::class, 'index'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.projects.files.index');
+    Route::get('/projects/{project}/files/content', [CloudProjectFileController::class, 'show'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.projects.files.show');
+    Route::put('/projects/{project}/files', [CloudProjectFileController::class, 'update'])
+        ->middleware('luczor.api:brain.write')->name('api.v1.projects.files.update');
+    Route::delete('/projects/{project}/files', [CloudProjectFileController::class, 'destroy'])
+        ->middleware('luczor.api:brain.write')->name('api.v1.projects.files.destroy');
     // Agent/user task + conversation management (SOLL §8).
     Route::get('/tasks', [TaskController::class, 'index'])
         ->middleware('luczor.api:brain.read')->name('api.v1.tasks.index');

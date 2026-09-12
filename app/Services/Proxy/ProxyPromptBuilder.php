@@ -16,9 +16,9 @@ final class ProxyPromptBuilder
     public function prepare(ProxyChatInput $input, array $meta): PreparedProxyRequest
     {
         $payload = $input->providerPayload();
-        if (str_starts_with($input->taskType, 'agent.')) {
+        if (str_starts_with($input->taskType, 'agent.') && empty($input->tools)) {
             // Some free text endpoints reject even an empty tool contract or choice=none.
-            // Nonempty/executable contracts have already been rejected by the FormRequest.
+            // Nonempty context-only contracts are validated by the FormRequest.
             unset($payload['tools'], $payload['tool_choice']);
         }
         $prefix = 0;

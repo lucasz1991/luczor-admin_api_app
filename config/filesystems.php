@@ -30,6 +30,13 @@ return [
 
     'disks' => [
 
+        'cloud-projects' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/cloud-projects'),
+            'visibility' => 'private',
+            'throw' => true,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app'),
