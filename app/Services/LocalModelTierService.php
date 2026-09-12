@@ -69,6 +69,19 @@ class LocalModelTierService
             ],
             'license' => 'MIT',
         ],
+        self::LEGACY_27B_ID => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+            'context_limit' => 8192,
+            'artifact' => [
+                'url' => 'https://huggingface.co/bartowski/orcarouter_Qwen3.8-27B-Uncensored-GGUF/resolve/87d37daf5e5eb72a926d8b413e08809a57f1a120/orcarouter_Qwen3.8-27B-Uncensored-Q4_K_M.gguf',
+                'sha256' => '6c8c7658fe13eef22666aa89862f7fb70aa72109838cf19989e59b15875e5e08',
+                'size_bytes' => 17772538112,
+                'format' => 'gguf',
+                'quantization' => 'Q4_K_M',
+                'storage_class' => 'fixed_storage',
+            ],
+            'license' => 'Apache-2.0',
+        ],
         'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf' => [
             'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
             'context_limit' => 32768,
