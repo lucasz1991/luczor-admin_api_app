@@ -22,6 +22,7 @@ class DeviceToolPolicy
         // the task_key is re-validated against the WorkflowTaskCatalog.
         'workflow.task' => 'sensitive',
         'workspace.chat' => 'sensitive',
+        'chat.turn' => 'sensitive',
     ];
 
     /** @param array<string,mixed> $payload */
@@ -32,6 +33,17 @@ class DeviceToolPolicy
         return match ($tool) {
             'workflow.task' => $this->workflowTask($payload),
             'workspace.chat' => $this->workspaceChat($payload),
+            'chat.turn' => validator($payload, [
+                'prompt' => ['required', 'string', 'max:60000'],
+                'history' => ['sometimes', 'array', 'max:20'],
+                'history.*' => ['required', 'array:role,content'],
+                'history.*.role' => ['required', 'in:user,assistant'],
+                'history.*.content' => ['required', 'string', 'max:20000'],
+                'tool_allowlist' => ['sometimes', 'array', 'max:100'],
+                'tool_allowlist.*' => ['required', 'string', 'regex:/^[a-z][a-z0-9_.]{0,99}$/'],
+                'model_mode' => ['sometimes', 'in:local,local_external,external'],
+                'thinking_tier' => ['sometimes', 'in:fast,balanced,thorough,max,ultra'],
+            ])->validate(),
             'desktop.input.move_mouse' => [
                 'x' => $this->coordinate($payload['x'] ?? null),
                 'y' => $this->coordinate($payload['y'] ?? null),

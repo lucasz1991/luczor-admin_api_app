@@ -36,12 +36,27 @@ class DeviceJobSigner
 
     public function canonical(DeviceJob $job): string
     {
+        if ($job->protocol_version === 2) {
+            return json_encode($this->versionedEnvelope($job), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        }
         return json_encode([
             'id' => $job->public_id,
             'tool_profile' => $job->tool_profile,
             'payload_hash' => $job->payload_hash,
             'expires_at' => $job->expires_at?->toIso8601String(),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function versionedEnvelope(DeviceJob $job): array
+    {
+        return [
+            'protocol_version' => 2, 'id' => $job->public_id, 'user_id' => (int) $job->user_id,
+            'source_device_id' => (string) \App\Models\Device::whereKey($job->source_device_id)->value('device_id'),
+            'target_device_id' => (string) $job->device->device_id,
+            'project_id' => $job->project?->external_id, 'master_epoch' => (int) $job->master_epoch,
+            'attempt_id' => $job->attempt_id, 'tool_profile' => $job->tool_profile,
+            'payload_hash' => $job->payload_hash, 'expires_at' => $job->expires_at?->toIso8601String(),
+        ];
     }
 
     private function privateKey(): string|false

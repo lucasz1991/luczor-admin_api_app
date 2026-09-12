@@ -28,7 +28,7 @@ class DeviceJobData implements CastsAttributes
             return null;
         }
         $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        if (($attributes['tool_profile'] ?? null) !== 'workspace.chat') {
+        if (($attributes['tool_profile'] ?? null) !== 'workspace.chat' && (int) ($attributes['protocol_version'] ?? 1) !== 2) {
             return $json;
         }
 
