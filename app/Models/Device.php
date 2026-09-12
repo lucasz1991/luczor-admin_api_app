@@ -16,6 +16,7 @@ class Device extends Model
     protected $casts = [
         'last_seen_at' => 'datetime', 'revoked_at' => 'datetime',
         'metrics' => 'array', 'meta' => 'array',
+        'coordination_seen_at' => 'datetime', 'coordination_available' => 'boolean', 'coordination_busy' => 'boolean',
     ];
 
     /** @return BelongsTo<User, $this> */

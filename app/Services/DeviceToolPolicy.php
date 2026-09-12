@@ -23,6 +23,7 @@ class DeviceToolPolicy
         'workflow.task' => 'sensitive',
         'workspace.chat' => 'sensitive',
         'chat.turn' => 'sensitive',
+        'desktop.observe' => 'sensitive',
     ];
 
     /** @param array<string,mixed> $payload */
@@ -33,6 +34,9 @@ class DeviceToolPolicy
         return match ($tool) {
             'workflow.task' => $this->workflowTask($payload),
             'workspace.chat' => $this->workspaceChat($payload),
+            'desktop.observe' => validator($payload, [
+                'window_id' => 'sometimes|integer|min:1',
+            ])->validate(),
             'chat.turn' => validator($payload, [
                 'prompt' => ['required', 'string', 'max:60000'],
                 'history' => ['sometimes', 'array', 'max:20'],
@@ -118,6 +122,7 @@ class DeviceToolPolicy
                 'automatic' => (bool) ($workflow['automatic'] ?? false),
                 'grant' => is_array($workflow['grant'] ?? null) ? $workflow['grant'] : null,
                 'test_mode' => in_array($workflow['test_mode'] ?? null, ['definition', 'simulation', 'real'], true) ? $workflow['test_mode'] : null,
+                'mirror_manifest_id' => $workflow['mirror_manifest_id'] ?? null, 'mirror_revision' => $workflow['mirror_revision'] ?? null,
                 'test_binding' => is_array($workflow['test_binding'] ?? null) ? $workflow['test_binding'] : null,
                 'test_run' => is_string($workflow['test_run'] ?? null) ? $workflow['test_run'] : null,
                 'thinking_tier' => in_array($workflow['thinking_tier'] ?? null, ['fast', 'balanced', 'thorough', 'max', 'ultra'], true) ? $workflow['thinking_tier'] : 'balanced',

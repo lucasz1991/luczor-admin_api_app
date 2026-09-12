@@ -2,17 +2,59 @@
 
 $rawCatalog = trim((string) env('LUCZOR_LOCAL_MODEL_CATALOG_JSON', ''));
 $catalogOverride = $rawCatalog === '' ? null : json_decode($rawCatalog, true);
+$healthPolicy = ['cooldown_ms' => 300000, 'max_consecutive_failures' => 2];
+$emptyCapacity = [
+    'min_total_ram_bytes' => null,
+    'min_available_ram_bytes' => null,
+    'min_vram_bytes' => null,
+    'min_storage_free_bytes' => null,
+    'max_startup_seconds' => null,
+    'benchmark_thresholds' => null,
+];
+$tierDefinitions = [
+    ['alxis955-qwe2.5-coder-uncensored', 'Stufe 1 · Alxis955/qwe2.5-coder-Uncensored', 'fallback'],
+    ['darkmaniac7-qwen3.5-4b-uncensored-mnn', 'Stufe 2 · darkmaniac7/Qwen3.5-4B-uncensored-MNN', 'fallback'],
+    ['blossomsai-qwen2.5-coder-14b-instruct-uncensored', 'Stufe 3 · BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored', 'fallback'],
+    ['orcarouter-qwen3.8-27b-uncensored-q4-k-m', 'Stufe 4 · OrcaRouter Qwen3.8-27B Uncensored Q4_K_M', 'fallback'],
+    ['thebloke-wizardlm-uncensored-falcon-40b-gptq', 'Stufe 5 · TheBloke/WizardLM-Uncensored-Falcon-40B-GPTQ', 'preferred'],
+];
+$configuredSchemaVersion = is_array($catalogOverride)
+    ? (int) ($catalogOverride['schema_version'] ?? (count($catalogOverride['models'] ?? []) === 2 ? 1 : 2))
+    : 2;
+$defaultModels = array_map(static function (array $definition) use ($healthPolicy, $emptyCapacity): array {
+    [$id, $displayName, $routingRole] = $definition;
+
+    return [
+        'id' => $id,
+        'display_name' => $displayName,
+        'execution_target' => 'local_llama_cpp',
+        'release_channel' => 'stable',
+        'routing_role' => $routingRole,
+        'promoted' => true,
+        // New repos remain metadata-only until a GGUF artifact, compatible
+        // runtime, hashes, template and benchmark evidence are verified.
+        'enabled' => false,
+        'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation'],
+        'context_limit' => null,
+        'artifact' => null,
+        'runtime' => null,
+        'capacity_policy' => $emptyCapacity,
+        'health_policy' => $healthPolicy,
+        'chat_template_hash' => null,
+        'evaluation_report_hash' => null,
+        'license' => null,
+    ];
+}, $tierDefinitions);
 
 return [
     'asset_directory' => env('LUCZOR_LOCAL_MODEL_ASSET_DIRECTORY', storage_path('app/local-model-assets')),
-    'schema_version' => 1,
-    'catalog_version' => (int) env('LUCZOR_LOCAL_MODEL_CATALOG_VERSION', 2026083001),
-    'policy_version' => (int) env('LUCZOR_LOCAL_MODEL_POLICY_VERSION', 2026083001),
+    'schema_version' => $configuredSchemaVersion,
+    'catalog_version' => (int) env('LUCZOR_LOCAL_MODEL_CATALOG_VERSION', 2026091201),
+    'policy_version' => (int) env('LUCZOR_LOCAL_MODEL_POLICY_VERSION', 2026091201),
     'ttl_seconds' => max(300, (int) env('LUCZOR_LOCAL_MODEL_MANIFEST_TTL_SECONDS', 86400)),
     'signing' => [
         'auto_generate' => (bool) env('LUCZOR_LOCAL_MODEL_AUTO_GENERATE_KEY', true),
         'managed_directory' => env('LUCZOR_LOCAL_MODEL_KEY_DIRECTORY', dirname(base_path()).'/.luczor-secrets'),
-        // Keep this key lifecycle separate from provider, device-job and Voice keys.
         'key_id' => env('LUCZOR_LOCAL_MODEL_SIGNING_KEY_ID', 'local-model-catalog-2026-01'),
         'private_key' => '',
         'private_key_file' => env('LUCZOR_LOCAL_MODEL_SIGNING_PRIVATE_KEY_FILE', ''),
@@ -25,75 +67,20 @@ return [
         && is_array($catalogOverride['models'] ?? null)
         && is_array($catalogOverride['routing'] ?? null)
     ),
-    'models' => is_array($catalogOverride['models'] ?? null) ? $catalogOverride['models'] : [
-        [
-            'id' => 'qwen3.8-flash-next',
-            'display_name' => 'Qwen3.8 Flash-Next',
-            'execution_target' => 'local_llama_cpp',
-            'release_channel' => 'experimental',
-            'routing_role' => 'preferred',
-            'promoted' => false,
-            // An experimental catalog entry is not executable until an
-            // operator supplies and signs complete artifact/runtime metadata.
-            'enabled' => false,
-            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation'],
-            'context_limit' => null,
-            'artifact' => null,
-            'runtime' => null,
-            'capacity_policy' => [
-                'min_total_ram_bytes' => null,
-                'min_available_ram_bytes' => null,
-                'min_vram_bytes' => null,
-                'min_storage_free_bytes' => null,
-                'max_startup_seconds' => null,
-                'benchmark_thresholds' => null,
-            ],
-            'health_policy' => [
-                'cooldown_ms' => 300000,
-                'max_consecutive_failures' => 2,
-            ],
-            'chat_template_hash' => null,
-            'evaluation_report_hash' => null,
-            'license' => null,
-        ],
-        [
-            'id' => 'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-            'display_name' => 'OrcaRouter Qwen3.8-27B Uncensored Q4_K_M',
-            'execution_target' => 'local_llama_cpp',
-            'release_channel' => 'stable',
-            'routing_role' => 'fallback',
-            'promoted' => true,
-            // Metadata-only by default: Laravel neither hosts nor executes the
-            // model and no unverifiable URL/hash is invented here.
-            'enabled' => false,
-            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation'],
-            'context_limit' => null,
-            'artifact' => null,
-            'runtime' => null,
-            'capacity_policy' => [
-                'min_total_ram_bytes' => null,
-                'min_available_ram_bytes' => null,
-                'min_vram_bytes' => null,
-                'min_storage_free_bytes' => null,
-                'max_startup_seconds' => null,
-                'benchmark_thresholds' => null,
-            ],
-            'health_policy' => [
-                'cooldown_ms' => 300000,
-                'max_consecutive_failures' => 2,
-            ],
-            'chat_template_hash' => null,
-            'evaluation_report_hash' => null,
-            'license' => null,
-        ],
-    ],
+    'models' => is_array($catalogOverride['models'] ?? null) ? $catalogOverride['models'] : $defaultModels,
     'routing' => is_array($catalogOverride['routing'] ?? null) ? $catalogOverride['routing'] : [
         'strategy' => 'local_first',
         'local_first' => true,
-        'preferred_model_id' => 'qwen3.8-flash-next',
-        'default_model_id' => 'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-        'fallback_model_ids' => ['orcarouter-qwen3.8-27b-uncensored-q4-k-m'],
-        'experimental_model_ids' => ['qwen3.8-flash-next'],
+        // Prefer the strongest tier, then fall back by descending capacity.
+        'preferred_model_id' => 'thebloke-wizardlm-uncensored-falcon-40b-gptq',
+        'default_model_id' => 'thebloke-wizardlm-uncensored-falcon-40b-gptq',
+        'fallback_model_ids' => [
+            'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
+            'blossomsai-qwen2.5-coder-14b-instruct-uncensored',
+            'darkmaniac7-qwen3.5-4b-uncensored-mnn',
+            'alxis955-qwe2.5-coder-uncensored',
+        ],
+        'experimental_model_ids' => [],
         'experimental_opt_in_required' => true,
         'external_execution_target' => 'laravel_proxy',
         'external_allowed' => true,

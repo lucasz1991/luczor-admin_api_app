@@ -30,6 +30,10 @@ class WorkflowDefinitionValidator
             abort_unless(($step['version'] ?? 1) === 1, 422, 'Unsupported workflow task version.');
             abort_unless(! isset($keys[$key]), 422, 'Workflow step keys must be unique.');
             $keys[$key] = true;
+            if (array_key_exists('device_target', $step)) {
+                abort_unless(WorkflowTaskCatalog::isClientTask($type), 422, 'workflow_device_target_requires_client_task');
+                WorkflowDeviceTarget::validate($step['device_target']);
+            }
             $payload = is_array($step['payload'] ?? null) ? $step['payload'] : [];
             $this->validatePayload($type, $payload);
             if (($definition['schema_version'] ?? 1) === 2) {

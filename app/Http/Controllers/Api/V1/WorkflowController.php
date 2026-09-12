@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgentRun;
+use App\Models\Device;
 use App\Models\WorkflowDefinition;
 use App\Models\WorkflowOperation;
 use App\Models\WorkflowRun;
 use App\Models\WorkflowStep;
+use App\Services\DeviceLeadership;
 use App\Services\WorkflowAuthoringService;
 use App\Services\WorkflowBindingTypes;
 use App\Services\WorkflowBoundaryStop;
@@ -98,12 +100,29 @@ class WorkflowController extends Controller
             'operation_id' => ['nullable', 'uuid'], 'input' => ['nullable', 'array'], 'sandbox' => ['nullable', 'boolean'],
             'device_id' => ['nullable', 'string', 'max:120'], 'project_id' => ['nullable', 'string', 'max:190'],
             'agent_run_id' => ['nullable', 'integer'],
+            'master_epoch' => ['required_with:device_targets', 'integer', 'min:1'],
+            'device_targets' => ['sometimes', 'array', 'max:100'],
+            'device_targets.*' => ['required', 'string', 'max:120'],
         ]);
         if (! empty($data['agent_run_id'])) {
             abort_unless(AgentRun::where('user_id', $request->user()->id)->whereKey($data['agent_run_id'])->exists(), 404);
         }
-        $result = $authoring->operate((int) $request->user()->id, $data['operation_id'] ?? null, 'run.start', $data + ['definition_id' => $workflowDefinition->id], function () use ($workflowDefinition, $workflows, $data) {
+        $result = $authoring->operate((int) $request->user()->id, $data['operation_id'] ?? null, 'run.start', $data + ['definition_id' => $workflowDefinition->id], function () use ($request, $workflowDefinition, $workflows, $data) {
             $context = ['strict_target' => isset($data['operation_id'])];
+            if (isset($data['master_epoch'])) {
+                $leadership = app(DeviceLeadership::class);
+                $device = $leadership->device($request);
+                $leadership->fence($device, $data['master_epoch']);
+                $context['coordination_epoch'] = $data['master_epoch'];
+                $context['coordination_source_device_id'] = $device->id;
+            }
+            if (isset($data['device_targets'])) {
+                $keys = array_column($workflowDefinition->definition['steps'] ?? [], 'key');
+                foreach ($data['device_targets'] as $key => $target) {
+                    abort_unless(in_array($key, $keys, true) && Device::where('user_id', $workflowDefinition->user_id)->where('device_id', $target)->whereNull('revoked_at')->exists(), 422, 'workflow_step_device_invalid');
+                }
+                $context['device_targets'] = $data['device_targets'];
+            }
             foreach (['device_id', 'project_id'] as $field) {
                 if (array_key_exists($field, $data)) {
                     $context[$field] = $data[$field];

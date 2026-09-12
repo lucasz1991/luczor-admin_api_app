@@ -38,6 +38,7 @@ class DeviceJobService
     public function create(Request $request, array $data): DeviceJob
     {
         abort_if($data['tool_profile'] === 'workflow.task', 422, 'Workflow bundles can only be issued by the persistent workflow scheduler.');
+        abort_if(in_array($data['tool_profile'], ['chat.turn', 'desktop.observe'], true), 422, 'Use the coordinated job endpoint.');
         $actor = app(ApiActor::class);
         $tools = app(DeviceToolPolicy::class);
         $signer = app(DeviceJobSigner::class);
@@ -142,6 +143,11 @@ class DeviceJobService
 
             $run = $step->run;
             $context = $run->context['_execution'] ?? [];
+            $coordinated = isset($context['coordination_epoch'], $context['coordination_source_device_id']);
+            if ($coordinated) {
+                $source = Device::where('user_id', $run->user_id)->findOrFail($context['coordination_source_device_id']);
+                app(DeviceLeadership::class)->fence($source, (int) $context['coordination_epoch']);
+            }
             $payload = $tools->normalize('workflow.task', [
                 'task_key' => $step->type,
                 'task_version' => $step->type_version,
@@ -157,6 +163,7 @@ class DeviceJobService
                     'file_scope' => $params['file_scope'] ?? 'legacy', 'workspace_root_id' => $params['workspace_root_id'] ?? null,
                     'automatic' => (bool) ($context['automatic'] ?? false), 'grant' => $context['grant'] ?? null,
                     'test_mode' => $run->test_mode, 'test_binding' => $context['grant']['config']['test_binding'] ?? null,
+                    'mirror_manifest_id' => $context['mirror_manifest_id'] ?? null, 'mirror_revision' => $context['mirror_revision'] ?? null,
                     'test_run' => $context['_test_run_id'] ?? null,
                     'thinking_tier' => $params['thinking_tier'] ?? $run->definition_snapshot['definition']['thinking_tier'] ?? 'balanced',
                     'workspace_root_path' => $params['workspace_root_id'] ?? null,
@@ -168,6 +175,10 @@ class DeviceJobService
             $requiresApproval = ! empty($context['automatic']) && ! empty($context['grant'])
                 ? false : $tools->requiresLocalApproval((int) $device->user_id, $run->project_id, $device, 'workflow.task');
             $job = DeviceJob::create([
+                'protocol_version' => $coordinated ? 2 : 1,
+                'source_device_id' => $coordinated ? $context['coordination_source_device_id'] : null,
+                'master_epoch' => $coordinated ? $context['coordination_epoch'] : null,
+                'authority_epoch' => $coordinated ? $context['coordination_epoch'] : null,
                 'public_id' => (string) Str::uuid(),
                 'user_id' => (int) $device->user_id,
                 'project_id' => $run->project_id,
@@ -175,10 +186,10 @@ class DeviceJobService
                 'agent_run_id' => $run->agent_run_id,
                 'workflow_execution_id' => $step->execution_id,
                 'tool_profile' => 'workflow.task',
-                'status' => $requiresApproval ? 'approval_required' : 'queued',
+                'status' => $requiresApproval && ! $coordinated ? 'approval_required' : 'queued',
                 'risk_level' => $risk,
-                'requires_local_approval' => $requiresApproval,
-                'approved_at' => $requiresApproval ? null : now(),
+                'requires_local_approval' => $coordinated ? false : $requiresApproval,
+                'approved_at' => $requiresApproval && ! $coordinated ? null : now(),
                 'expires_at' => now()->addMinutes(config('luczor.device_jobs.ttl_minutes')),
                 'payload' => $payload,
                 'payload_hash' => app(AuditLogger::class)->hash($payload),

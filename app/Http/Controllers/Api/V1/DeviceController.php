@@ -105,6 +105,7 @@ class DeviceController extends Controller
         $clientId = (string) $request->query('client_id');
         $device = $this->currentDevice($request, $actor, $clientId);
         $job = DeviceJob::query()
+            ->where('protocol_version', 1)
             ->where('device_id', $device->id)
             ->where('user_id', $device->user_id)
             ->whereIn('status', ['approval_required', 'queued'])
@@ -134,6 +135,7 @@ class DeviceController extends Controller
 
         return DB::transaction(function () use ($device, $publicId, $data, $audit) {
             $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $job->protocol_version === 1, 409, 'Use the coordinated job endpoint.');
             abort_unless($job->status === 'approval_required', 409, 'This job is not awaiting approval.');
             abort_if($job->expires_at?->isPast(), 410, 'This job has expired.');
 
@@ -177,6 +179,7 @@ class DeviceController extends Controller
 
         return DB::transaction(function () use ($device, $publicId, $audit) {
             $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $job->protocol_version === 1, 409, 'Use the coordinated job endpoint.');
             abort_unless($job->status === 'queued', 409, 'This job is not executable.');
             abort_if($job->expires_at?->isPast(), 410, 'This job has expired.');
             abort_if($job->cancel_requested_at !== null, 409, 'This job was cancelled.');
@@ -215,6 +218,7 @@ class DeviceController extends Controller
 
         return DB::transaction(function () use ($device, $publicId, $data, $audit) {
             $job = DeviceJob::query()->where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $job->protocol_version === 1, 409, 'Use the coordinated job endpoint.');
             $result = $data['result'] ?? null;
             $resultHash = $result === null ? null : $audit->hash($result);
             if (in_array($job->status, ['completed', 'failed'], true)) {
@@ -263,6 +267,7 @@ class DeviceController extends Controller
 
         return DB::transaction(function () use ($device, $publicId) {
             $job = DeviceJob::where('public_id', $publicId)->where('device_id', $device->id)->where('user_id', $device->user_id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $job->protocol_version === 1, 409, 'Use the versioned coordination endpoint.');
             abort_unless($job->cancel_requested_at || $job->status === 'cancelled', 409, 'No cancellation was requested.');
             $job->update(['status' => 'cancelled', 'finished_at' => $job->finished_at ?? now()]);
             $step = WorkflowStep::where('external_run_type', 'device_job')->where('external_run_id', $job->public_id)->first();

@@ -60,7 +60,7 @@ class WorkflowBoundaryStop
                     $step->update(['status' => 'cancelled', 'finished_at' => now()]);
                 }
             }
-            $activeJobs = DeviceJob::whereIn('workflow_execution_id', $executionIds)->where('status', 'running')->exists();
+            $activeJobs = DeviceJob::whereIn('workflow_execution_id', $executionIds)->whereIn('status', ['running', 'cancelling'])->exists();
             $activeSteps = WorkflowStep::whereIn('workflow_run_id', $runIds)->where('status', 'running')->get()
                 ->contains(fn ($step) => WorkflowBudgetService::occupiesSlot($step->type));
             if ($activeJobs || $activeSteps) {

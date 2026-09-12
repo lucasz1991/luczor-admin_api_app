@@ -16,9 +16,13 @@ class ConversationController extends Controller
         $data = $request->validate([
             'project_id' => ['nullable', 'string', 'max:190'],
             'external_id' => ['nullable', 'uuid'],
+            'include_archived' => ['sometimes', 'boolean'],
+            'after' => ['sometimes', 'integer', 'min:0'],
+            'limit' => ['sometimes', 'integer', 'between:1,200'],
         ]);
 
-        $query = Conversation::where('user_id', $request->user()->id)->whereNull('archived_at');
+        $query = Conversation::where('user_id', $request->user()->id)
+            ->when(! ($data['include_archived'] ?? false), fn ($query) => $query->whereNull('archived_at'));
         if (! empty($data['project_id'])) {
             $project = app(ApiActor::class)->project($request, $data['project_id']);
             $project ? $query->where('project_ref_id', $project->id) : $query->whereRaw('1 = 0');
@@ -27,11 +31,18 @@ class ConversationController extends Controller
             $query->where('external_id', $data['external_id']);
         }
 
+        // Explicit cursor requests use a stable ID order; preserve the legacy recent-chat order otherwise.
+        $paged = array_key_exists('after', $data);
+        $rows = $paged ? $query->where('id', '>', $data['after'])->orderBy('id')->limit($data['limit'] ?? 200)->get()
+            : $query->orderByDesc('last_message_at')->limit($data['limit'] ?? 200)->get();
+
         return response()->json([
-            'data' => $query->orderByDesc('last_message_at')->limit(200)->get(),
+            'data' => $rows,
             'meta' => [
                 'conversation_create_idempotency' => 'external_id_v1',
                 'filters' => ['external_id' => $data['external_id'] ?? null],
+                'next_cursor' => $paged ? ($rows->last()->id ?? $data['after']) : null,
+                'has_more' => $paged && $rows->isNotEmpty() && (clone $query)->where('id', '>', $rows->last()->id)->exists(),
             ],
         ]);
     }

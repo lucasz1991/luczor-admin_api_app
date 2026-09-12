@@ -32,6 +32,7 @@ class WorkflowAuthoringService
     public function validate(int $userId, array $definition, ?int $projectId = null, ?int $definitionId = null): array
     {
         $steps = $this->validator->validate($definition);
+        WorkflowDeviceTarget::assertOwnedDefinition($userId, $definition);
         foreach ($steps as $step) {
             if ($step['type'] !== 'workflow') {
                 continue;
@@ -59,6 +60,7 @@ class WorkflowAuthoringService
         abort_if($definition->project_id !== null && (int) $definition->project_id !== $projectId, 422, 'Nested workflow belongs to another project.');
         abort_if($requireActive && $definition->status !== 'active', 409, 'The workflow is disabled.');
         $steps = $this->validator->validate($definition->definition ?? []);
+        WorkflowDeviceTarget::assertOwnedDefinition($userId, $definition->definition ?? []);
         $children = [];
         foreach ($steps as $step) {
             if ($step['type'] === 'workflow') {

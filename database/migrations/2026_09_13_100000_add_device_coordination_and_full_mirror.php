@@ -8,6 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::table('conversations', fn (Blueprint $table) => $table->unsignedBigInteger('revision')->default(0));
+        Schema::table('luczor_message_archives', function (Blueprint $table) {
+            $table->foreignId('conversation_ref_id')->nullable()->constrained('conversations')->cascadeOnDelete();
+            $table->unsignedBigInteger('conversation_sequence')->nullable();
+            $table->char('content_hash', 64)->nullable();
+            $table->unique(['conversation_ref_id', 'external_id'], 'archive_conversation_message_unique');
+        });
         Schema::create('device_leaderships', function (Blueprint $table) {
             $table->foreignId('user_id')->primary()->constrained()->cascadeOnDelete();
             $table->foreignId('leader_device_id')->nullable()->constrained('devices')->nullOnDelete();
@@ -20,6 +27,12 @@ return new class extends Migration
             $table->timestamp('coordination_seen_at')->nullable();
             $table->boolean('coordination_available')->default(false);
             $table->boolean('coordination_busy')->default(false);
+        });
+        Schema::create('device_lan_identities', function (Blueprint $table) {
+            $table->foreignId('device_id')->primary()->constrained()->cascadeOnDelete();
+            $table->char('cert_sha256', 64);
+            $table->timestamp('issued_at');
+            $table->timestamp('expires_at');
         });
         Schema::table('device_jobs', function (Blueprint $table) {
             $table->unsignedTinyInteger('protocol_version')->default(1);
@@ -73,6 +86,7 @@ return new class extends Migration
             $table->uuid('job_id')->nullable();
             $table->string('status', 20)->default('draft');
             $table->char('manifest_hash', 64)->nullable();
+            $table->uuid('merged_manifest_id')->nullable();
             $table->unsignedBigInteger('entry_count')->default(0);
             $table->unsignedBigInteger('total_bytes')->default(0);
             $table->timestamps();
@@ -83,6 +97,7 @@ return new class extends Migration
             $table->uuid('manifest_id');
             $table->foreign('manifest_id')->references('id')->on('project_mirror_manifests')->cascadeOnDelete();
             $table->char('path_hash', 64);
+            $table->char('entry_hash', 64);
             $table->longText('entry');
             $table->unique(['manifest_id', 'path_hash']);
         });
@@ -110,7 +125,13 @@ return new class extends Migration
 
     public function down(): void
     {
-        foreach (['workflow_test_matrices', 'project_mirror_operations', 'project_mirror_entries', 'project_mirror_manifests', 'project_mirror_chunks', 'project_mirror_heads', 'device_job_events'] as $table) {
+        Schema::table('luczor_message_archives', function (Blueprint $table) {
+            $table->dropUnique('archive_conversation_message_unique');
+            $table->dropConstrainedForeignId('conversation_ref_id');
+            $table->dropColumn(['conversation_sequence', 'content_hash']);
+        });
+        Schema::table('conversations', fn (Blueprint $table) => $table->dropColumn('revision'));
+        foreach (['device_lan_identities', 'workflow_test_matrices', 'project_mirror_operations', 'project_mirror_entries', 'project_mirror_manifests', 'project_mirror_chunks', 'project_mirror_heads', 'device_job_events'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::table('device_jobs', function (Blueprint $table) {

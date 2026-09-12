@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Casts\DeviceJobData;
+use App\Casts\DeviceJobError;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DeviceJob extends Model
 {
@@ -15,6 +17,7 @@ class DeviceJob extends Model
         'workflow_execution_id', 'cancel_requested_at',
         'protocol_version', 'operation_id', 'request_hash', 'source_device_id', 'master_epoch',
         'attempt_id', 'lease_expires_at', 'progress_sequence', 'progress', 'conversation_external_id',
+        'authority_epoch', 'reconciliation_required',
     ];
 
     protected $casts = [
@@ -22,16 +25,20 @@ class DeviceJob extends Model
         'cancel_requested_at' => 'datetime',
         'expires_at' => 'datetime', 'started_at' => 'datetime', 'finished_at' => 'datetime',
         'payload' => DeviceJobData::class, 'result' => DeviceJobData::class,
+        'error' => DeviceJobError::class,
         'protocol_version' => 'integer', 'master_epoch' => 'integer', 'lease_expires_at' => 'datetime',
         'progress_sequence' => 'integer', 'progress' => 'encrypted:array',
+        'authority_epoch' => 'integer', 'reconciliation_required' => 'boolean',
     ];
 
-    public function device()
+    /** @return BelongsTo<Device, $this> */
+    public function device(): BelongsTo
     {
         return $this->belongsTo(Device::class);
     }
 
-    public function project()
+    /** @return BelongsTo<Project, $this> */
+    public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
     }

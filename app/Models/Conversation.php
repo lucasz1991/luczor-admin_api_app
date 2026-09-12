@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/** @property int $revision */
 class Conversation extends Model
 {
     protected $fillable = [
@@ -14,6 +15,7 @@ class Conversation extends Model
     protected $casts = [
         'archived_at' => 'datetime',
         'last_message_at' => 'datetime',
+        'revision' => 'integer',
     ];
 
     public function user()

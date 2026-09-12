@@ -284,3 +284,4 @@ Route::prefix('v1')->group(function () {
 require __DIR__.'/workflow-triggers.php';
 require __DIR__.'/workflow-execution.php';
 require __DIR__.'/workflow-vision.php';
+require __DIR__.'/coordination.php';

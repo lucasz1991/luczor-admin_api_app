@@ -42,13 +42,13 @@ class WorkflowStepExecutor
         // Capability absence is waiting, not an execution/retry or proof of support.
         if (WorkflowTaskCatalog::isClientTask($candidate->type) && ! $candidate->run->sandbox
             && app(WorkflowDeviceCapabilities::class)->required($candidate)) {
-            $device = $this->resolveDevice($candidate, (string) ($candidate->run->context['_execution']['device_id'] ?? $candidate->resolved_payload['device_id'] ?? ''));
+            $device = $this->resolveDevice($candidate, WorkflowDeviceTarget::forStep($candidate));
             if (! $device || ! app(WorkflowDeviceCapabilities::class)->admission($device, $candidate->type, $candidate->type_version)['ready']) {
                 WorkflowStep::whereKey($stepId)->where('status', 'ready')->update(['status' => 'waiting_for_capability', 'error' => 'workflow_task_capability_unavailable']);
 
                 return;
             }
-            $candidate->update(['control_state' => ['admitted_device_id' => $device->device_id]]);
+            $candidate->update(['control_state' => array_merge($candidate->control_state ?? [], ['admitted_device_id' => $device->device_id])]);
         }
         if (! app(WorkflowBudgetService::class)->claim($candidate)) {
             return;
@@ -326,7 +326,7 @@ class WorkflowStepExecutor
             $params['thinking_tier'] = $step->run->definition_snapshot['definition']['thinking_tier'] ?? 'balanced';
         }
         $context = $step->run->context['_execution'] ?? [];
-        $deviceId = trim((string) ($context['device_id'] ?? $payload['device_id'] ?? ''));
+        $deviceId = WorkflowDeviceTarget::forStep($step);
         $deviceId = $step->control_state['admitted_device_id'] ?? $deviceId;
         $device = $this->resolveDevice($step, $deviceId);
         if (! $device) {
@@ -350,7 +350,7 @@ class WorkflowStepExecutor
     {
         $query = Device::query()->where('user_id', $step->user_id)->whereNull('revoked_at');
         $context = $step->run->context['_execution'] ?? [];
-        if (($context['strict_target'] ?? false) || ($context['automatic'] ?? false)) {
+        if (($context['strict_target'] ?? false) || ($context['automatic'] ?? false) || WorkflowDeviceTarget::selector($step) !== null) {
             return $deviceId === '' ? null : $query->where('device_id', $deviceId)->whereIn('status', ['online', 'busy'])->first();
         }
         $device = $deviceId !== ''

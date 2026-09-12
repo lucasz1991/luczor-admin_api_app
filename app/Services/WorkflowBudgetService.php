@@ -137,7 +137,7 @@ class WorkflowBudgetService
     private function activeSteps(WorkflowRun $root)
     {
         return WorkflowStep::whereIn('workflow_run_id', WorkflowRun::where('root_workflow_run_id', $root->id)->orWhere('id', $root->id)->select('id'))
-            ->where(fn ($query) => $query->where('status', 'running')->orWhereIn('external_run_id', DeviceJob::where('status', 'running')->select('public_id')))
+            ->where(fn ($query) => $query->where('status', 'running')->orWhereIn('external_run_id', DeviceJob::whereIn('status', ['running', 'cancelling'])->select('public_id')))
             ->whereNotIn('type', ['workflow', 'wait.seconds', 'control.foreach', 'control.until', 'control.parallel']);
     }
 

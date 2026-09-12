@@ -65,7 +65,7 @@ class WorkflowTestService
         ]);
     }
 
-    public function start(WorkflowDefinition $definition, WorkflowTestCase $case, string $mode, ?Device $device, ?WorkflowRepairRevision $repair = null): WorkflowTestEvidence
+    public function start(WorkflowDefinition $definition, WorkflowTestCase $case, string $mode, ?Device $device, ?WorkflowRepairRevision $repair = null, array $coordination = []): WorkflowTestEvidence
     {
         abort_unless(in_array($mode, ['definition', 'simulation', 'real'], true), 422, 'workflow_test_mode_invalid');
         abort_unless((int) $case->workflow_definition_id === (int) $definition->id && (int) $case->user_id === (int) $definition->user_id, 404);
@@ -79,7 +79,8 @@ class WorkflowTestService
         }
         if ($mode === 'real') {
             abort_unless(($spec['real_test_authorized'] ?? false) === true, 409, 'workflow_real_test_authorization_required');
-            abort_if($device && ($spec['device_id'] ?? null) !== $device->device_id, 409, 'workflow_real_test_device_mismatch');
+            abort_if($device && ($spec['device_id'] ?? null) !== $device->device_id
+                && ! in_array($device->device_id, $coordination['matrix_device_ids'] ?? [], true), 409, 'workflow_real_test_device_mismatch');
             foreach (self::steps($snapshot) as $step) {
                 if (WorkflowTaskCatalog::isClientTask($step['type'])) {
                     abort_unless($device && app(WorkflowDeviceCapabilities::class)->admission($device, $step['type'], $step['version'] ?? 1)['ready'], 409, 'workflow_real_test_capability_missing');
@@ -95,6 +96,7 @@ class WorkflowTestService
             'definition_hash' => $hash, 'code_hash' => self::codeHash($snapshot), 'assertions_hash' => $case->assertions_hash,
             'fixture_hash' => $case->fixture_hash, 'environment_hash' => $environment,
             'snapshot' => ['workflow' => $snapshot, 'test_case' => $spec, 'device_id' => $device?->device_id,
+                'mirror_manifest_id' => $coordination['mirror_manifest_id'] ?? null, 'mirror_revision' => $coordination['mirror_revision'] ?? null,
                 'device_environment_hash' => $device?->meta['workflow_capabilities']['environment_hash'] ?? null],
         ]);
         if ($mode === 'definition') {
@@ -106,6 +108,7 @@ class WorkflowTestService
         }
         $context = ['_snapshot' => $snapshot, '_test_mode' => $mode, '_test_evidence_id' => $evidence->id,
             'device_id' => $device?->device_id, 'strict_target' => true];
+        $context += array_intersect_key($coordination, array_flip(['coordination_epoch', 'coordination_source_device_id', 'mirror_manifest_id', 'mirror_revision']));
         $testingGrant = null;
         if ($mode === 'real' && $repair && ($definition->repair_policy['grant_id'] ?? null)) {
             // A copied repair may execute changed code only after an explicit bounded successor grant exists.

@@ -26,6 +26,7 @@ class DeviceJobController extends Controller
     public function index(Request $request, ApiActor $actor)
     {
         $query = DeviceJob::query()->with('device')->latest();
+        $query->where(fn ($scope) => $scope->where('protocol_version', 1)->orWhere('user_id', $actor->userId($request)));
         if (! $request->user()?->isAdmin()) {
             $query->where('user_id', $actor->userId($request));
         } else {

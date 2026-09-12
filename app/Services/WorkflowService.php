@@ -135,7 +135,7 @@ class WorkflowService
 
             $steps = $run->steps()->orderBy('position')->get();
             foreach ($steps->where('status', 'waiting_for_device') as $waiting) {
-                $deviceId = $waiting->payload['device_id'] ?? $run->context['_execution']['device_id'] ?? null;
+                $deviceId = WorkflowDeviceTarget::forStep($waiting);
                 $query = Device::where('user_id', $run->user_id)->whereNull('revoked_at')->whereIn('status', ['online', 'busy']);
                 if ($deviceId) {
                     $query->where('device_id', $deviceId);
@@ -145,7 +145,7 @@ class WorkflowService
                 }
             }
             foreach ($steps->where('status', 'waiting_for_capability') as $waiting) {
-                $device = Device::where('user_id', $run->user_id)->where('device_id', $run->context['_execution']['device_id'] ?? $waiting->resolved_payload['device_id'] ?? $waiting->payload['device_id'] ?? '')->first();
+                $device = Device::where('user_id', $run->user_id)->where('device_id', WorkflowDeviceTarget::forStep($waiting))->first();
                 if ($device && app(WorkflowDeviceCapabilities::class)->admission($device, $waiting->type, $waiting->type_version)['ready']) {
                     $waiting->update(['status' => 'queued', 'error' => null, 'available_at' => now()]);
                 }
@@ -634,9 +634,9 @@ class WorkflowService
                 }
                 $jobIds = $run->steps()->where('external_run_type', 'device_job')->pluck('external_run_id');
                 DeviceJob::whereIn('public_id', $jobIds)->whereIn('status', ['queued', 'approval_required'])->update(['status' => 'cancelled', 'cancel_requested_at' => now(), 'finished_at' => now()]);
-                DeviceJob::whereIn('public_id', $jobIds)->where('status', 'running')->update(['cancel_requested_at' => now()]);
+                DeviceJob::whereIn('public_id', $jobIds)->whereIn('status', ['running', 'cancelling'])->update(['cancel_requested_at' => now()]);
                 $pendingServerIds = $run->steps()->where('status', 'running')->get()->filter(fn ($step) => (WorkflowTaskCatalog::task($step->type)['runner'] ?? '') === 'server' && WorkflowBudgetService::occupiesSlot($step->type))->pluck('id')->all();
-                $pending = $pendingServerIds !== [] || DeviceJob::whereIn('public_id', $jobIds)->where('status', 'running')->exists()
+                $pending = $pendingServerIds !== [] || DeviceJob::whereIn('public_id', $jobIds)->whereIn('status', ['running', 'cancelling'])->exists()
                     || WorkflowRun::where('parent_workflow_run_id', $run->id)->where('status', 'cancelling')->exists();
                 $output = $run->output ?? [];
                 $output['_terminal_after_stop'] = $terminalStatus;
@@ -644,7 +644,7 @@ class WorkflowService
                 $settled = $run->steps()->whereNotIn('id', $pendingServerIds)->whereIn('status', ['queued', 'ready', 'awaiting_approval', 'waiting_for_device', 'waiting_for_capability', 'running'])->get();
                 foreach ($settled as $step) {
                     $job = $step->external_run_type === 'device_job' ? DeviceJob::where('public_id', $step->external_run_id)->first() : null;
-                    if (! $job || $job->status !== 'running') {
+                    if (! $job || ! in_array($job->status, ['running', 'cancelling'], true)) {
                         app(WorkflowBudgetService::class)->settle($step, 'cancelled', []);
                     }
                 }
