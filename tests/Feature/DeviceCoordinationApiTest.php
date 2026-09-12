@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ApiKey;
 use App\Models\Device;
 use App\Models\DeviceJob;
+use App\Models\LocalModelCatalog;
 use App\Models\User;
 use App\Services\DeviceJobSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -224,6 +225,42 @@ class DeviceCoordinationApiTest extends TestCase
         $this->postJson($url.'/complete', $attempt + ['ok' => false, 'error' => 'Private path in failure'])->assertOk();
         $this->assertStringNotContainsString('Private path', DB::table('device_jobs')->sole()->error);
         $this->getJson($url)->assertJsonPath('data.error', 'Private path in failure');
+    }
+
+    public function test_default_rank_uses_only_published_active_model_and_explicit_override_wins(): void
+    {
+        $user = User::factory()->create();
+        $key = $this->device($user, 'model-device');
+        LocalModelCatalog::updateOrCreate(['id' => 1], ['published' => ['models' => array_map(fn ($i) => ['id' => 'model-'.$i], range(1, 5))],
+            'draft' => ['models' => [['id' => 'unpublished']]], 'revision' => 1]);
+        $url = '/api/v1/coordination/heartbeat';
+        $body = ['available' => true, 'busy' => false, 'active_model_id' => 'model-4'];
+        $this->withHeader('X-Api-Key', $key)->postJson($url, $body)->assertOk()->assertJsonPath('data.devices.0.model_tier', 4)
+            ->assertJsonPath('data.devices.0.model_tier_source', 'published_model')->assertJsonPath('data.devices.0.active_model_id', 'model-4');
+        $this->postJson($url, $body + ['model_tier' => 2])->assertOk()->assertJsonPath('data.devices.0.model_tier', 2)
+            ->assertJsonPath('data.devices.0.model_tier_source', 'explicit');
+        $body['active_model_id'] = 'unpublished';
+        $this->postJson($url, $body)->assertOk()->assertJsonPath('data.devices.0.model_tier', null)
+            ->assertJsonPath('data.devices.0.model_tier_source', null);
+        $body['active_model_id'] = null;
+        $this->postJson($url, $body)->assertOk()->assertJsonPath('data.devices.0.model_tier', null);
+        $body['active_model_id'] = str_repeat('x', 121);
+        $this->postJson($url, $body)->assertUnprocessable();
+    }
+
+    public function test_failover_ranks_published_models_only_after_the_previous_leader_lease_ends(): void
+    {
+        $user = User::factory()->create();
+        $first = $this->device($user, 'first');
+        $small = $this->device($user, 'small');
+        $large = $this->device($user, 'large');
+        LocalModelCatalog::updateOrCreate(['id' => 1], ['published' => ['models' => array_map(fn ($i) => ['id' => 'model-'.$i], range(1, 5))], 'draft' => [], 'revision' => 1]);
+        $this->heartbeat($first);
+        $this->travel(20)->seconds();
+        $this->withHeader('X-Api-Key', $small)->postJson('/api/v1/coordination/heartbeat', ['available' => true, 'busy' => false, 'active_model_id' => 'model-2'])->assertJsonPath('data.leader_device_id', 'first');
+        $this->withHeader('X-Api-Key', $large)->postJson('/api/v1/coordination/heartbeat', ['available' => true, 'busy' => false, 'active_model_id' => 'model-5'])->assertJsonPath('data.leader_device_id', 'first');
+        $this->travel(26)->seconds();
+        $this->withHeader('X-Api-Key', $small)->getJson('/api/v1/coordination')->assertOk()->assertJsonPath('data.leader_device_id', 'large')->assertJsonPath('data.epoch', 2);
     }
 
     private function jobBody(string $target): array

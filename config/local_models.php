@@ -12,16 +12,70 @@ $emptyCapacity = [
     'benchmark_thresholds' => null,
 ];
 $tierDefinitions = [
-    ['alxis955-qwe2.5-coder-uncensored', 'Stufe 1 · Alxis955/qwe2.5-coder-Uncensored', 'fallback'],
-    ['darkmaniac7-qwen3.5-4b-uncensored-mnn', 'Stufe 2 · darkmaniac7/Qwen3.5-4B-uncensored-MNN', 'fallback'],
-    ['blossomsai-qwen2.5-coder-14b-instruct-uncensored', 'Stufe 3 · BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored', 'fallback'],
+    ['bartowski-qwen2.5-coder-3b-abliterated-gguf', 'Stufe 1 · bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF', 'fallback'],
+    ['mradermacher-whiterabbitneo-v3-7b-gguf', 'Stufe 2 · mradermacher/WhiteRabbitNeo-V3-7B-GGUF · Cybersecurity', 'fallback'],
+    ['blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf', 'Stufe 3 · BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored-GGUF', 'fallback'],
     ['orcarouter-qwen3.8-27b-uncensored-q4-k-m', 'Stufe 4 · OrcaRouter Qwen3.8-27B Uncensored Q4_K_M', 'fallback'],
-    ['thebloke-wizardlm-uncensored-falcon-40b-gptq', 'Stufe 5 · TheBloke/WizardLM-Uncensored-Falcon-40B-GPTQ', 'preferred'],
+    ['tobiaslogic-qwen2.5-coder-32b-abliterated-gguf', 'Stufe 5 · TobiasLogic/Qwen2.5-Coder-32B-abliterated-GGUF', 'preferred'],
+];
+$candidateMetadata = [
+    'bartowski-qwen2.5-coder-3b-abliterated-gguf' => [
+        'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+        'context_limit' => 32768,
+        'artifact' => [
+            'url' => 'https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF/resolve/d3030e6c3380c87316eeb6b35cdf5c94a68f1986/Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf',
+            'sha256' => 'd5c108dfbdac44c738e45a84d5624716cfb8522d1410f46a7108167ee4bd0cac',
+            'size_bytes' => 1929903488,
+            'format' => 'gguf',
+            'quantization' => 'Q4_K_M',
+            'storage_class' => 'fixed_storage',
+        ],
+        'license' => 'Qwen Research License (HF card: qwen-research)',
+    ],
+    'mradermacher-whiterabbitneo-v3-7b-gguf' => [
+        'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'cybersecurity'],
+        'context_limit' => 32768,
+        'artifact' => [
+            'url' => 'https://huggingface.co/mradermacher/WhiteRabbitNeo-V3-7B-GGUF/resolve/272df46bc0e282a378f67bac725ce8481cc48d2f/WhiteRabbitNeo-V3-7B.Q4_K_M.gguf',
+            'sha256' => 'b19da8c6aacffdedc7bcd6b7f7d7d4db900f7d5c49f5473de18bb58111b432e5',
+            'size_bytes' => 4683075232,
+            'format' => 'gguf',
+            'quantization' => 'Q4_K_M',
+            'storage_class' => 'fixed_storage',
+        ],
+        'license' => 'Apache-2.0',
+    ],
+    'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf' => [
+        'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+        'context_limit' => 32768,
+        'artifact' => [
+            'url' => 'https://huggingface.co/BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored-GGUF/resolve/b15f5f5bf2c2ccaa66f82b58a1a410a5b74715d1/q4_k_m.gguf',
+            'sha256' => '75062a7ba3575573cc421a2cbafbf69fb48d0ecb28da2684b577eb609097fbe4',
+            'size_bytes' => 8988110272,
+            'format' => 'gguf',
+            'quantization' => 'Q4_K_M',
+            'storage_class' => 'fixed_storage',
+        ],
+        'license' => 'MIT',
+    ],
+    'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf' => [
+        'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+        'context_limit' => 32768,
+        'artifact' => [
+            'url' => 'https://huggingface.co/TobiasLogic/Qwen2.5-Coder-32B-abliterated-GGUF/resolve/b58cb0c8c2f8e9903be8b3c68974df1d6e13374e/qwen2.5-coder-32b-abliterated-Q4_K_M.gguf',
+            'sha256' => '593e9be6fae0c8c4008bb279f6380154afea89aeed90d9e3f2130d0becc84908',
+            'size_bytes' => 19851336416,
+            'format' => 'gguf',
+            'quantization' => 'Q4_K_M',
+            'storage_class' => 'fixed_storage',
+        ],
+        'license' => 'Apache-2.0',
+    ],
 ];
 $configuredSchemaVersion = is_array($catalogOverride)
     ? (int) ($catalogOverride['schema_version'] ?? (count($catalogOverride['models'] ?? []) === 2 ? 1 : 2))
     : 2;
-$defaultModels = array_map(static function (array $definition) use ($healthPolicy, $emptyCapacity): array {
+$defaultModels = array_map(static function (array $definition) use ($healthPolicy, $emptyCapacity, $candidateMetadata): array {
     [$id, $displayName, $routingRole] = $definition;
 
     return [
@@ -34,23 +88,23 @@ $defaultModels = array_map(static function (array $definition) use ($healthPolic
         // New repos remain metadata-only until a GGUF artifact, compatible
         // runtime, hashes, template and benchmark evidence are verified.
         'enabled' => false,
-        'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation'],
-        'context_limit' => null,
-        'artifact' => null,
+        'capabilities' => $candidateMetadata[$id]['capabilities'] ?? ['chat', 'reasoning', 'planning', 'execution_preparation'],
+        'context_limit' => $candidateMetadata[$id]['context_limit'] ?? null,
+        'artifact' => $candidateMetadata[$id]['artifact'] ?? null,
         'runtime' => null,
         'capacity_policy' => $emptyCapacity,
         'health_policy' => $healthPolicy,
         'chat_template_hash' => null,
         'evaluation_report_hash' => null,
-        'license' => null,
+        'license' => $candidateMetadata[$id]['license'] ?? null,
     ];
 }, $tierDefinitions);
 
 return [
     'asset_directory' => env('LUCZOR_LOCAL_MODEL_ASSET_DIRECTORY', storage_path('app/local-model-assets')),
     'schema_version' => $configuredSchemaVersion,
-    'catalog_version' => (int) env('LUCZOR_LOCAL_MODEL_CATALOG_VERSION', 2026091201),
-    'policy_version' => (int) env('LUCZOR_LOCAL_MODEL_POLICY_VERSION', 2026091201),
+    'catalog_version' => (int) env('LUCZOR_LOCAL_MODEL_CATALOG_VERSION', 2026091202),
+    'policy_version' => (int) env('LUCZOR_LOCAL_MODEL_POLICY_VERSION', 2026091202),
     'ttl_seconds' => max(300, (int) env('LUCZOR_LOCAL_MODEL_MANIFEST_TTL_SECONDS', 86400)),
     'signing' => [
         'auto_generate' => (bool) env('LUCZOR_LOCAL_MODEL_AUTO_GENERATE_KEY', true),
@@ -72,13 +126,13 @@ return [
         'strategy' => 'local_first',
         'local_first' => true,
         // Prefer the strongest tier, then fall back by descending capacity.
-        'preferred_model_id' => 'thebloke-wizardlm-uncensored-falcon-40b-gptq',
-        'default_model_id' => 'thebloke-wizardlm-uncensored-falcon-40b-gptq',
+        'preferred_model_id' => 'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
+        'default_model_id' => 'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
         'fallback_model_ids' => [
             'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-            'blossomsai-qwen2.5-coder-14b-instruct-uncensored',
-            'darkmaniac7-qwen3.5-4b-uncensored-mnn',
-            'alxis955-qwe2.5-coder-uncensored',
+            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
+            'mradermacher-whiterabbitneo-v3-7b-gguf',
+            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
         ],
         'experimental_model_ids' => [],
         'experimental_opt_in_required' => true,

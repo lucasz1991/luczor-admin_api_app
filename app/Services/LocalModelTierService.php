@@ -13,11 +13,75 @@ class LocalModelTierService
      * last tier and walks this list backwards when a model is unavailable.
      */
     private const REQUESTED_TIERS = [
-        ['alxis955-qwe2.5-coder-uncensored', 'Stufe 1 · Alxis955/qwe2.5-coder-Uncensored'],
-        ['darkmaniac7-qwen3.5-4b-uncensored-mnn', 'Stufe 2 · darkmaniac7/Qwen3.5-4B-uncensored-MNN'],
-        ['blossomsai-qwen2.5-coder-14b-instruct-uncensored', 'Stufe 3 · BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored'],
+        ['bartowski-qwen2.5-coder-3b-abliterated-gguf', 'Stufe 1 · bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF'],
+        ['mradermacher-whiterabbitneo-v3-7b-gguf', 'Stufe 2 · mradermacher/WhiteRabbitNeo-V3-7B-GGUF · Cybersecurity'],
+        ['blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf', 'Stufe 3 · BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored-GGUF'],
         [self::LEGACY_27B_ID, 'Stufe 4 · OrcaRouter Qwen3.8-27B Uncensored Q4_K_M'],
-        ['thebloke-wizardlm-uncensored-falcon-40b-gptq', 'Stufe 5 · TheBloke/WizardLM-Uncensored-Falcon-40B-GPTQ'],
+        ['tobiaslogic-qwen2.5-coder-32b-abliterated-gguf', 'Stufe 5 · TobiasLogic/Qwen2.5-Coder-32B-abliterated-GGUF'],
+    ];
+
+    private const PREVIOUS_REQUESTED_IDS = [
+        'alxis955-qwe2.5-coder-uncensored',
+        'darkmaniac7-qwen3.5-4b-uncensored-mnn',
+        'blossomsai-qwen2.5-coder-14b-instruct-uncensored',
+        self::LEGACY_27B_ID,
+        'thebloke-wizardlm-uncensored-falcon-40b-gptq',
+    ];
+
+    /** Download metadata is pinned to the HF revision and file hash; it is not an activation claim. */
+    private const CANDIDATE_METADATA = [
+        'bartowski-qwen2.5-coder-3b-abliterated-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+            'context_limit' => 32768,
+            'artifact' => [
+                'url' => 'https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF/resolve/d3030e6c3380c87316eeb6b35cdf5c94a68f1986/Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf',
+                'sha256' => 'd5c108dfbdac44c738e45a84d5624716cfb8522d1410f46a7108167ee4bd0cac',
+                'size_bytes' => 1929903488,
+                'format' => 'gguf',
+                'quantization' => 'Q4_K_M',
+                'storage_class' => 'fixed_storage',
+            ],
+            'license' => 'Qwen Research License (HF card: qwen-research)',
+        ],
+        'mradermacher-whiterabbitneo-v3-7b-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'cybersecurity'],
+            'context_limit' => 32768,
+            'artifact' => [
+                'url' => 'https://huggingface.co/mradermacher/WhiteRabbitNeo-V3-7B-GGUF/resolve/272df46bc0e282a378f67bac725ce8481cc48d2f/WhiteRabbitNeo-V3-7B.Q4_K_M.gguf',
+                'sha256' => 'b19da8c6aacffdedc7bcd6b7f7d7d4db900f7d5c49f5473de18bb58111b432e5',
+                'size_bytes' => 4683075232,
+                'format' => 'gguf',
+                'quantization' => 'Q4_K_M',
+                'storage_class' => 'fixed_storage',
+            ],
+            'license' => 'Apache-2.0',
+        ],
+        'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+            'context_limit' => 32768,
+            'artifact' => [
+                'url' => 'https://huggingface.co/BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored-GGUF/resolve/b15f5f5bf2c2ccaa66f82b58a1a410a5b74715d1/q4_k_m.gguf',
+                'sha256' => '75062a7ba3575573cc421a2cbafbf69fb48d0ecb28da2684b577eb609097fbe4',
+                'size_bytes' => 8988110272,
+                'format' => 'gguf',
+                'quantization' => 'Q4_K_M',
+                'storage_class' => 'fixed_storage',
+            ],
+            'license' => 'MIT',
+        ],
+        'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+            'context_limit' => 32768,
+            'artifact' => [
+                'url' => 'https://huggingface.co/TobiasLogic/Qwen2.5-Coder-32B-abliterated-GGUF/resolve/b58cb0c8c2f8e9903be8b3c68974df1d6e13374e/qwen2.5-coder-32b-abliterated-Q4_K_M.gguf',
+                'sha256' => '593e9be6fae0c8c4008bb279f6380154afea89aeed90d9e3f2130d0becc84908',
+                'size_bytes' => 19851336416,
+                'format' => 'gguf',
+                'quantization' => 'Q4_K_M',
+                'storage_class' => 'fixed_storage',
+            ],
+            'license' => 'Apache-2.0',
+        ],
     ];
 
     /** Official Qwen metadata pinned to a repository revision; runtime evaluation remains required. */
@@ -74,7 +138,9 @@ class LocalModelTierService
             // Retain the existing verified 27B artifact only in its requested
             // stage. All new repos stay metadata-only until their exact
             // llama.cpp-compatible artifact and evaluation evidence exist.
-            $model = $index === 3 && is_array($configured27b) ? $configured27b : $empty;
+            $model = $index === 3 && is_array($configured27b)
+                ? $configured27b
+                : array_replace($empty, self::CANDIDATE_METADATA[$id] ?? []);
             $model['id'] = $id;
             $model['display_name'] = mb_substr($displayName, 0, 160);
             $model['promoted'] = true;
@@ -82,13 +148,13 @@ class LocalModelTierService
             $model['routing_role'] = $index === 4 ? 'preferred' : 'fallback';
             if ($index !== 3) {
                 $model['enabled'] = false;
-                $model['artifact'] = null;
+                $model['artifact'] = self::CANDIDATE_METADATA[$id]['artifact'] ?? null;
                 $model['runtime'] = null;
-                $model['context_limit'] = null;
+                $model['context_limit'] = self::CANDIDATE_METADATA[$id]['context_limit'] ?? null;
                 $model['capacity_policy'] = $empty['capacity_policy'];
                 $model['chat_template_hash'] = null;
                 $model['evaluation_report_hash'] = null;
-                $model['license'] = null;
+                $model['license'] = self::CANDIDATE_METADATA[$id]['license'] ?? null;
             }
             $models[] = $model;
         }
@@ -156,7 +222,9 @@ class LocalModelTierService
         $configured = $this->emptyModel();
         $replacement = [];
         foreach (self::REQUESTED_TIERS as $index => [$id, $displayName]) {
-            $model = $index === 3 ? $source : $configured;
+            $model = $index === 3
+                ? $source
+                : array_replace($configured, self::CANDIDATE_METADATA[$id] ?? []);
             $model['id'] = $id;
             $model['display_name'] = $displayName;
             $model['promoted'] = true;
@@ -164,18 +232,69 @@ class LocalModelTierService
             $model['routing_role'] = $index === 4 ? 'preferred' : 'fallback';
             if ($index !== 3) {
                 $model['enabled'] = false;
-                $model['artifact'] = null;
+                $model['artifact'] = self::CANDIDATE_METADATA[$id]['artifact'] ?? null;
                 $model['runtime'] = null;
-                $model['context_limit'] = null;
+                $model['context_limit'] = self::CANDIDATE_METADATA[$id]['context_limit'] ?? null;
                 $model['capacity_policy'] = $configured['capacity_policy'];
                 $model['chat_template_hash'] = null;
                 $model['evaluation_report_hash'] = null;
-                $model['license'] = null;
+                $model['license'] = self::CANDIDATE_METADATA[$id]['license'] ?? null;
             }
             $replacement[] = $model;
         }
         $draft['models'] = $replacement;
         $draft['schema_version'] = 2;
+        $draft['routing']['preferred_model_id'] = self::REQUESTED_TIERS[4][0];
+        $draft['routing']['default_model_id'] = self::REQUESTED_TIERS[4][0];
+        $draft['routing']['fallback_model_ids'] = array_reverse(array_column(array_slice(self::REQUESTED_TIERS, 0, 4), 0));
+        $draft['routing']['experimental_model_ids'] = [];
+
+        return $draft;
+    }
+
+    /** Replace only the previous non-native proposals; published data is handled by the caller. */
+    public function replaceNonNativeRequestedLadder(array $draft): ?array
+    {
+        $models = $draft['models'] ?? [];
+        if (count($models) !== count(self::PREVIOUS_REQUESTED_IDS)
+            || array_column($models, 'id') !== self::PREVIOUS_REQUESTED_IDS) {
+            return null;
+        }
+        foreach ([0, 1, 2, 4] as $index) {
+            if (($models[$index]['enabled'] ?? true) !== false || ($models[$index]['artifact'] ?? null) !== null) {
+                return null;
+            }
+        }
+
+        $replacement = $this->buildReplacementLadder($draft, $models[3]);
+        $replacement['schema_version'] = 2;
+
+        return $replacement;
+    }
+
+    private function buildReplacementLadder(array $draft, array $retainedModel): array
+    {
+        $empty = $this->emptyModel();
+        $models = [];
+        foreach (self::REQUESTED_TIERS as $index => [$id, $displayName]) {
+            $model = $index === 3
+                ? $retainedModel
+                : array_replace($empty, self::CANDIDATE_METADATA[$id] ?? []);
+            $model['id'] = $id;
+            $model['display_name'] = $displayName;
+            $model['promoted'] = true;
+            $model['release_channel'] = 'stable';
+            $model['routing_role'] = $index === 4 ? 'preferred' : 'fallback';
+            if ($index !== 3) {
+                $model['enabled'] = false;
+                $model['runtime'] = null;
+                $model['capacity_policy'] = $empty['capacity_policy'];
+                $model['chat_template_hash'] = null;
+                $model['evaluation_report_hash'] = null;
+            }
+            $models[] = $model;
+        }
+        $draft['models'] = $models;
         $draft['routing']['preferred_model_id'] = self::REQUESTED_TIERS[4][0];
         $draft['routing']['default_model_id'] = self::REQUESTED_TIERS[4][0];
         $draft['routing']['fallback_model_ids'] = array_reverse(array_column(array_slice(self::REQUESTED_TIERS, 0, 4), 0));

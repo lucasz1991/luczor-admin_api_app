@@ -7,6 +7,7 @@ use App\Models\LlmRun;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\WorkflowStep;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -48,7 +49,12 @@ class WorkflowStepExecutor
 
                 return;
             }
-            $candidate->update(['control_state' => array_merge($candidate->control_state ?? [], ['admitted_device_id' => $device->device_id])]);
+            DB::transaction(function () use ($candidate, $device) {
+                $locked = WorkflowStep::whereKey($candidate->id)->lockForUpdate()->firstOrFail();
+                if ($locked->status === 'ready' && ! isset($locked->control_state['admitted_device_id'])) {
+                    $locked->update(['control_state' => array_merge($locked->control_state ?? [], ['admitted_device_id' => $device->device_id])]);
+                }
+            });
         }
         if (! app(WorkflowBudgetService::class)->claim($candidate)) {
             return;

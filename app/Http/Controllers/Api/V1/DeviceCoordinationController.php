@@ -29,7 +29,9 @@ class DeviceCoordinationController extends Controller
     public function heartbeat(Request $request, DeviceLeadership $leadership)
     {
         $data = $request->validate(['available' => 'required|boolean', 'busy' => 'required|boolean', 'preferred' => 'sometimes|boolean',
-            'platform' => 'sometimes|in:windows,linux,macos,unknown', 'model_tier' => 'sometimes|integer|between:1,5', 'generation' => 'sometimes|integer|min:0']);
+            'platform' => 'sometimes|in:windows,linux,macos,unknown', 'model_tier' => 'sometimes|integer|between:1,5',
+            'active_model_id' => ['sometimes', 'nullable', 'string', 'max:120', 'regex:/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/'],
+            'generation' => 'sometimes|integer|min:0']);
 
         return response()->json(['data' => $leadership->status($leadership->device($request), $data)])->header('Cache-Control', 'private, no-store');
     }

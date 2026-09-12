@@ -136,22 +136,23 @@ class LocalModelTiersTest extends TestCase
         $draft = app(LocalModelTierService::class)->defaults();
         $this->assertCount(5, $draft['models']);
         $this->assertSame([
-            'alxis955-qwe2.5-coder-uncensored',
-            'darkmaniac7-qwen3.5-4b-uncensored-mnn',
-            'blossomsai-qwen2.5-coder-14b-instruct-uncensored',
+            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
+            'mradermacher-whiterabbitneo-v3-7b-gguf',
+            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
             'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-            'thebloke-wizardlm-uncensored-falcon-40b-gptq',
+            'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
         ], array_column($draft['models'], 'id'));
         $this->assertSame([
             'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-            'blossomsai-qwen2.5-coder-14b-instruct-uncensored',
-            'darkmaniac7-qwen3.5-4b-uncensored-mnn',
-            'alxis955-qwe2.5-coder-uncensored',
+            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
+            'mradermacher-whiterabbitneo-v3-7b-gguf',
+            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
         ], $draft['routing']['fallback_model_ids']);
         $existing = collect(config('local_models.models'))->firstWhere('id', config('local_models.routing.default_model_id'));
         $this->assertSame($existing['artifact'], $draft['models'][3]['artifact']);
         $this->assertTrue($draft['models'][3]['enabled']);
-        $this->assertTrue(collect($draft['models'])->except(3)->every(fn ($model) => $model['artifact'] === null && $model['enabled'] === false));
+        $this->assertTrue(collect($draft['models'])->except(3)->every(fn ($model) => $model['artifact'] !== null && $model['enabled'] === false));
+        $this->assertSame('Apache-2.0', $draft['models'][4]['license']);
         $this->actingAs($admin)->get('/admin/local-model-tiers')->assertOk()->assertSee('fünf Leistungsstufen');
         $this->put('/admin/local-model-tiers', ['revision' => 0, 'models' => array_map('json_encode', $draft['models'])])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertNull(LocalModelCatalog::find(1)->published);
@@ -275,19 +276,48 @@ class LocalModelTiersTest extends TestCase
         $this->assertSame($published, $catalog->published);
         $this->assertGreaterThan(1, $catalog->revision);
         $this->assertSame([
+            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
+            'mradermacher-whiterabbitneo-v3-7b-gguf',
+            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
+            'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
+            'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
+        ], array_column($catalog->draft['models'], 'id'));
+        $this->assertSame($draft['models'][4]['artifact'], $catalog->draft['models'][3]['artifact']);
+        $this->assertTrue($catalog->draft['models'][3]['enabled']);
+        $this->assertTrue(collect($catalog->draft['models'])->except(3)->every(fn ($model) => $model['artifact'] !== null && $model['enabled'] === false));
+        $revision = $catalog->revision;
+        $migration->up();
+        $this->assertSame($revision, $catalog->fresh()->revision);
+        $this->assertNull(app(LocalModelTierService::class)->configureRequestedLadder($catalog->draft));
+    }
+
+    public function test_native_replacements_update_only_the_old_metadata_only_ladder(): void
+    {
+        $this->configureExistingModel();
+        $tiers = app(LocalModelTierService::class);
+        $draft = $tiers->defaults();
+        $legacyIds = [
             'alxis955-qwe2.5-coder-uncensored',
             'darkmaniac7-qwen3.5-4b-uncensored-mnn',
             'blossomsai-qwen2.5-coder-14b-instruct-uncensored',
             'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
             'thebloke-wizardlm-uncensored-falcon-40b-gptq',
-        ], array_column($catalog->draft['models'], 'id'));
-        $this->assertSame($draft['models'][4]['artifact'], $catalog->draft['models'][3]['artifact']);
-        $this->assertTrue($catalog->draft['models'][3]['enabled']);
-        $this->assertTrue(collect($catalog->draft['models'])->except(3)->every(fn ($model) => $model['artifact'] === null && $model['enabled'] === false));
-        $revision = $catalog->revision;
-        $migration->up();
-        $this->assertSame($revision, $catalog->fresh()->revision);
-        $this->assertNull(app(LocalModelTierService::class)->configureRequestedLadder($catalog->draft));
+        ];
+        foreach ($legacyIds as $index => $id) {
+            $draft['models'][$index]['id'] = $id;
+        }
+        foreach ([0, 1, 2, 4] as $index) {
+            $draft['models'][$index]['artifact'] = null;
+            $draft['models'][$index]['license'] = null;
+            $draft['models'][$index]['context_limit'] = null;
+        }
+        $replacement = $tiers->replaceNonNativeRequestedLadder($draft);
+        $this->assertNotNull($replacement);
+        $this->assertSame('mradermacher-whiterabbitneo-v3-7b-gguf', $replacement['models'][1]['id']);
+        $this->assertSame($draft['models'][3]['artifact'], $replacement['models'][3]['artifact']);
+        $this->assertFalse($replacement['models'][4]['enabled']);
+        $this->assertNotNull($replacement['models'][4]['artifact']);
+        $this->assertNull($tiers->replaceNonNativeRequestedLadder(array_replace_recursive($draft, ['models' => [$draft['models'][0], $draft['models'][1], $draft['models'][2], $draft['models'][3], array_replace($draft['models'][4], ['artifact' => ['unexpected' => true]])]])));
     }
 
     public function test_missing_signer_and_non_object_models_leave_catalog_unpublished(): void

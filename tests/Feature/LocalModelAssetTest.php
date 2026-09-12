@@ -64,7 +64,11 @@ class LocalModelAssetTest extends TestCase
             config(['local_models.asset_directory' => $root]);
             $catalog = json_decode(file_get_contents(base_path('tests/Fixtures/local-model-manifest-v1.json')), true)['cases']['explicit_experiment'];
             $catalog['models'][0]['runtime']['sha256'] = $hash;
-            config(['local_models.models' => $catalog['models'], 'local_models.routing' => $catalog['routing']]);
+            config([
+                'local_models.schema_version' => 1,
+                'local_models.models' => $catalog['models'],
+                'local_models.routing' => $catalog['routing'],
+            ]);
             $this->get('/api/v1/local-model/assets/'.$hash)->assertOk()
                 ->assertHeader('Content-Type', 'application/octet-stream');
             $this->get('/api/v1/local-model/assets/'.str_repeat('0', 64))->assertNotFound();

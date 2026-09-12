@@ -127,6 +127,8 @@ class DeviceJobService
     public function createForWorkflow(WorkflowStep $step, Device $device, array $params): DeviceJob
     {
         return DB::transaction(function () use ($step, $device, $params) {
+            // Match leadership handoff lock order: account, then workflow root, then step/job.
+            User::whereKey($step->user_id)->lockForUpdate()->firstOrFail();
             $root = app(WorkflowBudgetService::class)->root($step->run);
             abort_if(WorkflowBoundaryStop::requested($root), 409, 'workflow_boundary_stop_pending');
             $step = WorkflowStep::query()->lockForUpdate()->findOrFail($step->id);
