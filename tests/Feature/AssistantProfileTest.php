@@ -62,7 +62,7 @@ class AssistantProfileTest extends TestCase
         $user = User::factory()->create();
         $other = User::factory()->create();
         app(AssistantDefaultsService::class)->prepare();
-        Skill::create(['slug' => 'own', 'name' => 'Own', 'user_id' => $user->id, 'kind' => 'prompt', 'prompt' => 'OWN', 'tags' => ['always'], 'active' => true]);
+        Skill::create(['slug' => 'own', 'name' => 'Own', 'user_id' => $user->id, 'kind' => 'prompt', 'prompt' => 'OWN', 'active' => true]);
         Skill::create(['slug' => 'foreign', 'name' => 'Foreign', 'user_id' => $other->id, 'kind' => 'prompt', 'prompt' => 'FOREIGN', 'active' => true]);
         Skill::create(['slug' => 'disabled', 'name' => 'Disabled', 'kind' => 'prompt', 'prompt' => 'DISABLED', 'active' => false]);
         Skill::create(['slug' => 'flow', 'name' => 'Flow', 'kind' => 'workflow', 'prompt' => 'WORKFLOW', 'active' => true]);
@@ -98,16 +98,34 @@ class AssistantProfileTest extends TestCase
         $user = User::factory()->create();
         $other = User::factory()->create();
         app(AssistantDefaultsService::class)->prepare();
-        Skill::create(['slug' => 'own', 'name' => 'Own', 'user_id' => $user->id, 'kind' => 'prompt', 'prompt' => 'OWN', 'active' => true]);
+        Skill::create(['slug' => 'own', 'name' => 'Own', 'user_id' => $user->id, 'kind' => 'prompt', 'prompt' => 'OWN', 'tags' => ['always'], 'active' => true]);
         Skill::create(['slug' => 'foreign', 'name' => 'Foreign', 'user_id' => $other->id, 'kind' => 'prompt', 'prompt' => 'FOREIGN', 'active' => true]);
         $input = ProxyChatInput::fromValidated(['messages' => [['role' => 'user', 'content' => 'Hallo']], 'task_type' => 'chat.general']);
         $prepared = app(ProxyPromptBuilder::class)->prepare($input, $input->runMeta($user->id));
         $contents = array_column($prepared->payload['messages'], 'content');
 
-        $this->assertSame(AssistantDefaultsService::personaPrompt(), $contents[0]);
+        $this->assertSame(mb_substr(AssistantDefaultsService::personaPrompt(), 0, 2000), $contents[0]);
         $this->assertContains('OWN', $contents);
         $this->assertNotContains('FOREIGN', $contents);
         $this->assertSame('Hallo', end($contents));
+    }
+
+    public function test_task_profile_selects_relevant_skills_and_preserves_full_authorized_profile(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        Skill::create(['slug' => 'php', 'name' => 'Laravel PHP', 'user_id' => $user->id, 'kind' => 'prompt', 'prompt' => str_repeat('Laravel ', 400), 'active' => true]);
+        Skill::create(['slug' => 'photo', 'name' => 'Fotografie', 'kind' => 'prompt', 'prompt' => 'FOTO', 'active' => true]);
+        Skill::create(['slug' => 'base', 'name' => 'Grundregel', 'kind' => 'prompt', 'prompt' => 'BASIS', 'tags' => ['always'], 'active' => true]);
+        Skill::create(['slug' => 'foreign', 'name' => 'Laravel fremd', 'user_id' => $other->id, 'kind' => 'prompt', 'prompt' => 'FOREIGN', 'active' => true]);
+        $service = app(AssistantProfileService::class);
+        $full = $service->forUser($user->id);
+        $selected = $service->forTask($user->id, 'Laravel Funktion entwickeln', 'chat.general');
+        $this->assertSame(['base', 'php'], array_column($selected['skills'], 'slug'));
+        $this->assertLessThanOrEqual(1200, mb_strlen($selected['skills'][1]['prompt']));
+        $this->assertSame(['base'], array_column($service->forTask($user->id, 'Hallo', 'chat.general')['skills'], 'slug'));
+        $this->assertSame($full, $service->forUser($user->id));
+        $this->assertGreaterThan(1200, mb_strlen(collect($full['skills'])->firstWhere('slug', 'php')['prompt']));
     }
 
     public function test_admin_can_edit_existing_records_without_changing_identity_scope_or_activation(): void

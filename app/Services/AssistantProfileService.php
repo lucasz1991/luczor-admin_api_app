@@ -39,6 +39,7 @@ class AssistantProfileService
             $used += mb_strlen($skill['prompt']);
             $profile['skills'][] = $skill;
         }
+
         return $profile;
     }
 
