@@ -8,7 +8,7 @@
     <div class="grid gap-5 sm:grid-cols-2 sm:gap-8">
         <div class="flex min-w-0 items-center gap-4">
             <span class="relative shrink-0">
-                <span class="grid h-16 w-16 place-items-center rounded-2xl bg-cyan-400/10 text-xl font-semibold text-cyan-200 ring-1 ring-cyan-400/20 sm:h-20 sm:w-20" aria-hidden="true">{{ $initials ?: 'U' }}</span>
+                <span class="grid h-16 w-16 place-items-center rounded-2xl bg-violet-400/10 text-xl font-semibold text-violet-200 ring-1 ring-violet-400/20 sm:h-20 sm:w-20" aria-hidden="true">{{ $initials ?: 'U' }}</span>
                 <span @class(['absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-4 border-slate-900', 'bg-emerald-400' => $online && $user->isActive(), 'bg-slate-500' => !$online && $user->isActive(), 'bg-rose-400' => !$user->isActive()]) title="{{ !$user->isActive() ? 'Konto gesperrt' : ($online ? 'Gerät zuletzt online' : 'Kein aktives Gerät gemeldet') }}"></span>
             </span>
             <div class="min-w-0 flex-1">

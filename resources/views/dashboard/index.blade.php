@@ -5,9 +5,9 @@
     @endif
 
     @if (session('plain_api_key'))
-        <div class="mb-6 rounded-md border border-cyan-400/30 bg-cyan-400/10 p-4" role="status" data-dashboard-api-key-reveal>
-            <div class="text-sm font-semibold text-cyan-100">Neuer API Key, nur jetzt sichtbar:</div>
-            <code class="mt-2 block break-all rounded bg-slate-950 p-3 text-sm text-cyan-200">{{ session('plain_api_key') }}</code>
+        <div class="mb-6 rounded-md border border-violet-400/30 bg-violet-400/10 p-4" role="status" data-dashboard-api-key-reveal>
+            <div class="text-sm font-semibold text-violet-100">Neuer API Key, nur jetzt sichtbar:</div>
+            <code class="mt-2 block break-all rounded bg-slate-950 p-3 text-sm text-violet-200">{{ session('plain_api_key') }}</code>
         </div>
     @endif
 

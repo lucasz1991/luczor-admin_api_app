@@ -1,0 +1,141 @@
+/* Luczor Liquid Glass layer for the browser user app.
+ *
+ * Design-only: restyles the existing .ui- and .luczor- primitives already used by every
+ * customer-facing view (dashboard, devices, workspace) — no markup or Livewire behavior
+ * changes. Loaded after ui-system.css so it wins ties without needing !important.
+ * Mostly opaque (not fully transparent): a browser tab has no OS-level backdrop, so content
+ * must stay legible over whatever the page itself renders underneath the blur.
+ */
+:root {
+    --g-bg: rgba(24, 20, 36, 0.86);
+    --g-bg-soft: rgba(24, 20, 36, 0.62);
+    --g-edge: rgba(255, 255, 255, 0.09);
+    --g-edge-strong: rgba(255, 255, 255, 0.14);
+    --g-blur: 32px;
+    --g-shadow: 0 30px 70px -36px rgba(0, 0, 0, 0.75);
+}
+
+.ui-panel__core {
+    background: var(--g-bg);
+    backdrop-filter: blur(var(--g-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--g-blur)) saturate(180%);
+    box-shadow:
+        inset 0 1px 0 var(--g-edge-strong),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+.ui-panel .ui-panel .ui-panel__core {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.luczor-topbar {
+    background: var(--g-bg);
+    backdrop-filter: blur(var(--g-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--g-blur)) saturate(180%);
+    box-shadow:
+        inset 0 1px 0 var(--g-edge-strong),
+        0 18px 42px -30px rgba(0, 0, 0, 0.9);
+}
+.luczor-sidebar {
+    background: var(--g-bg);
+    backdrop-filter: blur(var(--g-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--g-blur)) saturate(180%);
+}
+
+.ui-tabs__rail {
+    background: var(--g-bg-soft);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    box-shadow: inset 0 1px 0 var(--g-edge);
+}
+.ui-tab[aria-selected='true'],
+.ui-tab.is-active {
+    background: rgba(143, 123, 216, 0.16);
+    box-shadow: inset 0 1px 0 var(--g-edge-strong), inset 0 0 0 1px rgba(143, 123, 216, 0.28);
+}
+
+.ui-input,
+.luczor-input {
+    background-color: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+.ui-button--secondary,
+.luczor-btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: inset 0 1px 0 var(--g-edge);
+}
+.ui-button--ghost:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.ui-stat,
+.luczor-card,
+.ui-record,
+.ui-disclosure {
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 1px 0 var(--g-edge);
+}
+
+.ui-resource-row {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.ui-device-rail {
+    background: var(--g-bg-soft);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: inset 0 1px 0 var(--g-edge);
+}
+.ui-turn-user {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+.ui-composer {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.luczor-brand-mark {
+    background: linear-gradient(145deg, rgba(143, 123, 216, 0.22), rgba(95, 78, 178, 0.08));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 22px -14px rgba(143, 123, 216, 0.65);
+}
+
+.ui-badge {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.ui-alert,
+.ui-notice {
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    .ui-panel__core,
+    .luczor-topbar,
+    .luczor-sidebar,
+    .ui-tabs__rail,
+    .ui-input,
+    .luczor-input,
+    .ui-button--secondary,
+    .luczor-btn-secondary,
+    .ui-resource-row,
+    .ui-device-rail,
+    .ui-turn-user,
+    .ui-composer,
+    .ui-alert,
+    .ui-notice {
+        background: var(--ui-surface);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}
