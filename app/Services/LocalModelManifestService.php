@@ -231,7 +231,14 @@ final class LocalModelManifestService
         $promoted = $this->boolean($model['promoted'] ?? null, 'local_model_promoted_invalid');
         $enabled = $this->boolean($model['enabled'] ?? null, 'local_model_enabled_invalid');
         $capabilities = $this->stringList($model['capabilities'] ?? null, 20, 'local_model_capabilities_invalid');
-        $features = array_key_exists('features', $model) ? $this->featureMap($model['features']) : null;
+        if (array_key_exists('features', $model)) {
+            // Features are stored in the admin catalog as descriptive metadata.
+            // They are deliberately kept out of the signed runtime policy so
+            // older desktop clients with strict native manifest structs do not
+            // reject the whole local-model catalog as soon as new display-only
+            // capability annotations are added.
+            $this->featureMap($model['features']);
+        }
         $contextLimit = $this->nullablePositiveInteger($model['context_limit'] ?? null, 'local_model_context_limit_invalid');
         $artifact = $this->artifact($model['artifact'] ?? null);
         $runtime = $this->runtime($model['runtime'] ?? null);
@@ -298,9 +305,6 @@ final class LocalModelManifestService
             'evaluation_report_hash' => $evaluationReportHash,
             'license' => $license,
         ];
-        if ($features !== null) {
-            $normalized['features'] = $features;
-        }
 
         return $normalized;
     }

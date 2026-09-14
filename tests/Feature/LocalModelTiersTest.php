@@ -171,7 +171,8 @@ class LocalModelTiersTest extends TestCase
         $payload = app(LocalModelManifestService::class)->envelope()['payload'];
         $this->assertSame(2, $payload['schema_version']);
         $this->assertCount(5, $payload['models']);
-        $this->assertSame('candidate', $payload['models'][3]['features']['image_to_text']);
+        $this->assertSame('candidate', LocalModelCatalog::find(1)->published['models'][3]['features']['image_to_text']);
+        $this->assertArrayNotHasKey('features', $payload['models'][3]);
         $this->assertSame([], $payload['routing']['experimental_model_ids']);
         $this->put('/admin/local-model-tiers', $body)->assertStatus(409);
         $draft['models'][3]['artifact'] = null;
