@@ -13,3 +13,30 @@
         @endforelse
     </div>
 </x-ui.panel>
+
+<x-ui.panel title="Diagnoseberichte" description="Gesammelte Berichte zum Herunterladen. Für Chat-Inhalte auf dem Gerät unter Einstellungen → Datenschutz zusätzlich die ausführliche Chat-Diagnose aktivieren.">
+    <div class="mb-5 flex flex-wrap gap-3">
+        <a class="ui-button" href="{{ route('admin.page', 'devices') }}">Status aktualisieren</a>
+        <a class="ui-button" href="{{ route('dashboard.devices.debug.export') }}">Letzte 50 Berichte gesammelt (JSONL)</a>
+    </div>
+    <div class="grid gap-5 lg:grid-cols-2">
+        @forelse($debugRequests as $debug)
+            <article class="ui-record space-y-3">
+                <h3 class="font-semibold">{{ $debug->device?->name ?: 'Gerät nicht mehr vorhanden' }}</h3>
+                <p class="break-all font-mono text-xs text-slate-400">{{ $debug->public_id }}</p>
+                <p>{{ ['pending' => 'Wartet auf Gerät / Freigabe', 'collecting' => 'Wird gesammelt – Wiederholung nach Verbindungsabbruch möglich', 'completed' => 'Bereit zum Download', 'failed' => 'Fehlgeschlagen'][$debug->status] ?? $debug->status }}</p>
+                <p class="text-sm text-slate-400">Angefordert {{ $debug->requested_at?->format('d.m.Y. H:i') }}
+                    @if($debug->completed_at) · Empfangen {{ $debug->completed_at->format('d.m.Y. H:i') }} @endif</p>
+                @if($debug->status === 'completed')
+                    <p class="text-sm">{{ $debug->meta['trace_events'] ?? 0 }} Chat-/Modell-/Tool-Ereignisse · {{ $debug->meta['report_version'] ?? 'älterer Bericht' }}</p>
+                    @if(($debug->meta['dropped_events'] ?? 0) > 0)
+                        <p class="text-sm text-amber-300">{{ $debug->meta['dropped_events'] }} ältere Ereignisse wegen Speichergrenze entfernt.</p>
+                    @endif
+                    <a class="ui-button" href="{{ route('dashboard.devices.debug.download', $debug) }}">Bericht herunterladen (JSON)</a>
+                @endif
+            </article>
+        @empty
+            <p>Noch keine Diagnose angefordert.</p>
+        @endforelse
+    </div>
+</x-ui.panel>

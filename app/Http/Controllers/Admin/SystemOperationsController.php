@@ -8,6 +8,7 @@ use App\Models\LlmRun;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class SystemOperationsController extends AdminController
@@ -15,15 +16,22 @@ class SystemOperationsController extends AdminController
     public function requestDeviceDebug(Request $request, Device $device)
     {
         $this->ensureAdmin($request);
-        DeviceDebugRequest::create([
+        abort_if($device->revoked_at, 409, 'Gerät ist widerrufen.');
+        DB::transaction(function () use ($request, $device) {
+            Device::whereKey($device->id)->lockForUpdate()->firstOrFail();
+            if (DeviceDebugRequest::where('device_id', $device->id)->whereIn('status', ['pending', 'collecting'])->exists()) {
+                return;
+            }
+            DeviceDebugRequest::create([
             'device_id' => $device->id,
             'user_id' => $device->user_id,
             'requested_by' => $request->user()->id,
             'status' => 'pending',
             'meta' => ['source' => 'admin_dashboard'],
-        ]);
+            ]);
+        });
 
-        return Redirect::route('dashboard')->with('status', 'Debug-Anforderung an das Gerät gesendet.');
+        return Redirect::route('admin.page', 'devices')->with('status', 'Debug-Anforderung vorgemerkt. Das Gerät muss online sein und die Diagnose freigegeben haben.');
     }
 
     public function downloadDeviceDebug(Request $request, DeviceDebugRequest $debugRequest)
@@ -35,7 +43,21 @@ class SystemOperationsController extends AdminController
 
         return response()->streamDownload(function () use ($debugRequest) {
             echo json_encode($debugRequest->payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        }, $filename, ['Content-Type' => 'application/json; charset=UTF-8']);
+        }, $filename, ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
+    }
+
+    public function exportDeviceDebug(Request $request)
+    {
+        $this->ensureAdmin($request);
+        return response()->streamDownload(function () {
+            foreach (DeviceDebugRequest::with('device')->where('status', 'completed')->latest()->limit(50)->cursor() as $debug) {
+                echo json_encode(['id' => $debug->public_id, 'device' => $debug->device?->device_id,
+                    'completed_at' => $debug->completed_at?->toIso8601String(), 'report' => $debug->payload],
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n";
+            }
+        }, 'luczor-debug-'.now()->format('Ymd-His').'.jsonl', [
+            'Content-Type' => 'application/x-ndjson', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function storeSettings(Request $request)

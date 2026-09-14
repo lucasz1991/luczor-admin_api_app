@@ -75,6 +75,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
 
         Route::get('/dashboard/telemetry/export', [SystemOperationsController::class, 'exportTelemetry'])->name('dashboard.telemetry.export');
         Route::post('/dashboard/devices/{device}/debug', [SystemOperationsController::class, 'requestDeviceDebug'])->name('dashboard.devices.debug.request');
+        Route::get('/dashboard/device-debug/export', [SystemOperationsController::class, 'exportDeviceDebug'])->name('dashboard.devices.debug.export');
         Route::get('/dashboard/device-debug/{debugRequest}/download', [SystemOperationsController::class, 'downloadDeviceDebug'])->name('dashboard.devices.debug.download');
         Route::post('/dashboard/settings', [SystemOperationsController::class, 'storeSettings'])->name('dashboard.settings.store');
 
