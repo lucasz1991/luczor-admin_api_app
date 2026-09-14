@@ -16,8 +16,8 @@
 
 <x-ui.panel title="Diagnoseberichte" description="Gesammelte Berichte zum Herunterladen. Für Chat-Inhalte auf dem Gerät unter Einstellungen → Datenschutz zusätzlich die ausführliche Chat-Diagnose aktivieren.">
     <div class="mb-5 flex flex-wrap gap-3">
-        <a class="ui-button" href="{{ route('admin.page', 'devices') }}">Status aktualisieren</a>
-        <a class="ui-button" href="{{ route('dashboard.devices.debug.export') }}">Letzte 50 Berichte gesammelt (JSONL)</a>
+        <x-ui.button :href="route('admin.page', 'devices')" variant="secondary">Status aktualisieren</x-ui.button>
+        <x-ui.button :href="route('dashboard.devices.debug.export')" variant="secondary">Letzte 50 Berichte gesammelt (JSONL)</x-ui.button>
     </div>
     <div class="grid gap-5 lg:grid-cols-2">
         @forelse($debugRequests as $debug)
@@ -32,7 +32,7 @@
                     @if(($debug->meta['dropped_events'] ?? 0) > 0)
                         <p class="text-sm text-amber-300">{{ $debug->meta['dropped_events'] }} ältere Ereignisse wegen Speichergrenze entfernt.</p>
                     @endif
-                    <a class="ui-button" href="{{ route('dashboard.devices.debug.download', $debug) }}">Bericht herunterladen (JSON)</a>
+                    <x-ui.button :href="route('dashboard.devices.debug.download', $debug)" variant="secondary">Bericht herunterladen (JSON)</x-ui.button>
                 @endif
             </article>
         @empty

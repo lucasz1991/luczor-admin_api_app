@@ -22,6 +22,7 @@ class DeviceDebugController extends Controller
                     ->where('status', 'collecting')->where('claimed_at', '<', now()->subMinutes(2))))
                 ->oldest('requested_at')->lockForUpdate()->first();
             $debug?->update(['status' => 'collecting', 'claimed_at' => now()]);
+
             return $debug;
         });
 
@@ -37,9 +38,15 @@ class DeviceDebugController extends Controller
         $data = $request->validate([
             'client_id' => ['required', 'string', 'max:120'],
             'report' => ['required', 'array'],
+            'report.version' => ['sometimes', 'string', 'max:80'],
+            'report.chat_trace.enabled' => ['sometimes', 'boolean'],
+            'report.chat_trace.dropped_events' => ['sometimes', 'integer', 'min:0'],
             'report.chat_trace.events' => ['sometimes', 'array', 'max:500'],
         ]);
-        abort_if(strlen(json_encode($data['report'])) > 6 * 1024 * 1024, 413, 'Debug report exceeds 6 MiB.');
+        // Preserve versioned diagnostic fields after validating the envelope. Laravel's
+        // nested validation otherwise strips fields unknown to this server version.
+        $data['report'] = $request->input('report');
+        abort_if(strlen(json_encode($data['report'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) > 6 * 1024 * 1024, 413, 'Debug report exceeds 6 MiB.');
         if (($data['report']['version'] ?? null) === 'luczor-debug-v3') {
             abort_unless(($data['report']['consent']['diagnostics_enabled'] ?? false) === true
                 && ($data['report']['chat_trace']['enabled'] ?? false) === true, 422);
@@ -52,12 +59,12 @@ class DeviceDebugController extends Controller
             }
             abort_unless($debug->status === 'collecting', 409, 'Debug request is not active.');
             $debug->update([
-            'status' => 'completed',
-            'completed_at' => now(),
-            'payload' => app(DeviceDebugRedactor::class)->clean($data['report']),
-            'meta' => ['client_id' => $data['client_id'], 'report_version' => $data['report']['version'] ?? null,
-                'trace_events' => count($data['report']['chat_trace']['events'] ?? []),
-                'dropped_events' => $data['report']['chat_trace']['dropped_events'] ?? 0],
+                'status' => 'completed',
+                'completed_at' => now(),
+                'payload' => app(DeviceDebugRedactor::class)->clean($data['report']),
+                'meta' => ['client_id' => $data['client_id'], 'report_version' => $data['report']['version'] ?? null,
+                    'trace_events' => count($data['report']['chat_trace']['events'] ?? []),
+                    'dropped_events' => $data['report']['chat_trace']['dropped_events'] ?? 0],
             ]);
         });
 

@@ -7,8 +7,8 @@ use App\Models\DeviceDebugRequest;
 use App\Models\LlmRun;
 use App\Models\Setting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rule;
 
 class SystemOperationsController extends AdminController
@@ -23,11 +23,11 @@ class SystemOperationsController extends AdminController
                 return;
             }
             DeviceDebugRequest::create([
-            'device_id' => $device->id,
-            'user_id' => $device->user_id,
-            'requested_by' => $request->user()->id,
-            'status' => 'pending',
-            'meta' => ['source' => 'admin_dashboard'],
+                'device_id' => $device->id,
+                'user_id' => $device->user_id,
+                'requested_by' => $request->user()->id,
+                'status' => 'pending',
+                'meta' => ['source' => 'admin_dashboard'],
             ]);
         });
 
@@ -49,6 +49,7 @@ class SystemOperationsController extends AdminController
     public function exportDeviceDebug(Request $request)
     {
         $this->ensureAdmin($request);
+
         return response()->streamDownload(function () {
             foreach (DeviceDebugRequest::with('device')->where('status', 'completed')->latest()->limit(50)->cursor() as $debug) {
                 echo json_encode(['id' => $debug->public_id, 'device' => $debug->device?->device_id,
