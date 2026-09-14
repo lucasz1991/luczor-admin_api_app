@@ -1,6 +1,18 @@
 @php
     $tierTabs = collect($draft['models'])->mapWithKeys(fn ($model, $index) => ['tier-'.$index => 'Stufe '.($index + 1)])->all();
     $activeTier = 'tier-0';
+    $featureLabels = [
+        'text_generation' => 'Text',
+        'text_edit' => 'Text-Edit',
+        'tool_calling' => 'Tools',
+        'coding' => 'Coding',
+        'cybersecurity' => 'Netzwerk-Sicherheit',
+        'image_to_text' => 'Image-to-text',
+        'audio_input' => 'Audio-Eingabe',
+        'audio_output' => 'Audio-Ausgabe',
+        'uncensored' => 'Unrestricted',
+    ];
+    $featureTones = ['verified' => 'success', 'candidate' => 'info', 'unsupported' => 'neutral', 'unknown' => 'neutral'];
     foreach ($errors->keys() as $field) {
         if (preg_match('/^(?:profiles|models)\.(\d+)/', $field, $match)) {
             $activeTier = 'tier-'.$match[1];
@@ -9,7 +21,7 @@
     }
 @endphp
 <x-app-layout>
-    <x-ui.page title="Lokale Modelle · fünf Leistungsstufen" eyebrow="Administration" description="Fünf editierbare Profile. Luczor wählt das stärkste freigegebene Modell, das zu den verfügbaren Ressourcen passt.">
+    <x-ui.page title="Lokale Modelle · Modellstufen" eyebrow="Administration" description="Aktuell fünf editierbare Profile; das Katalogschema akzeptiert später variabel mehr Stufen. Luczor wählt das stärkste freigegebene Modell, das zu den verfügbaren Ressourcen passt.">
         <x-slot:actions><x-ui.button href="{{ route('admin.page', 'models') }}" variant="secondary">Externe Modelle & Routing</x-ui.button></x-slot:actions>
         @if(session('status'))<div class="ui-notice ui-notice--success" role="status">{{ session('status') }}</div>@endif
         @if($errors->any())<div class="ui-notice ui-notice--danger" role="alert">{{ $errors->first() }}</div>@endif
@@ -24,7 +36,7 @@
                 <p role="alert">Modellsignatur nicht verfügbar: <code>{{ $signingError }}</code></p>
             @endif
         </section>
-        <x-ui.panel title="Modelle und Startprofile" description="Die fünf Stufen können unterschiedliche Modelle enthalten. Identische Modelldateien werden gemeinsam genutzt.">
+        <x-ui.panel title="Modelle und Startprofile" description="Die aktuellen Stufen können unterschiedliche Modelle enthalten. Identische Modelldateien werden gemeinsam genutzt.">
             <div class="flex flex-wrap items-center gap-3"><x-ui.badge tone="info">Katalogschema 2</x-ui.badge><x-ui.badge>Revision {{ $revision }}</x-ui.badge><span class="text-sm text-slate-400">Ein geladenes Modell bleibt für Folgeanfragen im Speicher.</span></div>
         </x-ui.panel>
         <x-ui.panel title="Laptop-Modell hinzufügen" description="Qwen3-4B Q4_K_M · offizielle Qwen-Datei · etwa 2,50 GB Download · Apache-2.0">
@@ -48,6 +60,18 @@
                                     <x-ui.stat label="RAM zum Laden" :value="isset($model['capacity_policy']['min_available_ram_bytes']) ? round($model['capacity_policy']['min_available_ram_bytes'] / 1024 ** 3, 1).' GiB' : 'Offen'" />
                                     <x-ui.stat label="Mindest-RAM" :value="isset($model['capacity_policy']['min_total_ram_bytes']) ? round($model['capacity_policy']['min_total_ram_bytes'] / 1024 ** 3, 1).' GiB' : 'Offen'" />
                                 </div>
+                                @if(!empty($model['features']) && is_array($model['features']))
+                                    <div class="ui-record">
+                                        <p class="mb-3 text-sm font-semibold">Gespeicherte Modellfunktionen</p>
+                                        <div class="flex flex-wrap gap-2">
+                                            @foreach($featureLabels as $feature => $label)
+                                                @php($state = $model['features'][$feature] ?? 'unknown')
+                                                <x-ui.badge :tone="$featureTones[$state] ?? 'neutral'">{{ $label }} · {{ $state }}</x-ui.badge>
+                                            @endforeach
+                                        </div>
+                                        <p class="mt-3 text-xs text-slate-400">„candidate“ stammt aus Modell-/Repo-Metadaten oder plausibler Modellfamilie. „verified“ ist für Luczor-Prüfungen reserviert. Vision/Audio benötigen zusätzlich einen passenden Eingabe- und Runtime-Pfad.</p>
+                                    </div>
+                                @endif
                                 <div class="grid gap-5 md:grid-cols-2">
                                     <label class="ui-field md:col-span-2">Anzeigename<x-ui.input name="profiles[{{ $index }}][name]" value="{{ old('profiles.'.$index.'.name', $model['display_name']) }}" required maxlength="160" /></label>
                                     @foreach(['total_ram' => ['Mindest-RAM (GiB)', 'min_total_ram_bytes'], 'free_ram' => ['Freier RAM zum Start (GiB)', 'min_available_ram_bytes'], 'vram' => ['GPU-Speicher (GiB; 0 = CPU erlaubt)', 'min_vram_bytes']] as $field => [$label, $policyKey])

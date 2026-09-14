@@ -112,7 +112,7 @@ class DeviceLeadership
         if (! is_array($models) || ! array_is_list($models)) {
             return null;
         }
-        foreach (array_slice($models, 0, 5) as $index => $model) {
+        foreach (array_slice($models, 0, 20) as $index => $model) {
             if (is_array($model) && ($model['id'] ?? null) === $modelId) {
                 return $index + 1;
             }

@@ -136,24 +136,26 @@ class LocalModelTiersTest extends TestCase
         $draft = app(LocalModelTierService::class)->defaults();
         $this->assertCount(5, $draft['models']);
         $this->assertSame([
-            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
-            'mradermacher-whiterabbitneo-v3-7b-gguf',
-            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
+            'dolphin3-qwen2.5-3b-gguf',
+            'dolphin3-llama3.1-8b-gguf',
+            'rootmonster-qwen3-14b-abliterated-gguf',
             'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-            'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
+            'huihui-qwen3-30b-a3b-instruct-abliterated-gguf',
         ], array_column($draft['models'], 'id'));
         $this->assertSame([
             'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
-            'mradermacher-whiterabbitneo-v3-7b-gguf',
-            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
+            'rootmonster-qwen3-14b-abliterated-gguf',
+            'dolphin3-llama3.1-8b-gguf',
+            'dolphin3-qwen2.5-3b-gguf',
         ], $draft['routing']['fallback_model_ids']);
         $existing = collect(config('local_models.models'))->firstWhere('id', config('local_models.routing.default_model_id'));
         $this->assertSame($existing['artifact'], $draft['models'][3]['artifact']);
         $this->assertTrue($draft['models'][3]['enabled']);
         $this->assertTrue(collect($draft['models'])->except(3)->every(fn ($model) => $model['artifact'] !== null && $model['enabled'] === false));
         $this->assertSame('Apache-2.0', $draft['models'][4]['license']);
-        $this->actingAs($admin)->get('/admin/local-model-tiers')->assertOk()->assertSee('fünf Leistungsstufen');
+        $this->assertSame('candidate', $draft['models'][3]['features']['image_to_text']);
+        $this->assertSame('verified', $draft['models'][3]['features']['tool_calling']);
+        $this->actingAs($admin)->get('/admin/local-model-tiers')->assertOk()->assertSee('Modellstufen')->assertSee('Image-to-text');
         $this->put('/admin/local-model-tiers', ['revision' => 0, 'models' => array_map('json_encode', $draft['models'])])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertNull(LocalModelCatalog::find(1)->published);
         $this->assertSame(1, app(LocalModelManifestService::class)->payload()['schema_version']);
@@ -169,12 +171,34 @@ class LocalModelTiersTest extends TestCase
         $payload = app(LocalModelManifestService::class)->envelope()['payload'];
         $this->assertSame(2, $payload['schema_version']);
         $this->assertCount(5, $payload['models']);
+        $this->assertSame('candidate', $payload['models'][3]['features']['image_to_text']);
         $this->assertSame([], $payload['routing']['experimental_model_ids']);
         $this->put('/admin/local-model-tiers', $body)->assertStatus(409);
         $draft['models'][3]['artifact'] = null;
         $this->put('/admin/local-model-tiers', ['revision' => LocalModelCatalog::find(1)->revision, 'models' => array_map('json_encode', $draft['models'])])->assertSessionHasErrors('models');
         $this->assertStringContainsString('local_model_enabled_metadata_incomplete', session('errors')->first('models'));
         $this->assertNotNull(LocalModelCatalog::find(1)->published['models'][3]['artifact']);
+    }
+
+    public function test_schema_two_accepts_variable_tier_counts_but_defaults_remain_five(): void
+    {
+        $this->configureExistingModel();
+        $draft = app(LocalModelTierService::class)->defaults();
+        $this->assertCount(5, $draft['models']);
+        $extra = $draft['models'][0];
+        $extra['id'] = 'future-local-tier-6';
+        $extra['display_name'] = 'Stufe 6 · späterer Kandidat';
+        $extra['routing_role'] = 'fallback';
+        $draft['models'][] = $extra;
+        $draft['routing']['fallback_model_ids'] = [
+            'future-local-tier-6',
+            ...$draft['routing']['fallback_model_ids'],
+        ];
+
+        $payload = app(LocalModelManifestService::class)->validateCatalog($draft);
+
+        $this->assertCount(6, $payload['models']);
+        $this->assertSame('future-local-tier-6', $payload['routing']['fallback_model_ids'][0]);
     }
 
     public function test_regular_user_cannot_edit_or_publish_local_models(): void
@@ -276,11 +300,11 @@ class LocalModelTiersTest extends TestCase
         $this->assertSame($published, $catalog->published);
         $this->assertGreaterThan(1, $catalog->revision);
         $this->assertSame([
-            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
-            'mradermacher-whiterabbitneo-v3-7b-gguf',
-            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
+            'dolphin3-qwen2.5-3b-gguf',
+            'dolphin3-llama3.1-8b-gguf',
+            'rootmonster-qwen3-14b-abliterated-gguf',
             'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
-            'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
+            'huihui-qwen3-30b-a3b-instruct-abliterated-gguf',
         ], array_column($catalog->draft['models'], 'id'));
         $this->assertSame($draft['models'][4]['artifact'], $catalog->draft['models'][3]['artifact']);
         $this->assertTrue($catalog->draft['models'][3]['enabled']);
@@ -313,11 +337,50 @@ class LocalModelTiersTest extends TestCase
         }
         $replacement = $tiers->replaceNonNativeRequestedLadder($draft);
         $this->assertNotNull($replacement);
-        $this->assertSame('mradermacher-whiterabbitneo-v3-7b-gguf', $replacement['models'][1]['id']);
+        $this->assertSame('dolphin3-llama3.1-8b-gguf', $replacement['models'][1]['id']);
         $this->assertSame($draft['models'][3]['artifact'], $replacement['models'][3]['artifact']);
         $this->assertFalse($replacement['models'][4]['enabled']);
         $this->assertNotNull($replacement['models'][4]['artifact']);
         $this->assertNull($tiers->replaceNonNativeRequestedLadder(array_replace_recursive($draft, ['models' => [$draft['models'][0], $draft['models'][1], $draft['models'][2], $draft['models'][3], array_replace($draft['models'][4], ['artifact' => ['unexpected' => true]])]])));
+    }
+
+    public function test_tool_unstable_gguf_ladder_is_replaced_without_changing_the_retained_27b(): void
+    {
+        $this->configureExistingModel();
+        $tiers = app(LocalModelTierService::class);
+        $draft = $tiers->defaults();
+        $oldIds = [
+            'bartowski-qwen2.5-coder-3b-abliterated-gguf',
+            'mradermacher-whiterabbitneo-v3-7b-gguf',
+            'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
+            'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
+            'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
+        ];
+        foreach ($oldIds as $index => $id) {
+            $draft['models'][$index]['id'] = $id;
+        }
+        $retainedArtifact = $draft['models'][3]['artifact'];
+        $published = $draft;
+        LocalModelCatalog::create(['id' => 1, 'draft' => $draft, 'published' => $published, 'revision' => 1]);
+
+        $migration = require database_path('migrations/2026_09_14_170000_replace_tool_unstable_local_model_ladder.php');
+        $migration->up();
+
+        $catalog = LocalModelCatalog::find(1);
+        $this->assertSame($published, $catalog->published);
+        $this->assertSame([
+            'dolphin3-qwen2.5-3b-gguf',
+            'dolphin3-llama3.1-8b-gguf',
+            'rootmonster-qwen3-14b-abliterated-gguf',
+            'orcarouter-qwen3.8-27b-uncensored-q4-k-m',
+            'huihui-qwen3-30b-a3b-instruct-abliterated-gguf',
+        ], array_column($catalog->draft['models'], 'id'));
+        $this->assertSame($retainedArtifact, $catalog->draft['models'][3]['artifact']);
+        $this->assertTrue($catalog->draft['models'][3]['enabled']);
+        $this->assertTrue(collect($catalog->draft['models'])->except(3)->every(fn ($model) => $model['artifact'] !== null && $model['enabled'] === false));
+        $revision = $catalog->revision;
+        $migration->up();
+        $this->assertSame($revision, $catalog->fresh()->revision);
     }
 
     public function test_missing_signer_and_non_object_models_leave_catalog_unpublished(): void

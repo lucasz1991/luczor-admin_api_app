@@ -51,9 +51,9 @@ class LocalModelTierController extends AdminController
     public function update(Request $request, LocalModelTierService $tiers, LocalModelManifestService $manifest)
     {
         $this->ensureAdmin($request);
-        $data = $request->validate(['revision' => ['required', 'integer', 'min:0'], 'models' => ['required', 'array', 'size:5'], 'models.*' => ['required', 'json', 'max:20000'], 'publish' => ['nullable', 'boolean'],
-            'platform_profiles' => ['sometimes', 'array', 'size:5'], 'platform_profiles.*' => ['nullable', 'json', 'max:20000'],
-            'profiles' => ['sometimes', 'array', 'size:5'], 'profiles.*.name' => ['required', 'string', 'max:160'],
+        $data = $request->validate(['revision' => ['required', 'integer', 'min:0'], 'models' => ['required', 'array', 'min:1', 'max:20'], 'models.*' => ['required', 'json', 'max:20000'], 'publish' => ['nullable', 'boolean'],
+            'platform_profiles' => ['sometimes', 'array', 'max:20'], 'platform_profiles.*' => ['nullable', 'json', 'max:20000'],
+            'profiles' => ['sometimes', 'array', 'max:20'], 'profiles.*.name' => ['required', 'string', 'max:160'],
             'profiles.*.enabled' => ['required', 'boolean'], 'profiles.*.context' => ['required', 'integer', 'min:512', 'max:2000000'],
             'profiles.*.total_ram' => ['required', 'numeric', 'min:1', 'max:1024'], 'profiles.*.free_ram' => ['required', 'numeric', 'min:0.5', 'max:1024'],
             'profiles.*.vram' => ['required', 'numeric', 'min:0', 'max:1024'],
@@ -69,6 +69,10 @@ class LocalModelTierController extends AdminController
             $models = array_map(fn ($json) => json_decode($json, true, 32, JSON_THROW_ON_ERROR), $data['models']);
             if (collect($models)->contains(fn ($model) => ! is_array($model) || array_is_list($model))) {
                 throw ValidationException::withMessages(['models' => 'Jede Modellstufe muss ein JSON-Objekt enthalten.']);
+            }
+            if ((array_key_exists('profiles', $data) && count($data['profiles']) !== count($models))
+                || count($data['platform_profiles'] ?? []) > count($models)) {
+                throw ValidationException::withMessages(['models' => 'Die Anzahl der Startprofile muss zu den Modellstufen passen.']);
             }
             foreach (($data['profiles'] ?? []) as $index => $profile) {
                 abort_unless(isset($models[$index]), 422);
@@ -95,7 +99,7 @@ class LocalModelTierController extends AdminController
                 }
             }
             if (array_column($models, 'id') !== array_column($draft['models'], 'id')) {
-                throw ValidationException::withMessages(['models' => 'Die Modell-IDs der fünf Stufen müssen erhalten bleiben.']);
+                throw ValidationException::withMessages(['models' => 'Die Modell-IDs der vorhandenen Stufen müssen erhalten bleiben.']);
             }
             $draft['models'] = $models;
             $version = max($catalog->revision, (int) config('local_models.catalog_version'), (int) config('local_models.policy_version')) + 1;
@@ -121,7 +125,7 @@ class LocalModelTierController extends AdminController
             $catalog->update($updates);
             app(AuditLogger::class)->record(['actor_user_id' => $request->user()->id, 'event_type' => 'local_model_catalog.updated', 'payload' => ['revision' => $version, 'published' => $request->boolean('publish')]]);
 
-            return back()->with('status', $request->boolean('publish') ? 'Fünf Modellstufen signiert veröffentlicht. Unterstützte Desktops übernehmen sie beim nächsten Katalogabruf.' : 'Entwurf gespeichert. Der aktive Modellkatalog bleibt erhalten.');
+            return back()->with('status', $request->boolean('publish') ? count($models).' Modellstufen signiert veröffentlicht. Unterstützte Desktops übernehmen sie beim nächsten Katalogabruf.' : 'Entwurf gespeichert. Der aktive Modellkatalog bleibt erhalten.');
         });
     }
 }

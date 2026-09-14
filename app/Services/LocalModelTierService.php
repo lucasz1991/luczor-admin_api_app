@@ -13,11 +13,11 @@ class LocalModelTierService
      * last tier and walks this list backwards when a model is unavailable.
      */
     private const REQUESTED_TIERS = [
-        ['bartowski-qwen2.5-coder-3b-abliterated-gguf', 'Stufe 1 · bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF'],
-        ['mradermacher-whiterabbitneo-v3-7b-gguf', 'Stufe 2 · mradermacher/WhiteRabbitNeo-V3-7B-GGUF · Cybersecurity'],
-        ['blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf', 'Stufe 3 · BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored-GGUF'],
+        ['dolphin3-qwen2.5-3b-gguf', 'Stufe 1 · Dolphin3.0 Qwen2.5 3B GGUF · uncensored/tool data'],
+        ['dolphin3-llama3.1-8b-gguf', 'Stufe 2 · Dolphin3.0 Llama3.1 8B GGUF · uncensored/tool data'],
+        ['rootmonster-qwen3-14b-abliterated-gguf', 'Stufe 3 · RootMonsteR Qwen3 14B Abliterated GGUF'],
         [self::LEGACY_27B_ID, 'Stufe 4 · OrcaRouter Qwen3.8-27B Uncensored Q4_K_M'],
-        ['tobiaslogic-qwen2.5-coder-32b-abliterated-gguf', 'Stufe 5 · TobiasLogic/Qwen2.5-Coder-32B-abliterated-GGUF'],
+        ['huihui-qwen3-30b-a3b-instruct-abliterated-gguf', 'Stufe 5 · Huihui Qwen3 30B A3B Instruct Abliterated GGUF'],
     ];
 
     private const PREVIOUS_REQUESTED_IDS = [
@@ -28,49 +28,93 @@ class LocalModelTierService
         'thebloke-wizardlm-uncensored-falcon-40b-gptq',
     ];
 
+    private const TOOL_UNSTABLE_IDS = [
+        'bartowski-qwen2.5-coder-3b-abliterated-gguf',
+        'mradermacher-whiterabbitneo-v3-7b-gguf',
+        'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf',
+        self::LEGACY_27B_ID,
+        'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf',
+    ];
+
+    private const BASE_TEXT_FEATURES = [
+        'text_generation' => 'candidate',
+        'text_edit' => 'candidate',
+        'tool_calling' => 'candidate',
+        'coding' => 'candidate',
+        'cybersecurity' => 'unknown',
+        'image_to_text' => 'unsupported',
+        'audio_input' => 'unsupported',
+        'audio_output' => 'unsupported',
+        'uncensored' => 'candidate',
+    ];
+
     /** Download metadata is pinned to the HF revision and file hash; it is not an activation claim. */
     private const CANDIDATE_METADATA = [
-        'bartowski-qwen2.5-coder-3b-abliterated-gguf' => [
-            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+        'dolphin3-qwen2.5-3b-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'tools', 'uncensored'],
+            'features' => self::BASE_TEXT_FEATURES,
             'context_limit' => 32768,
             'artifact' => [
-                'url' => 'https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF/resolve/d3030e6c3380c87316eeb6b35cdf5c94a68f1986/Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf',
-                'sha256' => 'd5c108dfbdac44c738e45a84d5624716cfb8522d1410f46a7108167ee4bd0cac',
-                'size_bytes' => 1929903488,
+                'url' => 'https://huggingface.co/bartowski/Dolphin3.0-Qwen2.5-3b-GGUF/resolve/4f84a9b5b7ecc4c49367838cf226677008f37c1e/Dolphin3.0-Qwen2.5-3b-Q4_K_M.gguf',
+                'sha256' => '0cb1908c5f444e1dc2c5b5619d62ac4957a22ad39cd42f2d0b48e2d8b1c358ab',
+                'size_bytes' => 1929906144,
                 'format' => 'gguf',
                 'quantization' => 'Q4_K_M',
                 'storage_class' => 'fixed_storage',
             ],
-            'license' => 'Qwen Research License (HF card: qwen-research)',
+            'license' => 'Other (Dolphin/Qwen terms; review before commercial redistribution)',
         ],
-        'mradermacher-whiterabbitneo-v3-7b-gguf' => [
-            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'cybersecurity'],
+        'dolphin3-llama3.1-8b-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'tools', 'uncensored'],
+            'features' => self::BASE_TEXT_FEATURES,
             'context_limit' => 32768,
             'artifact' => [
-                'url' => 'https://huggingface.co/mradermacher/WhiteRabbitNeo-V3-7B-GGUF/resolve/272df46bc0e282a378f67bac725ce8481cc48d2f/WhiteRabbitNeo-V3-7B.Q4_K_M.gguf',
-                'sha256' => 'b19da8c6aacffdedc7bcd6b7f7d7d4db900f7d5c49f5473de18bb58111b432e5',
-                'size_bytes' => 4683075232,
+                'url' => 'https://huggingface.co/bartowski/Dolphin3.0-Llama3.1-8B-GGUF/resolve/a6274707ba8c5f12d4521eabbce1b318bb2f27f5/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf',
+                'sha256' => '268390e07edd407ad93ea21a868b7ae995b5950e01cad0db9e1802ae5049d405',
+                'size_bytes' => 4920749472,
+                'format' => 'gguf',
+                'quantization' => 'Q4_K_M',
+                'storage_class' => 'fixed_storage',
+            ],
+            'license' => 'Llama 3.1 Community License',
+        ],
+        'rootmonster-qwen3-14b-abliterated-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'tools', 'cybersecurity', 'uncensored'],
+            'features' => [
+                'text_generation' => 'candidate',
+                'text_edit' => 'candidate',
+                'tool_calling' => 'candidate',
+                'coding' => 'candidate',
+                'cybersecurity' => 'candidate',
+                'image_to_text' => 'unsupported',
+                'audio_input' => 'unsupported',
+                'audio_output' => 'unsupported',
+                'uncensored' => 'candidate',
+            ],
+            'context_limit' => 32768,
+            'artifact' => [
+                'url' => 'https://huggingface.co/RootMonsteR/Qwen3-14B-Abliterated-GGUF/resolve/aad7bb258333fa83991acef39e31a97677eb711b/qwen3-14b-abliterated-Q4_K_M.gguf',
+                'sha256' => 'c74b5bcfcf7d4c9386075cde43fd7a4580c602b46b90ad01d7fc58b696748bbb',
+                'size_bytes' => 9001753792,
                 'format' => 'gguf',
                 'quantization' => 'Q4_K_M',
                 'storage_class' => 'fixed_storage',
             ],
             'license' => 'Apache-2.0',
         ],
-        'blossomsai-qwen2.5-coder-14b-instruct-uncensored-gguf' => [
-            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
-            'context_limit' => 32768,
-            'artifact' => [
-                'url' => 'https://huggingface.co/BlossomsAI/Qwen2.5-Coder-14B-Instruct-Uncensored-GGUF/resolve/b15f5f5bf2c2ccaa66f82b58a1a410a5b74715d1/q4_k_m.gguf',
-                'sha256' => '75062a7ba3575573cc421a2cbafbf69fb48d0ecb28da2684b577eb609097fbe4',
-                'size_bytes' => 8988110272,
-                'format' => 'gguf',
-                'quantization' => 'Q4_K_M',
-                'storage_class' => 'fixed_storage',
-            ],
-            'license' => 'MIT',
-        ],
         self::LEGACY_27B_ID => [
-            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'tools', 'image_to_text', 'uncensored'],
+            'features' => [
+                'text_generation' => 'verified',
+                'text_edit' => 'candidate',
+                'tool_calling' => 'verified',
+                'coding' => 'verified',
+                'cybersecurity' => 'candidate',
+                'image_to_text' => 'candidate',
+                'audio_input' => 'unsupported',
+                'audio_output' => 'unsupported',
+                'uncensored' => 'verified',
+            ],
             'context_limit' => 8192,
             'artifact' => [
                 'url' => 'https://huggingface.co/bartowski/orcarouter_Qwen3.8-27B-Uncensored-GGUF/resolve/87d37daf5e5eb72a926d8b413e08809a57f1a120/orcarouter_Qwen3.8-27B-Uncensored-Q4_K_M.gguf',
@@ -82,13 +126,14 @@ class LocalModelTierService
             ],
             'license' => 'Apache-2.0',
         ],
-        'tobiaslogic-qwen2.5-coder-32b-abliterated-gguf' => [
-            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding'],
+        'huihui-qwen3-30b-a3b-instruct-abliterated-gguf' => [
+            'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation', 'coding', 'tools', 'uncensored'],
+            'features' => self::BASE_TEXT_FEATURES,
             'context_limit' => 32768,
             'artifact' => [
-                'url' => 'https://huggingface.co/TobiasLogic/Qwen2.5-Coder-32B-abliterated-GGUF/resolve/b58cb0c8c2f8e9903be8b3c68974df1d6e13374e/qwen2.5-coder-32b-abliterated-Q4_K_M.gguf',
-                'sha256' => '593e9be6fae0e8c4008bb279f6380154afea89aeed90d9e3f2130d0becc84908',
-                'size_bytes' => 19851336416,
+                'url' => 'https://huggingface.co/Sowkwndms/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-Q4_K_M-GGUF/resolve/6972656944f13f6a156a881830c8726556e13143/huihui-qwen3-30b-a3b-instruct-2507-abliterated-q4_k_m.gguf',
+                'sha256' => '8394a17f4fef88c92f0ade6237e198ecba74000ba38cae26d5a08148976c71be',
+                'size_bytes' => 18556686496,
                 'format' => 'gguf',
                 'quantization' => 'Q4_K_M',
                 'storage_class' => 'fixed_storage',
@@ -159,6 +204,8 @@ class LocalModelTierService
             $model['promoted'] = true;
             $model['release_channel'] = 'stable';
             $model['routing_role'] = $index === 4 ? 'preferred' : 'fallback';
+            $model['capabilities'] = self::CANDIDATE_METADATA[$id]['capabilities'] ?? ($model['capabilities'] ?? $empty['capabilities']);
+            $model['features'] = self::CANDIDATE_METADATA[$id]['features'] ?? ($model['features'] ?? $empty['features']);
             if ($index !== 3) {
                 $model['enabled'] = false;
                 $model['artifact'] = self::CANDIDATE_METADATA[$id]['artifact'] ?? null;
@@ -192,6 +239,17 @@ class LocalModelTierService
             'promoted' => true,
             'enabled' => false,
             'capabilities' => ['chat', 'reasoning', 'planning', 'execution_preparation'],
+            'features' => [
+                'text_generation' => 'unknown',
+                'text_edit' => 'unknown',
+                'tool_calling' => 'unknown',
+                'coding' => 'unknown',
+                'cybersecurity' => 'unknown',
+                'image_to_text' => 'unknown',
+                'audio_input' => 'unknown',
+                'audio_output' => 'unknown',
+                'uncensored' => 'unknown',
+            ],
             'context_limit' => null,
             'artifact' => null,
             'runtime' => null,
@@ -243,6 +301,8 @@ class LocalModelTierService
             $model['promoted'] = true;
             $model['release_channel'] = 'stable';
             $model['routing_role'] = $index === 4 ? 'preferred' : 'fallback';
+            $model['capabilities'] = self::CANDIDATE_METADATA[$id]['capabilities'] ?? ($model['capabilities'] ?? $configured['capabilities']);
+            $model['features'] = self::CANDIDATE_METADATA[$id]['features'] ?? ($model['features'] ?? $configured['features']);
             if ($index !== 3) {
                 $model['enabled'] = false;
                 $model['artifact'] = self::CANDIDATE_METADATA[$id]['artifact'] ?? null;
@@ -285,6 +345,21 @@ class LocalModelTierService
         return $replacement;
     }
 
+    /** Replace the first GGUF ladder whose non-27B tiers failed Luczor tool probes. */
+    public function replaceToolUnstableLadder(array $draft): ?array
+    {
+        $models = $draft['models'] ?? [];
+        if (count($models) !== count(self::TOOL_UNSTABLE_IDS)
+            || array_column($models, 'id') !== self::TOOL_UNSTABLE_IDS) {
+            return null;
+        }
+
+        $replacement = $this->buildReplacementLadder($draft, $models[3]);
+        $replacement['schema_version'] = 2;
+
+        return $replacement;
+    }
+
     private function buildReplacementLadder(array $draft, array $retainedModel): array
     {
         $empty = $this->emptyModel();
@@ -298,6 +373,8 @@ class LocalModelTierService
             $model['promoted'] = true;
             $model['release_channel'] = 'stable';
             $model['routing_role'] = $index === 4 ? 'preferred' : 'fallback';
+            $model['capabilities'] = self::CANDIDATE_METADATA[$id]['capabilities'] ?? ($model['capabilities'] ?? $empty['capabilities']);
+            $model['features'] = self::CANDIDATE_METADATA[$id]['features'] ?? ($model['features'] ?? $empty['features']);
             if ($index !== 3) {
                 $model['enabled'] = false;
                 $model['runtime'] = null;

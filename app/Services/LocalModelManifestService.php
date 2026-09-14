@@ -183,7 +183,11 @@ final class LocalModelManifestService
     private function models(): array
     {
         $configured = $this->catalogValue('models');
-        if (! is_array($configured) || count($configured) !== ($this->schemaVersion() === 2 ? 5 : 2) || ! array_is_list($configured)) {
+        if (! is_array($configured) || ! array_is_list($configured)) {
+            throw new LocalModelManifestConfigurationException('local_model_catalog_invalid');
+        }
+        $count = count($configured);
+        if (($this->schemaVersion() === 1 && $count !== 2) || ($this->schemaVersion() === 2 && ($count < 1 || $count > 20))) {
             throw new LocalModelManifestConfigurationException('local_model_catalog_invalid');
         }
 
@@ -227,6 +231,7 @@ final class LocalModelManifestService
         $promoted = $this->boolean($model['promoted'] ?? null, 'local_model_promoted_invalid');
         $enabled = $this->boolean($model['enabled'] ?? null, 'local_model_enabled_invalid');
         $capabilities = $this->stringList($model['capabilities'] ?? null, 20, 'local_model_capabilities_invalid');
+        $features = array_key_exists('features', $model) ? $this->featureMap($model['features']) : null;
         $contextLimit = $this->nullablePositiveInteger($model['context_limit'] ?? null, 'local_model_context_limit_invalid');
         $artifact = $this->artifact($model['artifact'] ?? null);
         $runtime = $this->runtime($model['runtime'] ?? null);
@@ -275,7 +280,7 @@ final class LocalModelManifestService
             throw new LocalModelManifestConfigurationException('local_model_context_outside_runtime_range');
         }
 
-        return [
+        $normalized = [
             'id' => $id,
             'display_name' => $displayName,
             'execution_target' => $executionTarget,
@@ -293,6 +298,31 @@ final class LocalModelManifestService
             'evaluation_report_hash' => $evaluationReportHash,
             'license' => $license,
         ];
+        if ($features !== null) {
+            $normalized['features'] = $features;
+        }
+
+        return $normalized;
+    }
+
+    /** @return array<string,string> */
+    private function featureMap(mixed $features): array
+    {
+        if (! is_array($features) || array_is_list($features) || count($features) > 64) {
+            throw new LocalModelManifestConfigurationException('local_model_features_invalid');
+        }
+
+        $normalized = [];
+        foreach ($features as $key => $value) {
+            if (! is_string($key) || ! preg_match(self::ID_PATTERN, $key)
+                || ! is_string($value) || ! in_array($value, ['verified', 'candidate', 'unsupported', 'unknown'], true)) {
+                throw new LocalModelManifestConfigurationException('local_model_features_invalid');
+            }
+            $normalized[$key] = $value;
+        }
+        ksort($normalized, SORT_STRING);
+
+        return $normalized;
     }
 
     /** @return array<string,mixed>|null */
@@ -443,7 +473,13 @@ final class LocalModelManifestService
             $preferredIds = collect($models)->where('routing_role', 'preferred')->pluck('id')->all();
             $fallbackIds = collect($models)->where('routing_role', 'fallback')->pluck('id')->all();
             $actualFallbacks = $routing['fallback_model_ids'] ?? [];
-            if (count($preferredIds) !== 1 || count($fallbackIds) !== 4 || ! is_array($actualFallbacks) || count(array_unique($actualFallbacks)) !== 4 || array_diff($fallbackIds, $actualFallbacks) || ($routing['default_model_id'] ?? null) !== $preferredIds[0] || collect($models)->contains(fn ($model) => ! $model['promoted'] || $model['release_channel'] !== 'stable')) {
+            if (count($preferredIds) !== 1
+                || ! is_array($actualFallbacks)
+                || count($fallbackIds) !== count($actualFallbacks)
+                || count(array_unique($actualFallbacks)) !== count($actualFallbacks)
+                || array_diff($fallbackIds, $actualFallbacks)
+                || ($routing['default_model_id'] ?? null) !== $preferredIds[0]
+                || collect($models)->contains(fn ($model) => ! $model['promoted'] || $model['release_channel'] !== 'stable')) {
                 throw new LocalModelManifestConfigurationException('local_model_tier_routing_invalid');
             }
         }
@@ -453,7 +489,7 @@ final class LocalModelManifestService
             throw new LocalModelManifestConfigurationException('local_model_preferred_id_invalid');
         }
 
-        $fallbacks = $this->stringList($routing['fallback_model_ids'] ?? null, 19, 'local_model_fallback_ids_invalid');
+        $fallbacks = $this->stringListAllowEmpty($routing['fallback_model_ids'] ?? null, 19, 'local_model_fallback_ids_invalid');
         foreach ($fallbacks as $fallback) {
             if (($byId->get($fallback)['routing_role'] ?? null) !== 'fallback') {
                 throw new LocalModelManifestConfigurationException('local_model_fallback_ids_invalid');
