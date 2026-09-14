@@ -34,7 +34,8 @@ final class ProxyPromptBuilder
             $prefix = 1;
         }
 
-        $profile = $this->assistant->forUser(isset($meta['user_id']) ? (int) $meta['user_id'] : null);
+        $latestUser = collect($input->messages)->last(fn ($message) => ($message['role'] ?? null) === 'user');
+        $profile = $this->assistant->forTask(isset($meta['user_id']) ? (int) $meta['user_id'] : null, (string) ($latestUser['content'] ?? ''), $input->taskType);
         $persona = $profile['persona']['prompt'] ?? null;
         if ($persona) {
             array_splice($payload['messages'], $prefix, 0, [['role' => 'system', 'content' => $persona]]);

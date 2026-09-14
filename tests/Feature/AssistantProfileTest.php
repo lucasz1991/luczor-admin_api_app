@@ -62,7 +62,7 @@ class AssistantProfileTest extends TestCase
         $user = User::factory()->create();
         $other = User::factory()->create();
         app(AssistantDefaultsService::class)->prepare();
-        Skill::create(['slug' => 'own', 'name' => 'Own', 'user_id' => $user->id, 'kind' => 'prompt', 'prompt' => 'OWN', 'active' => true]);
+        Skill::create(['slug' => 'own', 'name' => 'Own', 'user_id' => $user->id, 'kind' => 'prompt', 'prompt' => 'OWN', 'tags' => ['always'], 'active' => true]);
         Skill::create(['slug' => 'foreign', 'name' => 'Foreign', 'user_id' => $other->id, 'kind' => 'prompt', 'prompt' => 'FOREIGN', 'active' => true]);
         Skill::create(['slug' => 'disabled', 'name' => 'Disabled', 'kind' => 'prompt', 'prompt' => 'DISABLED', 'active' => false]);
         Skill::create(['slug' => 'flow', 'name' => 'Flow', 'kind' => 'workflow', 'prompt' => 'WORKFLOW', 'active' => true]);
