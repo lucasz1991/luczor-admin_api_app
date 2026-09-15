@@ -124,3 +124,8 @@
 - 1312 Frontendtests, 142 Rusttests plus1bestehendignoriert, fokussiert48Backendtests/427Assertions und22Teamtests/132Assertions bestanden. Backendvollsuite578bestanden/5bestehendeWindows-POSIX-Schlüsseltestsfehlgeschlagen/4001Assertions; nicht pauschal grün. Statische Gates und Builds bestanden.
 - Release: app/src-tauri/target/release/tauri-app.exe,14809600Bytes,SHA256 F23CE4F71525E0F68D58C60417EBD304C2DDC43EB545D6DFD0E8CA28E5473E0A. Nicht gestartet; Nutzer-App unverändert. Neuer GPU-Smoke vor Modellstart wegen bestehender Nutzer-Runtime gestoppt. Kein Serverdeploy und kein vollständiger neuer nativer Agentenlauf.
 - Hauptbericht: E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-agent-teams-gpu.md; Build-JSON daneben. Bedienung app/docs/agent-teams-and-gpu.md. Root und alle Teilagenten geben Source-Ownership frei. Kein eigener Commit; vorhandene Zwischencommits erhalten.
+
+## 2026-09-15 – Workspace remote control (Claude Code)
+- `account.workspace` now has functions: device pill hover action "Übersicht anfordern", "Auf dem Gerät lesen" per synced device chat, inline chat rename, quick-start chips, Ctrl+Enter send, live progress summary (DeviceJob.progress) with 3s self-polling status line, optimistic ghost turn.
+- Motion: ui-system.css (turn-in, typing dots, sweep rule, busy ring, dot breathe, chip stagger, composer focus glow); Alpine `luczorWorkspaceChat` in resources/js/ui-components.js.
+- Verified: php -l, vite build, `view:cache`. Browser check pending on staging (uncommitted).

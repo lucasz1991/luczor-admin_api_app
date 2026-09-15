@@ -97,6 +97,58 @@ class Workspace extends Component
         }
     }
 
+    /** Remote-control shortcut: ask the (optionally freshly selected) device for its projects and chats. */
+    public function requestOverview(?int $deviceId = null): void
+    {
+        if ($deviceId !== null) {
+            $this->selectDevice($deviceId);
+        }
+        $this->dispatchPrompt('Gib mir eine Übersicht über die Projekte und Chats auf diesem Gerät.');
+    }
+
+    /** Read a synced device chat on its owning device; the desktop tool requires an explicit selection like this one. */
+    public function readDeviceChat(int $conversationId): void
+    {
+        $user = $this->actor();
+        $conversation = Conversation::where('user_id', $user->id)->whereNull('archived_at')->findOrFail($conversationId);
+        $device = Device::where('user_id', $user->id)->whereNull('revoked_at')->where('device_id', $conversation->client_id)->first();
+        if (! $device) {
+            $this->addError('prompt', 'Das Gerät dieses Chats ist nicht mehr verbunden.');
+
+            return;
+        }
+        $this->targetDevice = $device->id;
+        $title = mb_substr(preg_replace('/\s+/u', ' ', trim((string) $conversation->title)) ?: 'Projektchat', 0, 80);
+        $this->dispatchPrompt('Lies den Chat „'.$title.'“ auf diesem Gerät und fasse die letzten Nachrichten kurz zusammen.');
+    }
+
+    public function renameChat(string $title): void
+    {
+        $user = $this->actor();
+        abort_unless($this->chatId !== null, 404);
+        $title = mb_substr(preg_replace('/\s+/u', ' ', trim($title)), 0, 80);
+        if ($title === '') {
+            $this->addError('title', 'Bitte einen Titel eingeben.');
+
+            return;
+        }
+        WebWorkspaceChat::where('user_id', $user->id)->findOrFail($this->chatId)->update(['title' => $title]);
+        $this->resetErrorBag('title');
+    }
+
+    /** Device tools only exist in workspace scope, so a personal chat gets a fresh workspace chat first. */
+    private function dispatchPrompt(string $prompt): void
+    {
+        $user = $this->actor();
+        $active = $this->chatId ? WebWorkspaceChat::where('user_id', $user->id)->find($this->chatId) : null;
+        if (! $active || $active->scope !== 'workspace') {
+            $this->chatId = app(WebWorkspaceService::class)->createChat($user, 'workspace')->id;
+            $this->submissionId = (string) Str::uuid();
+        }
+        $this->prompt = $prompt;
+        $this->send();
+    }
+
     private function actor(): User
     {
         $user = auth()->user();
@@ -114,7 +166,8 @@ class Workspace extends Component
         $deviceChats = Conversation::where('user_id', $user->id)->whereNull('archived_at')->when($search !== '', fn ($query) => $query->where('title', 'like', '%'.$search.'%'))->latest('last_message_at')->paginate(15, pageName: 'deviceChats');
         $activeChat = $this->chatId ? WebWorkspaceChat::where('user_id', $user->id)->findOrFail($this->chatId) : null;
         $turns = $activeChat?->turns()->with('deviceJob.device')->latest('id')->limit(30)->get()->reverse() ?? collect();
+        $liveTurn = $turns->last(fn ($turn) => in_array($turn->deviceJob?->status, ['queued', 'approval_required', 'running'], true) && $turn->deviceJob->expires_at?->isFuture());
 
-        return view('livewire.account.workspace', compact('user', 'devices', 'chats', 'deviceChats', 'activeChat', 'turns'))->layout('layouts.app');
+        return view('livewire.account.workspace', compact('user', 'devices', 'chats', 'deviceChats', 'activeChat', 'turns', 'liveTurn'))->layout('layouts.app');
     }
 }

@@ -348,3 +348,7 @@ Append-only communication log. Source and runtime evidence override stale entrie
 
 ## 2026-09-08 | Codex/root | Workflow integration completed-local
 - Combined implementation/release verified. All root and subagent source ownership released; see E:/projekte/luczor/.lmzdev/artifacts/reports/2026-09-08-dynamic-workflows-implementation.md for final evidence and acceptance boundaries. No deployment or own commit.
+
+## 2026-09-15T00:52:25Z | Claude Code -> all | handoff
+
+- Message: Workspace (Chats & Steuerung) got real remote-control functions + motion: Livewire Workspace.php requestOverview(deviceId?), readDeviceChat(conversationId), renameChat(title), dispatchPrompt() (auto-creates workspace-scope chat, reuses send()), liveTurn in render; Blade: device pills restructured (select + hover-revealed overview action, is-busy ring), inline rename, quick-start chips, optimistic ghost turn (wire:loading), live status polls itself wire:poll.3s while a job runs and shows DeviceJob progress summary, Ctrl/Cmd+Enter send, char counter, spinner; Alpine luczorWorkspaceChat (ui-components.js) autoscroll via MutationObserver + prefill; CSS motion in ui-system.css (turn-in, typing dots, sweep rule, dot breathe, chip stagger, composer focus glow). Verified: php -l, vite build, view:cache compile, tag/directive balance. Not verified in browser (local .env points at mysql/remote APP_URL). Next: run on staging, check Livewire morph with x-show header actions and wire:poll nested on the live status line.

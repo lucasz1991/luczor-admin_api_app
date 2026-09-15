@@ -2,20 +2,27 @@
     <x-ui.page title="Alle Geräte. Ein Gespräch." eyebrow="Dein Arbeitsbereich" description="Sprich mit Luczor oder koordiniere deine Geräte, Projekte und Chats.">
         <x-slot:actions><x-ui.button :href="route('account.devices')" variant="secondary">Geräte verwalten</x-ui.button></x-slot:actions>
 
-        {{-- Device rail: the global remote control for every device, always visible above the conversation. --}}
+        {{-- Device rail: the global remote control for every device. Select a device, or ask it for an overview on hover. --}}
         <div class="ui-device-rail" role="group" aria-label="Gerät auswählen">
             @forelse($devices as $device)
                 @php($online = !$device->revoked_at && $device->last_seen_at?->gt(now()->subMinutes(2)))
                 @php($initials = collect(preg_split('/\s+/u', trim($device->name)))->filter()->take(2)->map(fn($p) => mb_strtoupper(mb_substr($p, 0, 1)))->implode('') ?: 'G')
-                <button type="button" wire:key="rail-{{ $device->id }}" wire:click="selectDevice({{ $device->id }})"
-                        @class(['ui-device-pill', 'is-selected' => $targetDevice === $device->id, 'is-revoked' => $device->revoked_at])
-                        @disabled($device->revoked_at) title="{{ $device->name }} · {{ $online ? 'Verbunden' : ($device->revoked_at ? 'Zugriff entzogen' : 'Offline') }}">
-                    <span class="ui-device-pill__mark" aria-hidden="true">{{ $initials }}<i @class(['ui-device-pill__dot', 'is-online' => $online, 'is-revoked' => $device->revoked_at])></i></span>
-                    <span class="ui-device-pill__meta">
-                        <span class="ui-device-pill__name">{{ $device->name }}</span>
-                        <span class="ui-device-pill__status">{{ $device->revoked_at ? 'Entzogen' : ($online ? 'Verbunden' : 'Offline') }}@if($device->active_jobs_count) · {{ $device->active_jobs_count }} Auftr.@endif</span>
-                    </span>
-                </button>
+                <div wire:key="rail-{{ $device->id }}" @class(['ui-device-pill', 'is-selected' => $targetDevice === $device->id, 'is-revoked' => $device->revoked_at, 'is-busy' => $device->active_jobs_count > 0])>
+                    <button type="button" class="ui-device-pill__select" wire:click="selectDevice({{ $device->id }})" @disabled($device->revoked_at) aria-pressed="{{ $targetDevice === $device->id ? 'true' : 'false' }}"
+                            title="{{ $device->name }} · {{ $online ? 'Verbunden' : ($device->revoked_at ? 'Zugriff entzogen' : 'Offline') }}">
+                        <span class="ui-device-pill__mark" aria-hidden="true">{{ $initials }}<i @class(['ui-device-pill__dot', 'is-online' => $online, 'is-revoked' => $device->revoked_at])></i></span>
+                        <span class="ui-device-pill__meta">
+                            <span class="ui-device-pill__name">{{ $device->name }}</span>
+                            <span class="ui-device-pill__status">{{ $device->revoked_at ? 'Entzogen' : ($online ? 'Verbunden' : 'Offline') }}@if($device->active_jobs_count) · {{ $device->active_jobs_count }} Auftr.@endif</span>
+                        </span>
+                    </button>
+                    @unless($device->revoked_at)
+                        <button type="button" class="ui-device-pill__action" wire:click="requestOverview({{ $device->id }})" wire:loading.attr="disabled" title="Übersicht von {{ $device->name }} anfordern" aria-label="Übersicht von {{ $device->name }} anfordern"
+                                x-on:click="$dispatch('ui-tab-select', { id: 'workspace-sections', name: 'conversation' })">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 4.5h10M3 8h10M3 11.5h6.5"/></svg>
+                        </button>
+                    @endunless
+                </div>
             @empty
                 <a href="{{ route('account.devices') }}" class="ui-device-pill ui-device-pill--empty">
                     <span class="ui-device-pill__mark" aria-hidden="true">+</span>
@@ -26,18 +33,32 @@
 
         <x-ui.tabs id="workspace-sections" :tabs="['conversation' => 'Gespräch', 'chats' => 'Alle Chats', 'devices' => 'Geräte']" active="conversation">
             <x-ui.tab-panel name="conversation">
-                <x-ui.panel :title="$activeChat?->title ?? 'Dein Workspace'" :description="'Lokales Modell auf '.($devices->firstWhere('id', $targetDevice)?->name ?? 'einem ausgewählten Gerät')">
+                @php($currentDevice = $devices->firstWhere('id', $targetDevice))
+                <x-ui.panel :title="$activeChat?->title ?? 'Dein Workspace'" :description="'Lokales Modell auf '.($currentDevice?->name ?? 'einem ausgewählten Gerät')">
                     <x-slot:actions>
-                        <x-ui.badge tone="info">{{ $activeChat?->scope === 'personal' ? 'Nur persönliche Erinnerungen' : 'Übergeordnete Steuerung' }}</x-ui.badge>
-                        <x-ui.button variant="secondary" wire:click="newChat('workspace')">+ Workspace</x-ui.button>
-                        <x-ui.button variant="secondary" wire:click="newChat('personal')">+ Freier Chat</x-ui.button>
+                        <div class="contents" x-data="{ renaming: false, title: '' }" data-chat-title="{{ $activeChat?->title ?? '' }}">
+                            <form x-show="renaming" x-cloak class="ui-inline-edit" x-on:submit.prevent="$wire.renameChat(title); renaming = false" x-on:keydown.escape.prevent="renaming = false">
+                                <label for="workspace-chat-title" class="sr-only">Chat-Titel</label>
+                                <input id="workspace-chat-title" class="ui-input" x-ref="titleInput" x-model="title" maxlength="80" required />
+                                <x-ui.button type="submit" variant="secondary">Speichern</x-ui.button>
+                            </form>
+                            <div class="ui-panel__actions" x-show="!renaming">
+                                    <x-ui.badge tone="info">{{ $activeChat?->scope === 'personal' ? 'Nur persönliche Erinnerungen' : 'Übergeordnete Steuerung' }}</x-ui.badge>
+                                    @if($activeChat)<x-ui.button variant="ghost" x-on:click="title = $root.closest('[data-chat-title]').dataset.chatTitle; renaming = true; $nextTick(() => $refs.titleInput.select())">Umbenennen</x-ui.button>@endif
+                                    <x-ui.button variant="secondary" wire:click="newChat('workspace')">+ Workspace</x-ui.button>
+                                    <x-ui.button variant="secondary" wire:click="newChat('personal')">+ Freier Chat</x-ui.button>
+                            </div>
+                        </div>
                     </x-slot:actions>
-                    <div class="flex min-w-0 flex-col" aria-label="Chat">
-                        <div class="ui-turns max-h-[55vh] min-h-[260px] flex-1 space-y-6 overflow-y-auto pb-5 sm:min-h-[320px]" aria-live="polite">
+                    @error('title')<p role="alert" class="mb-4 text-sm text-amber-300">{{ $message }}</p>@enderror
+                    <div class="flex min-w-0 flex-col" aria-label="Chat" x-data="luczorWorkspaceChat" x-on:workspace-prefill.window="prefill($event.detail.text)">
+                        <div class="ui-turns max-h-[55vh] min-h-[260px] flex-1 space-y-6 overflow-y-auto pb-5 sm:min-h-[320px]" aria-live="polite" x-ref="turns">
                             @forelse($turns as $turn)
                                 @php($job = $turn->deviceJob)
                                 @php($status = $job && $job->expires_at?->isPast() && in_array($job->status, ['queued', 'approval_required', 'running']) ? 'expired' : $job?->status)
-                                <article wire:key="turn-{{ $turn->id }}" class="space-y-4">
+                                @php($live = in_array($status, ['queued', 'approval_required', 'running']))
+                                @php($progress = $live && is_array($job->progress) ? $job->progress : [])
+                                <article wire:key="turn-{{ $turn->id }}" class="ui-turn space-y-4" data-status="{{ $status ?? 'idle' }}">
                                     <div class="ui-turn-user ml-auto max-w-2xl rounded-2xl p-4">
                                         <p class="mb-2 text-xs text-slate-400">Du · {{ $turn->created_at->format('H:i') }}</p>
                                         <p class="whitespace-pre-wrap break-words text-sm leading-6">{{ $turn->prompt }}</p>
@@ -45,31 +66,71 @@
                                     <div class="ui-turn-assistant max-w-3xl py-1" data-status="{{ $status ?? 'idle' }}">
                                         <p class="ui-kicker mb-3">Luczor · {{ $job?->device?->name ?? 'Gerät' }}</p>
                                         @if($status === 'completed' && is_string($job->result['text'] ?? null))
-                                            <p class="whitespace-pre-wrap break-words text-sm leading-7 text-slate-200">{{ $job->result['text'] }}</p>
-                                            @if($job->result['interrupted'] ?? false)<p class="mt-2 text-xs text-amber-300">Teilfortschritt. Du kannst mit einer weiteren Nachricht fortsetzen.</p>@endif
+                                            <div class="ui-turn-result">
+                                                <p class="whitespace-pre-wrap break-words text-sm leading-7 text-slate-200">{{ $job->result['text'] }}</p>
+                                                @if($job->result['interrupted'] ?? false)<p class="mt-2 text-xs text-amber-300">Teilfortschritt. Du kannst mit einer weiteren Nachricht fortsetzen.</p>@endif
+                                            </div>
                                         @else
-                                            <p class="flex items-center gap-2 text-sm leading-6 {{ in_array($status, ['failed', 'expired']) ? 'text-amber-300' : 'text-slate-400' }}">
-                                                @if(in_array($status, ['queued', 'approval_required', 'running']))<span class="ui-turn-live-dot" aria-hidden="true"></span>@endif
-                                                {{ match($status) { 'approval_required' => 'Wartet auf Freigabe am Zielgerät.', 'queued' => 'Auftrag wartet auf das Zielgerät.', 'running' => 'Das lokale Modell arbeitet …', 'cancelled' => 'Auftrag zurückgezogen.', 'failed' => $job->error ?: 'Der Geräteauftrag ist fehlgeschlagen.', 'expired' => 'Der Geräteauftrag ist abgelaufen. Prüfe die Verbindung und sende erneut.', default => 'Auftrag nicht mehr verfügbar.' } }}
-                                            </p>
+                                            {{-- The live status line polls itself faster than the page while a device is still working. --}}
+                                            <div class="ui-turn-status text-sm leading-6 {{ in_array($status, ['failed', 'expired']) ? 'text-amber-300' : 'text-slate-400' }}" @if($liveTurn?->is($turn)) wire:poll.3s.visible="$refresh" @endif>
+                                                <p class="flex items-center gap-2.5">
+                                                    @if($live)<span class="ui-typing" aria-hidden="true"><i></i><i></i><i></i></span>@endif
+                                                    <span>{{ match(($progress['status'] ?? null) ?: $status) { 'approval_required', 'waiting' => 'Wartet auf Freigabe am Zielgerät.', 'queued' => 'Auftrag wartet auf das Zielgerät.', 'running' => 'Das lokale Modell arbeitet …', 'checking' => 'Das Gerät prüft das Ergebnis …', 'cancelled' => 'Auftrag zurückgezogen.', 'failed' => $job->error ?: 'Der Geräteauftrag ist fehlgeschlagen.', 'expired' => 'Der Geräteauftrag ist abgelaufen. Prüfe die Verbindung und sende erneut.', default => 'Auftrag nicht mehr verfügbar.' } }}</span>
+                                                </p>
+                                                @if(is_string($progress['summary'] ?? null) && trim($progress['summary']) !== '')<p class="ui-turn-progress">{{ mb_substr(trim($progress['summary']), 0, 600) }}</p>@endif
+                                            </div>
                                         @endif
-                                        @if(in_array($status, ['queued', 'approval_required']))<x-ui.button variant="ghost" class="mt-2" wire:click="cancelQueued({{ $turn->id }})">Auftrag zurückziehen</x-ui.button>@endif
+                                        @if(in_array($status, ['queued', 'approval_required']))<x-ui.button variant="ghost" class="mt-2" wire:click="cancelQueued({{ $turn->id }})" wire:loading.attr="disabled">Auftrag zurückziehen</x-ui.button>@endif
                                     </div>
                                 </article>
                             @empty
                                 <div class="mx-auto flex max-w-lg flex-col justify-center py-9 text-center sm:py-14">
-                                    <p class="ui-kicker">{{ $activeChat?->scope === 'personal' ? 'Freier Chat' : 'Dein Workspace' }}</p>
+                                    <p class="ui-kicker mx-auto">{{ $activeChat?->scope === 'personal' ? 'Freier Chat' : 'Dein Workspace' }}</p>
                                     <h3 class="mt-5 text-2xl font-semibold tracking-tight">{{ $activeChat?->scope === 'personal' ? 'Raum für neue Gedanken.' : 'Was möchtest du koordinieren?' }}</h3>
                                     <p class="mt-3 text-sm leading-6 text-slate-400">{{ $activeChat?->scope === 'personal' ? 'Ein unabhängiges Gespräch mit deinen persönlichen Erinnerungen. Projektinhalte, Dateien und andere Chats werden nicht einbezogen.' : 'Lass dir Projekte und Chats zeigen, lies einen ausgewählten Chat oder bereite einen Auftrag vor. Das gewählte Gerät führt die Arbeit lokal aus.' }}</p>
+                                    <div class="ui-chips" aria-label="Schnellstart">
+                                        @if($activeChat?->scope === 'personal')
+                                            <button type="button" class="ui-chip" x-on:click="prefill('Welche persönlichen Erinnerungen hast du zu mir gespeichert?')">Was weißt du über mich?</button>
+                                            <button type="button" class="ui-chip" x-on:click="prefill('Merke dir: ')">Etwas merken</button>
+                                            <button type="button" class="ui-chip" x-on:click="prefill('Hilf mir, folgenden Gedanken zu strukturieren: ')">Gedanken ordnen</button>
+                                        @else
+                                            <button type="button" class="ui-chip" wire:click="requestOverview" wire:loading.attr="disabled" @disabled(!$targetDevice)>Projekte &amp; Chats zeigen</button>
+                                            <button type="button" class="ui-chip" x-on:click="prefill('Fasse den zuletzt aktiven Chat auf diesem Gerät kurz zusammen.')">Letzten Chat zusammenfassen</button>
+                                            <button type="button" class="ui-chip" x-on:click="prefill('Bereite einen Auftrag für das Projekt „…“ vor: ')">Auftrag vorbereiten</button>
+                                        @endif
+                                    </div>
                                 </div>
                             @endforelse
+                            {{-- Optimistic echo: the draft appears immediately while the server creates the turn. --}}
+                            <article class="ui-turn ui-turn-ghost space-y-4" wire:loading wire:target="send, requestOverview, readDeviceChat" aria-hidden="true">
+                                <div class="ui-turn-user ml-auto max-w-2xl rounded-2xl p-4">
+                                    <p class="mb-2 text-xs text-slate-400">Du · gerade eben</p>
+                                    <p class="whitespace-pre-wrap break-words text-sm leading-6" x-text="draft() || 'Auftrag wird vorbereitet …'"></p>
+                                </div>
+                                <div class="ui-turn-assistant max-w-3xl py-1" data-status="queued">
+                                    <p class="ui-kicker mb-3">Luczor · {{ $currentDevice?->name ?? 'Gerät' }}</p>
+                                    <p class="flex items-center gap-2.5 text-sm leading-6 text-slate-400"><span class="ui-typing" aria-hidden="true"><i></i><i></i><i></i></span><span>Auftrag wird übergeben …</span></p>
+                                </div>
+                            </article>
                         </div>
-                        <form wire:submit="send" class="ui-composer mt-auto space-y-4 rounded-2xl p-4">
-                            <div class="sm:max-w-sm"><label for="workspace-device" class="ui-label">Antwortendes Gerät</label><x-ui.select id="workspace-device" wire:model="targetDevice"><option value="">Gerät auswählen</option>@foreach($devices->whereNull('revoked_at') as $device)<option value="{{ $device->id }}">{{ $device->name }}{{ $device->last_seen_at?->gt(now()->subMinutes(2)) ? '' : ' (offline)' }}</option>@endforeach</x-ui.select></div>
-                            <div><label for="workspace-prompt" class="sr-only">Nachricht</label><x-ui.textarea id="workspace-prompt" class="min-h-[110px] resize-y" wire:model="prompt" maxlength="12000" placeholder="Schreib Luczor …" required /></div>
-                            @error('prompt')<p role="alert" class="text-sm text-amber-300">{{ $message }}</p>@enderror
+                        <form wire:submit="send" class="ui-composer mt-auto space-y-4 rounded-2xl p-4" x-on:submit="stick = true">
+                            <div class="flex flex-wrap items-end justify-between gap-3">
+                                <div class="w-full sm:max-w-sm"><label for="workspace-device" class="ui-label">Antwortendes Gerät</label><x-ui.select id="workspace-device" wire:model="targetDevice"><option value="">Gerät auswählen</option>@foreach($devices->whereNull('revoked_at') as $device)<option value="{{ $device->id }}">{{ $device->name }}{{ $device->last_seen_at?->gt(now()->subMinutes(2)) ? '' : ' (offline)' }}</option>@endforeach</x-ui.select></div>
+                                @if($activeChat?->scope !== 'personal' && $targetDevice)<x-ui.button variant="ghost" wire:click="requestOverview" wire:loading.attr="disabled" title="Projekte und Chats des gewählten Geräts anzeigen lassen">Übersicht anfordern</x-ui.button>@endif
+                            </div>
+                            <div>
+                                <label for="workspace-prompt" class="sr-only">Nachricht</label>
+                                <x-ui.textarea id="workspace-prompt" class="min-h-[110px] resize-y" wire:model="prompt" maxlength="12000" placeholder="Schreib Luczor … (Strg + Enter sendet)" required x-ref="prompt" x-on:keydown.ctrl.enter.prevent="submitDraft($el.form)" x-on:keydown.meta.enter.prevent="submitDraft($el.form)" />
+                            </div>
+                            @error('prompt')<p role="alert" class="ui-turn-result text-sm text-amber-300">{{ $message }}</p>@enderror
                             @error('targetDevice')<p role="alert" class="text-sm text-amber-300">Bitte ein eigenes Gerät auswählen.</p>@enderror
-                            <div class="flex flex-wrap items-center justify-between gap-3"><p class="max-w-lg text-xs leading-5 text-slate-400">Antworten erscheinen nach Abschluss. Bestehende Gerätefreigaben gelten. Keine externen Modelle ohne separate Freigabe.</p><x-ui.button type="submit" class="shrink-0" wire:loading.attr="disabled" wire:target="send" :disabled="!$targetDevice"><span wire:loading.remove wire:target="send">Senden</span><span wire:loading wire:target="send">Wird gesendet …</span></x-ui.button></div>
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <p class="max-w-lg text-xs leading-5 text-slate-400">Antworten erscheinen nach Abschluss. Bestehende Gerätefreigaben gelten. Keine externen Modelle ohne separate Freigabe.</p>
+                                <div class="flex items-center gap-3">
+                                    <span class="ui-composer__count" x-text="draft().length.toLocaleString('de-DE') + ' / 12.000'"></span>
+                                    <x-ui.button type="submit" class="shrink-0" wire:loading.attr="disabled" wire:target="send" :disabled="!$targetDevice"><span wire:loading.remove wire:target="send">Senden</span><span class="inline-flex items-center gap-2" wire:loading wire:target="send"><i class="ui-spinner" aria-hidden="true"></i>Wird gesendet …</span></x-ui.button>
+                                </div>
+                            </div>
                         </form>
                     </div>
                 </x-ui.panel>
@@ -96,7 +157,16 @@
                         <div class="space-y-4">
                             @forelse($deviceChats as $deviceChat)
                                 @php($chatDevice = $devices->firstWhere('device_id', $deviceChat->client_id))
-                                <article class="ui-record" wire:key="device-chat-{{ $deviceChat->id }}"><h3 class="truncate text-sm font-medium">{{ $deviceChat->title ?: 'Projektchat' }}</h3><p class="mt-2 text-xs leading-5 text-slate-400">{{ $chatDevice?->name ?? 'Gerät nicht verbunden' }} · {{ $deviceChat->last_message_at?->locale('de')->diffForHumans() ?? 'Noch keine Nachricht' }}</p>@if($chatDevice && !$chatDevice->revoked_at)<x-ui.button variant="ghost" class="mt-3" wire:click="selectDevice({{ $chatDevice->id }})" x-on:click="$dispatch('ui-tab-select', { id: 'workspace-sections', name: 'conversation' })">Dieses Gerät auswählen</x-ui.button>@endif</article>
+                                <article class="ui-record" wire:key="device-chat-{{ $deviceChat->id }}">
+                                    <h3 class="truncate text-sm font-medium">{{ $deviceChat->title ?: 'Projektchat' }}</h3>
+                                    <p class="mt-2 text-xs leading-5 text-slate-400">{{ $chatDevice?->name ?? 'Gerät nicht verbunden' }} · {{ $deviceChat->last_message_at?->locale('de')->diffForHumans() ?? 'Noch keine Nachricht' }}</p>
+                                    @if($chatDevice && !$chatDevice->revoked_at)
+                                        <div class="ui-record__actions">
+                                            <x-ui.button variant="secondary" wire:click="readDeviceChat({{ $deviceChat->id }})" wire:loading.attr="disabled" x-on:click="$dispatch('ui-tab-select', { id: 'workspace-sections', name: 'conversation' })">Auf dem Gerät lesen</x-ui.button>
+                                            <x-ui.button variant="ghost" wire:click="selectDevice({{ $chatDevice->id }})" x-on:click="$dispatch('ui-tab-select', { id: 'workspace-sections', name: 'conversation' })">Gerät auswählen</x-ui.button>
+                                        </div>
+                                    @endif
+                                </article>
                             @empty
                                 <x-ui.empty title="Noch keine synchronisierten Chats.">Projektchats erscheinen nach der Synchronisation deiner Geräte.</x-ui.empty>
                             @endforelse
