@@ -38,6 +38,7 @@ return [
         ],
     ],
     'device_jobs' => [
+        'broadcast_queue' => env('LUCZOR_DEVICE_BROADCAST_QUEUE', 'device-coordination'),
         'private_key' => env('LUCZOR_JOB_PRIVATE_KEY', ''),
         'private_key_file' => env('LUCZOR_JOB_PRIVATE_KEY_FILE', ''),
         'ttl_minutes' => (int) env('LUCZOR_JOB_TTL_MINUTES', 15),

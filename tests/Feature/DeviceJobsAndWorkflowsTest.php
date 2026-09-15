@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Events\DeviceCoordinationChanged;
 use App\Models\ApiKey;
 use App\Models\AuditEvent;
+use App\Models\Device;
 use App\Models\DeviceJob;
 use App\Models\User;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
@@ -13,6 +16,24 @@ use Tests\TestCase;
 class DeviceJobsAndWorkflowsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_coordination_wakeup_is_private_payload_free_and_uses_reserved_queue(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $target = Device::create(['user_id' => $owner->id, 'device_id' => 'target', 'name' => 'Target']);
+        $foreign = Device::create(['user_id' => $other->id, 'device_id' => 'foreign', 'name' => 'Foreign']);
+        $job = new DeviceJob(['user_id' => $owner->id, 'device_id' => $target->id, 'source_device_id' => $foreign->id, 'public_id' => 'wake-id', 'status' => 'queued']);
+        $event = new DeviceCoordinationChanged($job);
+        $this->assertSame(['id' => 'wake-id', 'status' => 'queued'], $event->broadcastWith());
+        $this->assertSame(['private-device.target'], array_map(fn ($channel) => $channel->name, $event->broadcastOn()));
+        $this->assertSame('device-coordination', $event->broadcastQueue());
+        $this->assertSame(['device-coordination'], config('horizon.defaults.supervisor-devices.queue'));
+        $this->assertLessThan(config('queue.connections.redis.retry_after'), $event->timeout);
+        $target->update(['revoked_at' => now()]);
+        $this->assertSame([], $event->broadcastOn());
+        $this->assertInstanceOf(ShouldDispatchAfterCommit::class, $event);
+    }
 
     protected function setUp(): void
     {

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\DeviceCoordinationChanged;
 use App\Models\Conversation;
 use App\Models\Device;
 use App\Models\DeviceJob;
@@ -18,7 +19,7 @@ class CoordinatedDeviceJobs
 
     public function create(Device $source, array $data): DeviceJob
     {
-        return DB::transaction(function () use ($source, $data) {
+        $job = DB::transaction(function () use ($source, $data) {
             $this->leadership->fence($source, $data['master_epoch']);
             $hash = self::hash($data);
             $previous = DeviceJob::where('user_id', $source->user_id)->where('operation_id', $data['operation_id'])->first();
@@ -53,6 +54,9 @@ class CoordinatedDeviceJobs
 
             return $job;
         }, 3);
+        DeviceCoordinationChanged::notify($job);
+
+        return $job;
     }
 
     public function envelope(DeviceJob $job): array
@@ -72,7 +76,7 @@ class CoordinatedDeviceJobs
 
     public function mutate(Device $device, string $id, string $action, array $data): DeviceJob
     {
-        return DB::transaction(function () use ($device, $id, $action, $data) {
+        $job = DB::transaction(function () use ($device, $id, $action, $data) {
             User::whereKey($device->user_id)->lockForUpdate()->firstOrFail();
             $job = DeviceJob::where('user_id', $device->user_id)->where('public_id', $id)->where('protocol_version', 2)->lockForUpdate()->firstOrFail();
             if ($action === 'cancel') {
@@ -186,6 +190,9 @@ class CoordinatedDeviceJobs
 
             return $job;
         }, 3);
+        DeviceCoordinationChanged::notify($job);
+
+        return $job;
     }
 
     private function sameAttempt(DeviceJob $job, array $data): void

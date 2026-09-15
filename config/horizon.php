@@ -203,6 +203,20 @@ return [
     */
 
     'defaults' => [
+        // Reserve a worker for small device wake-ups; memory/AI jobs must not
+        // occupy every process while devices are waiting for coordination.
+        'supervisor-devices' => [
+            'connection' => 'redis',
+            'queue' => [env('LUCZOR_DEVICE_BROADCAST_QUEUE', 'device-coordination')],
+            'balance' => 'simple',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 15,
+            'nice' => 0,
+        ],
         'supervisor-1' => [
             'connection' => 'redis',
             'queue' => $supervisorQueues,
@@ -220,6 +234,7 @@ return [
 
     'environments' => [
         'production' => [
+            'supervisor-devices' => ['maxProcesses' => 1],
             'supervisor-1' => [
                 'maxProcesses' => 10,
                 'balanceMaxShift' => 1,
@@ -228,6 +243,7 @@ return [
         ],
 
         'local' => [
+            'supervisor-devices' => ['maxProcesses' => 1],
             'supervisor-1' => [
                 'maxProcesses' => 3,
             ],

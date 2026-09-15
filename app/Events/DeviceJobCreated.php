@@ -5,13 +5,27 @@ namespace App\Events;
 use App\Models\DeviceJob;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class DeviceJobCreated implements ShouldBroadcast
+class DeviceJobCreated implements ShouldBroadcast, ShouldDispatchAfterCommit
 {
     use Dispatchable;
     use SerializesModels;
+
+    public int $tries = 3;
+
+    public int $timeout = 10;
+
+    public int $backoff = 2;
+
+    public bool $afterCommit = true;
+
+    public function broadcastQueue(): string
+    {
+        return (string) config('luczor.device_jobs.broadcast_queue', 'device-coordination');
+    }
 
     public function __construct(public DeviceJob $job) {}
 
