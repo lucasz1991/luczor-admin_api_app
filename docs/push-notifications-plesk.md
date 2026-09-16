@@ -31,7 +31,7 @@ REVERB_APP_KEY=<oeffentlicher-zufaelliger-key>
 REVERB_APP_SECRET=<geheimer-zufaelliger-key>
 
 REVERB_SERVER_HOST=127.0.0.1
-REVERB_SERVER_PORT=8080
+REVERB_SERVER_PORT=8082
 REVERB_HOST=luczor.follow-flow.de
 REVERB_PORT=443
 REVERB_SCHEME=https
@@ -56,9 +56,14 @@ Für die Domain müssen Reverb und Horizon dauerhaft unter dem Eigentümer des v
 laufen:
 
 ```text
-php artisan reverb:start --host=127.0.0.1 --port=8080
+php artisan reverb:start --host=127.0.0.1 --port=8082
 php artisan horizon
 ```
+
+Auf dem geprüften gemeinsamen Plesk-Host ist 8080 bereits RailTime und 8081 Factory
+zugeordnet. Luczor verwendet ausschließlich den eigenen Loopback-Port 8082. Auf einem
+anderen Host zuerst die Portbelegung und den Prozessbesitzer prüfen, nicht blind
+Beispielwerte übernehmen.
 
 In Plesk können diese über Supervisor oder systemd verwaltet werden. Beide Prozesse
 sollen automatisch starten und nach einem Fehler neu gestartet werden. Zusätzlich ruft
@@ -70,6 +75,13 @@ ein einzelner Cronjob pro Minute den Laravel-Scheduler auf:
 
 Der Scheduler aktualisiert einen Heartbeat und treibt die Workflow-Fortschreibung an.
 Ein zweiter `schedule:run`-Cronjob würde Jobs doppelt einplanen.
+
+Aktueller Luczor-Betrieb: Plesk-Aufgabe 61 hält Reverb unter dem Subscription-Benutzer
+mit `flock` als Einzelinstanz; jede Minute wird bei freier Sperre ein Start versucht.
+Nach Prozessende oder Reboot kann die Wiederherstellung bis zur nächsten Minute dauern.
+Das ist ein Cron-Watchdog, kein systemd-Dienst. Toolkit-Scheduler 58 bleibt aktiv,
+der identische manuelle Scheduler 59 ist deaktiviert. Diese IDs gelten nur für diesen
+Plesk-Host; vor Änderungen aktuelle Aufgaben prüfen.
 
 ## 3. Kontrolliertes Deployment
 
@@ -102,10 +114,31 @@ Readiness-Zustand ohne Geheimnisse oder Frameworkversionen aus.
 
 ## 4. WebSocket-Proxy
 
-Plesk/nginx leitet den WebSocket-Pfad der HTTPS-Domain an
-`http://127.0.0.1:8080` weiter. Dabei müssen `Upgrade` und `Connection: upgrade`
-erhalten bleiben. Der öffentliche Client-Endpunkt ist anschließend
-`wss://luczor.follow-flow.de`.
+Beide Reverb-Pfade müssen zum **Luczor**-Listener weitergeleitet werden: `/app/`
+für WebSockets und `/apps/` für signierte Publish-Anfragen. Ein laufender Redis-Worker
+oder ein offener TCP-Port beweist diese Weiterleitung nicht. Der öffentliche
+Client-Endpunkt ist `wss://luczor.follow-flow.de`.
+
+Am geprüften Ziel werden die zusätzlichen Apache-Direktiven der Luczor-Domain
+verwendet (nicht eine globale nginx-Regel). Für Apache 2.4.47+:
+
+```apache
+ProxyPass "/app/" "http://127.0.0.1:8082/app/" upgrade=websocket retry=0 timeout=75
+ProxyPassReverse "/app/" "http://127.0.0.1:8082/app/"
+ProxyPass "/apps/" "http://127.0.0.1:8082/apps/" retry=0 timeout=15
+ProxyPassReverse "/apps/" "http://127.0.0.1:8082/apps/"
+```
+
+Die Regeln stehen in den HTTP- und HTTPS-Zusatzfeldern dieser Domain; vorhandene
+Direktiven vor Änderungen sichern und erhalten. TLS bleibt am öffentlichen Webserver,
+Reverb bindet nur an Loopback. Keine Wildcard-Origins und kein `upgrade=ANY` verwenden.
+Grundlagen: [Laravel Reverb](https://laravel.com/framework/docs/12.x/reverb),
+[Apache WebSocket Upgrade](https://httpd.apache.org/docs/2.4/mod/mod_proxy_wstunnel.html).
+
+Live-Abnahme am 2026-09-15: synthetischer Redis-Broadcast über Horizon an Reverb
+erfolgreich; öffentlicher TLS-WebSocket mit gültigem HTTP-101-Handshake und
+`pusher:connection_established` erfolgreich. Testkonten, Geräte und Aufträge danach
+getrennt als entfernt geprüft. Dies ersetzt nicht die folgende Zwei-Geräte-Abnahme.
 
 ## 5. Abnahmetest
 
