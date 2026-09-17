@@ -177,6 +177,16 @@ class MemoryController extends Controller
         return response()->json(['data' => $memory->analyze($data['scope'], $this->ids($request))]);
     }
 
+    public function maintenanceStatus(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
+    {
+        $data = $request->validate([
+            'scope' => ['required', 'in:user,project'],
+            'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
+        ]);
+        $actor->project($request, $data['project_id'] ?? null);
+        return response()->json(['data' => $memory->maintenanceStatus($data['scope'], $this->ids($request))]);
+    }
+
     public function promote(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
     {
         $data = $request->validate([

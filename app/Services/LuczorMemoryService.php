@@ -1038,14 +1038,23 @@ class LuczorMemoryService
                 // order so key rotation cannot invert concurrent lock order.
                 $this->lockMemoryIdentity($dataset, null, null, '', 'dataset-improve');
 
-                $hasEligibleProjection = MemoryLink::query()
+                $eligibleProjection = MemoryLink::query()
                     ->where('dataset', $dataset)
                     ->where('status', 'active')
                     ->where('projection_status', 'ready')
                     ->lockForUpdate()
                     ->get()
-                    ->contains(fn (MemoryLink $link) => MemoryProjectionPolicy::isEligible($link));
-                if (! $hasEligibleProjection) {
+                    ->filter(fn (MemoryLink $link) => MemoryProjectionPolicy::isEligible($link));
+                if ($eligibleProjection->isEmpty()) {
+                    continue;
+                }
+                $sourceRevision = hash('sha256', $eligibleProjection->sortBy('id')->map(fn (MemoryLink $link) => [
+                    $link->id, $link->content_hash, $link->updated_at?->toISOString(),
+                ])->values()->toJson());
+                $unchanged = MemoryProjectionOutbox::query()->where('dataset', $dataset)
+                    ->where('action', 'improve')->where('status', 'done')
+                    ->where('payload->source_revision', $sourceRevision)->exists();
+                if ($unchanged) {
                     continue;
                 }
 
@@ -1082,13 +1091,36 @@ class LuczorMemoryService
                     $dataset,
                     null,
                     $ids['user_id'] ?? null,
-                    [],
-                    'bucket:'.$bucket,
+                    ['source_revision' => $sourceRevision],
+                    'revision:'.$sourceRevision.':bucket:'.$bucket,
                 ) || $scheduled;
             }
 
             return $scheduled;
         });
+    }
+
+    /** Owner-scoped metadata only: never expose provider endpoints, payloads or raw exceptions. */
+    public function maintenanceStatus(string $scope, array $ids): array
+    {
+        $rows = MemoryProjectionOutbox::query()->whereIn('dataset', $this->datasetsFor($scope, $ids))
+            ->where('user_id', $ids['user_id'])->where('action', 'improve')->latest('id')->limit(20)->get();
+        return $rows->map(function (MemoryProjectionOutbox $row): array {
+            $phase = (string) (($row->payload ?? [])['phase'] ?? 'queued');
+            $allowed = ['new', 'queued', 'improve_launching', 'improve_polling', 'improve_disabled', 'done'];
+            $run = ($row->payload ?? [])['pipeline_run_id'] ?? null;
+            return [
+                'id' => (string) $row->id,
+                'run_id' => is_string($run) && preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $run) ? $run : null,
+                'status' => $row->status,
+                'phase' => in_array($phase, $allowed, true) ? $phase : 'provider_processing',
+                'draining' => in_array($row->status, ['processing', 'queued'], true),
+                'attempts' => $row->attempts,
+                'failed' => $row->last_error !== null,
+                'updated_at' => $row->updated_at?->toISOString(),
+                'completed_at' => $row->processed_at?->toISOString(),
+            ];
+        })->all();
     }
 
     public function pendingCount(?string $clientId = null): int

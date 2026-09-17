@@ -176,6 +176,15 @@ class MemoryOrchestrator
         return $this->store->analyze($scope, $ids);
     }
 
+    public function maintenanceStatus(string $scope, array $ids): array
+    {
+        abort_unless(in_array($scope, ['user', 'project'], true), 422);
+        abort_unless(! empty($ids['user_id']), 403);
+        abort_if($scope === 'project' && empty($ids['project_id']), 422);
+        $ids['tenant_id'] ??= $this->tenantId($ids['user_id']);
+        return $this->store->maintenanceStatus($scope, $ids);
+    }
+
     private function tenantId(mixed $userId): ?int
     {
         if (! $userId) {

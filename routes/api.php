@@ -245,6 +245,8 @@ Route::prefix('v1')->group(function () {
         ->middleware('luczor.api:brain.read')->name('api.v1.memory.recall');
     Route::post('/memory/analyze', [MemoryController::class, 'analyze'])
         ->middleware(['luczor.api:brain.read', 'throttle:10,1'])->name('api.v1.memory.analyze');
+    Route::post('/memory/maintenance/status', [MemoryController::class, 'maintenanceStatus'])
+        ->middleware(['luczor.api:brain.read', 'throttle:30,1'])->name('api.v1.memory.maintenance.status');
     Route::middleware('luczor.api:brain.write')->group(function () {
         Route::post('/memory/remember', [MemoryController::class, 'remember'])->name('api.v1.memory.remember');
         Route::post('/memory/forget', [MemoryController::class, 'forget'])->name('api.v1.memory.forget');
