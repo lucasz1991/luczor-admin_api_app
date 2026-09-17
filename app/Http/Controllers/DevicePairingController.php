@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ApiKey;
 use App\Models\Device;
 use App\Models\DevicePairing;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -65,5 +66,38 @@ class DevicePairingController extends Controller
 
             return response()->json(['status' => 'approved', 'device_key' => $credential, 'user' => $key->user->only(['id', 'name', 'email'])])->header('Cache-Control', 'no-store');
         });
+    }
+
+    /** Revoke precisely the API key that authenticated this desktop request. */
+    public function logout(Request $request, AuditLogger $audit)
+    {
+        /** @var ApiKey|null $authenticatedKey */
+        $authenticatedKey = $request->attributes->get('apiKey');
+        abort_unless($authenticatedKey instanceof ApiKey, 401, 'Device API key required.');
+
+        [$key, $device] = DB::transaction(function () use ($authenticatedKey, $request) {
+            $key = ApiKey::query()->with('user')->lockForUpdate()->findOrFail($authenticatedKey->id);
+            abort_unless($key->active && $key->user?->isActive(), 401, 'Invalid or expired API key.');
+            abort_unless((int) $key->user_id === (int) $request->user()?->id, 403);
+
+            $device = Device::query()
+                ->where('api_key_id', $key->id)
+                ->where('user_id', $key->user_id)
+                ->lockForUpdate()
+                ->first();
+            $key->update(['active' => false]);
+
+            return [$key, $device];
+        }, 3);
+
+        $audit->record([
+            'actor_user_id' => $key->user_id,
+            'device_id' => $device?->id,
+            'event_type' => 'device.logout',
+            'outcome' => 'revoked',
+            'payload' => ['device_id' => $key->device_id],
+        ]);
+
+        return response()->json(['status' => 'revoked'])->header('Cache-Control', 'no-store');
     }
 }

@@ -43,6 +43,58 @@ class AccountDeviceConnectionTest extends TestCase
         $this->assertDatabaseCount('api_keys', 0);
     }
 
+    public function test_desktop_logout_revokes_only_the_authenticated_key_and_records_an_audit_event(): void
+    {
+        $user = User::factory()->create();
+        $current = ApiKey::mint([
+            'user_id' => $user->id,
+            'name' => 'Current desktop',
+            'device_id' => 'desktop-current',
+            'abilities' => ApiKey::DEVICE_ABILITIES,
+            'active' => true,
+        ]);
+        $other = ApiKey::mint([
+            'user_id' => $user->id,
+            'name' => 'Other desktop',
+            'device_id' => 'desktop-other',
+            'abilities' => ApiKey::DEVICE_ABILITIES,
+            'active' => true,
+        ]);
+        $device = Device::create([
+            'user_id' => $user->id,
+            'api_key_id' => $current['model']->id,
+            'device_id' => 'desktop-current',
+            'name' => 'Current desktop',
+            'status' => 'online',
+        ]);
+
+        $this->withToken($current['plain'])->postJson('/api/v1/auth/device/logout')->assertOk()->assertJson(['status' => 'revoked']);
+
+        $this->assertFalse($current['model']->fresh()->active);
+        $this->assertTrue($other['model']->fresh()->active);
+        $this->assertDatabaseHas('audit_events', [
+            'actor_user_id' => $user->id,
+            'device_id' => $device->id,
+            'event_type' => 'device.logout',
+            'outcome' => 'revoked',
+        ]);
+        $this->withToken($current['plain'])->getJson('/api/v1/bootstrap')->assertUnauthorized();
+    }
+
+    public function test_desktop_logout_requires_the_current_key_to_have_the_settings_read_ability(): void
+    {
+        $key = ApiKey::mint([
+            'user_id' => User::factory()->create()->id,
+            'name' => 'Limited key',
+            'abilities' => ['brain.read'],
+            'active' => true,
+        ]);
+
+        $this->withToken($key['plain'])->postJson('/api/v1/auth/device/logout')->assertForbidden();
+
+        $this->assertTrue($key['model']->fresh()->active);
+    }
+
     public function test_account_page_scopes_costs_and_master_devices_to_the_logged_in_user(): void
     {
         $user = User::factory()->create();

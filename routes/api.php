@@ -43,6 +43,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::post('/auth/device', [DevicePairingController::class, 'store'])->middleware('throttle:10,1');
     Route::post('/auth/device/{id}/claim', [DevicePairingController::class, 'claim'])->middleware('throttle:30,1')->whereUuid('id');
+    Route::post('/auth/device/logout', [DevicePairingController::class, 'logout'])
+        ->middleware(['luczor.api:settings.read', 'throttle:10,1'])->name('api.v1.auth.device.logout');
     Route::get('/health', HealthController::class)->name('api.v1.health');
     Route::get('/ready', [HealthController::class, 'readiness'])->name('api.v1.ready');
     // Product/API versioning is public; framework details remain an internal
