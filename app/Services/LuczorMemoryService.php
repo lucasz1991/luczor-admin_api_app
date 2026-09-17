@@ -1049,7 +1049,7 @@ class LuczorMemoryService
                     continue;
                 }
                 $sourceRevision = hash('sha256', $eligibleProjection->sortBy('id')->map(fn (MemoryLink $link) => [
-                    $link->id, $link->content_hash, $link->updated_at?->toISOString(),
+                    $link->id, $link->content_hash, $link->valid_from, $link->valid_until, $link->expires_at,
                 ])->values()->toJson());
                 $unchanged = MemoryProjectionOutbox::query()->where('dataset', $dataset)
                     ->where('action', 'improve')->where('status', 'done')
@@ -1092,7 +1092,7 @@ class LuczorMemoryService
                     null,
                     $ids['user_id'] ?? null,
                     ['source_revision' => $sourceRevision],
-                    'revision:'.$sourceRevision.':bucket:'.$bucket,
+                    'bucket:'.$bucket,
                 ) || $scheduled;
             }
 
@@ -1100,15 +1100,139 @@ class LuczorMemoryService
         });
     }
 
+    public function maintenanceSources(string $scope, array $ids, int $after = 0): array
+    {
+        $rows = MemoryLink::query()->whereIn('dataset', $this->datasetsFor($scope, $ids))
+            ->where('user_id', $ids['user_id'])->where('status', 'active')->where('id', '>', $after)
+            ->orderBy('id')->limit(51)->get();
+        $page = $rows->take(50);
+
+        return ['next' => $rows->count() > 50 ? $page->last()->id : null, 'records' => $page
+            ->filter(fn (MemoryLink $link) => MemoryProjectionPolicy::isEligible($link)
+                && empty(($link->provenance ?? [])['maintenance_policy']))
+            ->map(fn (MemoryLink $link) => [
+                'id' => (string) $link->id, 'external_id' => $link->logicalExternalId(),
+                'revision' => $this->maintenanceRevision($link), 'content' => $link->summary,
+                'source' => $link->source_type, 'scope' => $link->scope, 'project_id' => $link->project_id,
+                'confidence' => $link->confidence, 'visibility' => $link->visibility,
+                'valid_from' => $link->valid_from?->toISOString(), 'valid_until' => $link->valid_until?->toISOString(),
+            ])->values()->all()];
+    }
+
+    private function maintenanceRevision(MemoryLink $link): string
+    {
+        return hash('sha256', json_encode([$link->id, $link->content_hash, $link->updated_at?->toISOString(),
+            $link->status, $link->visibility, $link->valid_from, $link->valid_until, $link->expires_at,
+            $link->summary, $link->source_type, $link->confidence, $link->sensitivity, $link->retention, $link->provenance], JSON_THROW_ON_ERROR));
+    }
+
+    /** Called only through the orchestrator. Replacements delete source text, not a whole historical archive. */
+    public function applyMaintenance(array $data, array $ids, callable $remember): array
+    {
+        return DB::transaction(function () use ($data, $ids, $remember) {
+            // All ordinary writes also lock this owner. Competing devices serialize before source CAS.
+            User::query()->whereKey($ids['user_id'])->lockForUpdate()->firstOrFail();
+            $key = hash('sha256', $data['request_id']);
+            $fingerprint = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR));
+            $receipt = DB::table('memory_maintenance_receipts')->where('user_id', $ids['user_id'])->where('request_key', $key)->first();
+            if ($receipt) {
+                abort_unless(hash_equals($receipt->fingerprint, $fingerprint), 409, 'Maintenance identity conflict.');
+
+                return json_decode($receipt->metadata, true, 512, JSON_THROW_ON_ERROR);
+            }
+            $sources = [];
+            // Same event-before-link lock order as Forget. Legacy rows without a write ledger stay read-only.
+            MemoryWriteEvent::query()->whereIn('memory_link_id', array_column($data['sources'], 'id'))
+                ->where('user_id', $ids['user_id'])->orderBy('id')->lockForUpdate()->get();
+            foreach ($data['sources'] as $reference) {
+                $link = MemoryLink::query()->whereKey($reference['id'])->where('user_id', $ids['user_id'])
+                    ->whereIn('dataset', $this->datasetsFor($data['scope'], $ids))->lockForUpdate()->first();
+                abort_unless($link && MemoryProjectionPolicy::isEligible($link) &&
+                    hash_equals($this->maintenanceRevision($link), $reference['revision']), 409, 'Memory source changed.');
+                $sources[(string) $link->id] = $link;
+            }
+            $changed = 0;
+            $retired = [];
+            $targetsSeen = [];
+            foreach ($data['operations'] as $index => $operation) {
+                if ($operation['operation'] === 'noop') {
+                    continue;
+                }
+                $references = array_map(fn ($id) => $sources[(string) $id] ?? null, $operation['sources']);
+                abort_if(empty($references) || in_array(null, $references, true), 422, 'Unknown maintenance source.');
+                $targets = $operation['targets'];
+                $kind = $operation['operation'];
+                abort_unless(in_array($kind, ['add', 'rewrite', 'merge', 'conflict'], true), 422);
+                abort_if(trim($operation['content']) === '', 422, 'Empty maintenance content.');
+                abort_if(($kind === 'rewrite' && count($targets) !== 1) || ($kind === 'merge' && count($targets) < 2)
+                    || (in_array($kind, ['add', 'conflict'], true) && count($targets) !== 0), 422);
+                foreach ($targets as $target) {
+                    abort_unless(isset($sources[(string) $target]) && in_array((string) $target, array_map('strval', $operation['sources']), true)
+                        && ! isset($targetsSeen[(string) $target]), 422);
+                    $targetsSeen[(string) $target] = true;
+                }
+                abort_if(MemoryDlp::containsSecretInMemoryPayload($operation)
+                    || MemoryDlp::containsLocalOnlySourceInMemoryPayload($operation), 422, 'Local-only maintenance content.');
+                foreach ($targets as $target) {
+                    $link = $sources[(string) $target];
+                    abort_unless($link->idempotency_key && $link->write_fingerprint && MemoryWriteEvent::query()
+                        ->where('memory_link_id', $link->id)->where('idempotency_key', $link->idempotency_key)
+                        ->where('state', 'committed')->exists(), 422, 'Source lacks a durable write ledger.');
+                    $retired[] = ['external_id' => $link->logicalExternalId(), 'version_id' => $link->id];
+                    // Exact rows only; family-wide Forget would erase unrelated historical versions.
+                    $this->enqueueDelete($link);
+                    MemoryWriteEvent::query()->where('memory_link_id', $link->id)->update(['state' => 'forgotten', 'forgotten_at' => now()]);
+                    $link->delete();
+                }
+                $result = $remember(array_merge($ids, [
+                    'scope' => $data['scope'], 'content' => $operation['content'],
+                    'write_id' => 'maintenance:'.$key.':'.$index, 'external_id' => 'maintenance:'.$key.':'.$index,
+                    'source_type' => 'assistant', 'write_intent' => 'system', 'visibility' => 'syncable',
+                    'retention' => 'durable', 'confidence' => min(0.35, ...array_map(fn ($link) => $link->confidence, $references)),
+                    'valid_from' => collect($references)->pluck('valid_from')->filter()->max(),
+                    'valid_until' => collect($references)->pluck('valid_until')->filter()->min(),
+                    'expires_at' => collect($references)->pluck('expires_at')->filter()->min(),
+                    'type' => $kind === 'conflict' ? 'memory_conflict' : 'memory_consolidation',
+                    'tags' => ['maintenance-derived'],
+                    'provenance' => ['source_memory_ids' => $operation['sources'], 'source_revisions' => $data['sources'],
+                        'maintenance_policy' => 'luczor-maintenance-v1', 'model_id' => $data['model_id'], 'reason' => $operation['reason'],
+                        'derived' => true, 'reviewed_locally' => true],
+                ]));
+                abort_unless($result->link !== null, 422, 'Maintenance write rejected by privacy policy.');
+                $changed += max(1, count($targets));
+            }
+            $metadata = ['scope' => $data['scope'], 'project_id' => $ids['project_id'] ?? null,
+                'changed' => $changed, 'retired' => $retired, 'sources' => $data['sources'], 'model_id' => $data['model_id'], 'policy' => 'luczor-maintenance-v1', 'reviewed_locally' => true];
+            DB::table('memory_maintenance_receipts')->insert(['user_id' => $ids['user_id'], 'request_key' => $key,
+                'fingerprint' => $fingerprint, 'metadata' => json_encode($metadata, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
+
+            return $metadata;
+        });
+    }
+
     /** Owner-scoped metadata only: never expose provider endpoints, payloads or raw exceptions. */
+    public function maintenanceReceipt(string $scope, array $ids, string $requestId): ?array
+    {
+        $receipt = DB::table('memory_maintenance_receipts')->where('user_id', $ids['user_id'])
+            ->where('request_key', hash('sha256', $requestId))->first();
+        if (! $receipt) {
+            return null;
+        }
+        $metadata = json_decode($receipt->metadata, true, 512, JSON_THROW_ON_ERROR);
+
+        return ($metadata['scope'] ?? null) === $scope && ($metadata['project_id'] ?? null) === ($ids['project_id'] ?? null) ? $metadata : null;
+    }
+
     public function maintenanceStatus(string $scope, array $ids): array
     {
         $rows = MemoryProjectionOutbox::query()->whereIn('dataset', $this->datasetsFor($scope, $ids))
             ->where('user_id', $ids['user_id'])->where('action', 'improve')->latest('id')->limit(20)->get();
+
         return $rows->map(function (MemoryProjectionOutbox $row): array {
             $phase = (string) (($row->payload ?? [])['phase'] ?? 'queued');
             $allowed = ['new', 'queued', 'improve_launching', 'improve_polling', 'improve_disabled', 'done'];
             $run = ($row->payload ?? [])['pipeline_run_id'] ?? null;
+
             return [
                 'id' => (string) $row->id,
                 'run_id' => is_string($run) && preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $run) ? $run : null,
@@ -1274,7 +1398,7 @@ class LuczorMemoryService
             && (($outbox->payload ?? [])['phase'] ?? null) === 'improve_disabled';
         if ($outbox->wasRecentlyCreated || $outbox->status === 'failed' || $reEnableDisabledImprove) {
             $outbox->update([
-                'payload' => $reEnableDisabledImprove ? null : $outbox->payload,
+                'payload' => $reEnableDisabledImprove ? ($payload ?: null) : $outbox->payload,
                 'status' => 'queued',
                 'attempts' => $reEnableDisabledImprove ? 0 : (int) ($outbox->attempts ?? 0),
                 'last_error' => null,

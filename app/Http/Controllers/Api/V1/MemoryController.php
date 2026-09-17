@@ -184,7 +184,56 @@ class MemoryController extends Controller
             'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
         ]);
         $actor->project($request, $data['project_id'] ?? null);
+
         return response()->json(['data' => $memory->maintenanceStatus($data['scope'], $this->ids($request))]);
+    }
+
+    public function maintenanceSources(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
+    {
+        $data = $request->validate([
+            'scope' => ['required', 'in:user,project'],
+            'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
+            'after' => ['nullable', 'integer', 'min:0'],
+        ]);
+        $actor->project($request, $data['project_id'] ?? null);
+
+        return response()->json(['data' => $memory->maintenanceSources($data['scope'], $this->ids($request), (int) ($data['after'] ?? 0))]);
+    }
+
+    public function applyMaintenance(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
+    {
+        $data = $request->validate([
+            'scope' => ['required', 'in:user,project'],
+            'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
+            'request_id' => ['required', 'string', 'max:190'], 'model_id' => ['required', 'string', 'max:128'],
+            'consent' => ['required', 'accepted'],
+            'quality' => ['required', 'array'], 'quality.passed' => ['required', 'boolean'],
+            'quality.policy' => ['required', 'in:luczor-maintenance-v1'], 'quality.model_id' => ['required', 'string', 'max:128'],
+            'sources' => ['required', 'array', 'min:1', 'max:12'],
+            'sources.*.id' => ['required', 'integer', 'min:1'], 'sources.*.revision' => ['required', 'regex:/^[a-f0-9]{64}$/D'],
+            'operations' => ['required', 'array', 'min:1', 'max:8'],
+            'operations.*.operation' => ['required', 'in:add,rewrite,merge,conflict,noop'],
+            'operations.*.targets' => ['present', 'array', 'max:12'], 'operations.*.targets.*' => ['integer', 'min:1'],
+            'operations.*.sources' => ['present', 'array', 'max:12'], 'operations.*.sources.*' => ['integer', 'min:1'],
+            'operations.*.content' => ['present', 'nullable', 'string', 'max:6000'], 'operations.*.reason' => ['present', 'nullable', 'string', 'max:400'],
+        ]);
+        $data['operations'] = array_map(fn (array $operation) => array_replace($operation, [
+            'content' => $operation['content'] ?? '', 'reason' => $operation['reason'] ?? '',
+        ]), $data['operations']);
+        $project = $actor->project($request, $data['project_id'] ?? null);
+        $ids = array_merge($this->ids($request), ['client_id' => $actor->deviceId($request, null), 'project_ref_id' => $project?->id]);
+
+        return response()->json(['data' => $memory->applyMaintenance($data, $ids)]);
+    }
+
+    public function maintenanceReceipt(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
+    {
+        $data = $request->validate(['scope' => ['required', 'in:user,project'],
+            'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
+            'request_id' => ['required', 'string', 'max:190']]);
+        $actor->project($request, $data['project_id'] ?? null);
+
+        return response()->json(['data' => $memory->maintenanceReceipt($data['scope'], $this->ids($request), $data['request_id'])]);
     }
 
     public function promote(Request $request, MemoryOrchestrator $memory, ApiActor $actor)

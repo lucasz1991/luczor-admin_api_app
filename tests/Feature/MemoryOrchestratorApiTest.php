@@ -3481,7 +3481,7 @@ class MemoryOrchestratorApiTest extends TestCase
         ]));
         $this->assertSame(1, MemoryProjectionOutbox::query()->where('action', 'improve')->count());
         $this->assertSame('queued', $outbox->fresh()->status);
-        $this->assertNull($outbox->fresh()->payload);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $outbox->fresh()->payload['source_revision']);
         Queue::assertPushed(ProcessMemoryProjection::class, fn (ProcessMemoryProjection $job) => $job->outboxId === $outbox->id);
     }
 

@@ -247,6 +247,12 @@ Route::prefix('v1')->group(function () {
         ->middleware(['luczor.api:brain.read', 'throttle:10,1'])->name('api.v1.memory.analyze');
     Route::post('/memory/maintenance/status', [MemoryController::class, 'maintenanceStatus'])
         ->middleware(['luczor.api:brain.read', 'throttle:30,1'])->name('api.v1.memory.maintenance.status');
+    Route::post('/memory/maintenance/sources', [MemoryController::class, 'maintenanceSources'])
+        ->middleware(['luczor.api:brain.read', 'throttle:60,1'])->name('api.v1.memory.maintenance.sources');
+    Route::post('/memory/maintenance/receipt', [MemoryController::class, 'maintenanceReceipt'])
+        ->middleware(['luczor.api:brain.read', 'throttle:60,1'])->name('api.v1.memory.maintenance.receipt');
+    Route::post('/memory/maintenance/apply', [MemoryController::class, 'applyMaintenance'])
+        ->middleware(['luczor.api:brain.write', 'throttle:30,1'])->name('api.v1.memory.maintenance.apply');
     Route::middleware('luczor.api:brain.write')->group(function () {
         Route::post('/memory/remember', [MemoryController::class, 'remember'])->name('api.v1.memory.remember');
         Route::post('/memory/forget', [MemoryController::class, 'forget'])->name('api.v1.memory.forget');

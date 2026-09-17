@@ -182,7 +182,40 @@ class MemoryOrchestrator
         abort_unless(! empty($ids['user_id']), 403);
         abort_if($scope === 'project' && empty($ids['project_id']), 422);
         $ids['tenant_id'] ??= $this->tenantId($ids['user_id']);
+
         return $this->store->maintenanceStatus($scope, $ids);
+    }
+
+    public function maintenanceSources(string $scope, array $ids, int $after): array
+    {
+        $this->maintenanceScope($scope, $ids);
+
+        return $this->store->maintenanceSources($scope, $ids, $after);
+    }
+
+    public function maintenanceReceipt(string $scope, array $ids, string $requestId): ?array
+    {
+        $this->maintenanceScope($scope, $ids);
+
+        return $this->store->maintenanceReceipt($scope, $ids, $requestId);
+    }
+
+    public function applyMaintenance(array $data, array $ids): array
+    {
+        $this->maintenanceScope($data['scope'], $ids);
+        abort_unless(($data['consent'] ?? false) === true && ($data['quality']['passed'] ?? false) === true
+            && ($data['quality']['policy'] ?? '') === 'luczor-maintenance-v1'
+            && ($data['quality']['model_id'] ?? '') === $data['model_id'], 422, 'Local quality attestation required.');
+        $result = $this->store->applyMaintenance($data, $ids, fn (array $write) => $this->remember($write));
+        $this->contextCache->invalidateMemory((int) $ids['user_id'], $ids['project_id'] ?? null);
+
+        return $result;
+    }
+
+    private function maintenanceScope(string $scope, array $ids): void
+    {
+        abort_unless(in_array($scope, ['user', 'project'], true) && ! empty($ids['user_id']), 403);
+        abort_if($scope === 'project' && empty($ids['project_id']), 422);
     }
 
     private function tenantId(mixed $userId): ?int
