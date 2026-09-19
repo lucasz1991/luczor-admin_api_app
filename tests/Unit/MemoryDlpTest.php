@@ -7,6 +7,21 @@ use Tests\TestCase;
 
 class MemoryDlpTest extends TestCase
 {
+    public function test_revision_digest_is_not_mistaken_for_a_truncated_iban(): void
+    {
+        // This deterministic digest starts with a checksum-valid pseudo-IBAN prefix.
+        $revision = hash('sha256', 'synthetic-metadata-revision-21');
+        $this->assertTrue(MemoryDlp::allowsExternalSemanticContent([
+            'content' => 'Ordinary memory.',
+            'provenance' => ['source_revisions' => [['id' => '1', 'revision' => $revision]],
+                'memory_metadata_input_revision' => $revision],
+        ]));
+        foreach (['DE89370400440532013000', 'DE89 3704 0044 0532 0130 00 mit Bezug'] as $iban) {
+            $this->assertFalse(MemoryDlp::allowsExternalSemanticContent(['content' => 'Ordinary memory.',
+                'meta' => ['nested' => ['reference' => $iban]]]));
+        }
+    }
+
     public function test_it_scans_nested_values_and_metadata_keys(): void
     {
         $this->assertFalse(MemoryDlp::containsSecretInMemoryPayload([

@@ -43,7 +43,8 @@ class MemoryController extends Controller
             'write_id' => ['nullable', 'string', 'max:190'],
             'expected_previous_id' => ['nullable', 'integer', 'min:1'],
             'client_id' => ['nullable', 'string', 'max:120'],
-            'tags' => ['nullable', 'array'],
+            'tags' => ['nullable', 'array', 'max:32'],
+            'tags.*' => ['string', 'max:80'],
             'meta' => ['nullable', 'array'],
             'write_intent' => ['nullable', 'string', 'in:explicit,confirmed,automatic,inferred,system'],
             'retention' => ['nullable', 'string', 'in:session,durable,permanent'],
@@ -68,7 +69,9 @@ class MemoryController extends Controller
             'client_id' => $actor->deviceId($request, $data['client_id'] ?? null),
             'project_ref_id' => $project?->id,
             'scope' => $data['scope'] ?? 'project',
-            'meta' => array_merge($data['meta'] ?? [], ['tags' => $data['tags'] ?? []]),
+            // Keep the historic request fingerprint for offline pre-upgrade retries.
+            'meta' => array_replace(['tags' => []], $data['meta'] ?? []),
+            '_tags_omitted' => ! isset($data['tags']) && ! array_key_exists('tags', $data['meta'] ?? []),
         ]));
 
         $payload = $result->toArray();
@@ -185,7 +188,8 @@ class MemoryController extends Controller
         ]);
         $actor->project($request, $data['project_id'] ?? null);
 
-        return response()->json(['data' => $memory->maintenanceStatus($data['scope'], $this->ids($request))]);
+        return response()->json(['data' => $memory->maintenanceStatus($data['scope'], $this->ids($request)),
+            'capabilities' => ['memory_metadata_versions' => [1], 'memory_metadata_cas' => true]]);
     }
 
     public function maintenanceSources(Request $request, MemoryOrchestrator $memory, ApiActor $actor)
@@ -206,16 +210,17 @@ class MemoryController extends Controller
             'scope' => ['required', 'in:user,project'],
             'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
             'request_id' => ['required', 'string', 'max:190'], 'model_id' => ['required', 'string', 'max:128'],
-            'consent' => ['required', 'accepted'],
-            'quality' => ['required', 'array'], 'quality.passed' => ['required', 'boolean'],
-            'quality.policy' => ['required', 'in:luczor-maintenance-v1'], 'quality.model_id' => ['required', 'string', 'max:128'],
+            'consent' => ['sometimes', 'boolean'],
+            'quality' => ['sometimes', 'array'], 'quality.passed' => ['required_with:quality', 'boolean'],
+            'quality.policy' => ['required_with:quality', 'in:luczor-maintenance-v1'], 'quality.model_id' => ['required_with:quality', 'string', 'max:128'],
             'sources' => ['required', 'array', 'min:1', 'max:12'],
             'sources.*.id' => ['required', 'integer', 'min:1'], 'sources.*.revision' => ['required', 'regex:/^[a-f0-9]{64}$/D'],
             'operations' => ['required', 'array', 'min:1', 'max:8'],
-            'operations.*.operation' => ['required', 'in:add,rewrite,merge,conflict,noop'],
+            'operations.*.operation' => ['required', 'in:add,rewrite,merge,conflict,noop,annotate'],
             'operations.*.targets' => ['present', 'array', 'max:12'], 'operations.*.targets.*' => ['integer', 'min:1'],
             'operations.*.sources' => ['present', 'array', 'max:12'], 'operations.*.sources.*' => ['integer', 'min:1'],
             'operations.*.content' => ['present', 'nullable', 'string', 'max:6000'], 'operations.*.reason' => ['present', 'nullable', 'string', 'max:400'],
+            'operations.*.metadata' => ['sometimes', 'array'],
         ]);
         $data['operations'] = array_map(fn (array $operation) => array_replace($operation, [
             'content' => $operation['content'] ?? '', 'reason' => $operation['reason'] ?? '',

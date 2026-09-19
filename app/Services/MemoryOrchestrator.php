@@ -20,6 +20,7 @@ class MemoryOrchestrator
     /** @param array<string,mixed> $data */
     public function remember(array $data): MemoryWriteResult
     {
+        $data = MemoryMetadata::normalizeInput($data);
         $data['importance'] = MemoryPriority::resolve($data);
         $content = trim((string) ($data['content'] ?? ''));
         abort_if($content === '', 422, 'Memory content must not be empty.');
@@ -203,9 +204,10 @@ class MemoryOrchestrator
     public function applyMaintenance(array $data, array $ids): array
     {
         $this->maintenanceScope($data['scope'], $ids);
-        abort_unless(($data['consent'] ?? false) === true && ($data['quality']['passed'] ?? false) === true
+        $classificationOnly = ! collect($data['operations'])->contains(fn ($operation) => ! in_array($operation['operation'], ['annotate', 'noop'], true));
+        abort_unless($classificationOnly || (($data['consent'] ?? false) === true && ($data['quality']['passed'] ?? false) === true
             && ($data['quality']['policy'] ?? '') === 'luczor-maintenance-v1'
-            && ($data['quality']['model_id'] ?? '') === $data['model_id'], 422, 'Local quality attestation required.');
+            && ($data['quality']['model_id'] ?? '') === $data['model_id']), 422, 'Local quality attestation required.');
         $result = $this->store->applyMaintenance($data, $ids, fn (array $write) => $this->remember($write));
         $this->contextCache->invalidateMemory((int) $ids['user_id'], $ids['project_id'] ?? null);
 

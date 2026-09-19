@@ -50,7 +50,7 @@ final class MemoryDlp
      * below checks every legal IBAN-length prefix with MOD-97, so an IBAN is
      * still found without treating arbitrary account-like text as one.
      */
-    private const IBAN_CANDIDATE_PATTERN = '~(?<![A-Z0-9])[A-Z]{2}[ -]?\d{2}(?:[ -]?[A-Z0-9]){11,40}~iu';
+    private const IBAN_CANDIDATE_PATTERN = '~(?<![A-Z0-9])[A-Z]{2}[ -]?\d{2}(?:[ -]?[A-Z0-9]){11,40}(?![A-Z0-9])~iu';
 
     private const PAYMENT_CARD_CANDIDATE_PATTERN = '~(?<![A-Z0-9])(?:\d[ -]?){12,18}\d(?![A-Z0-9])~iu';
 
@@ -70,6 +70,7 @@ final class MemoryDlp
             'tags' => $payload['tags'] ?? null,
             'provenance' => $payload['provenance'] ?? null,
             'meta' => $payload['meta'] ?? null,
+            'metadata' => $payload['metadata'] ?? null,
         ]);
     }
 
@@ -148,6 +149,7 @@ final class MemoryDlp
             'source_type' => $payload['source_type'] ?? ($payload['source'] ?? null),
             'provenance' => $payload['provenance'] ?? null,
             'meta' => $payload['meta'] ?? null,
+            'metadata' => $payload['metadata'] ?? null,
         ], 0, $nodes, $stringBytes, false);
     }
 
@@ -284,8 +286,17 @@ final class MemoryDlp
             return true;
         }
 
+        // V1 file references stay on the originating device, including mere path mentions.
+        if ((($value['version'] ?? null) === 1 && ! empty($value['files']))
+            || (($value['kind'] ?? null) === 'file' && isset($value['id']))) {
+            return true;
+        }
+
         foreach ($value as $key => $child) {
             $normalizedKey = strtolower(preg_replace('/[^a-z0-9]+/i', '', (string) $key) ?? (string) $key);
+            if ($normalizedKey === 'repositoryid' && $child !== null && $child !== '') {
+                return true;
+            }
             $childIsSource = $sourceField || in_array($normalizedKey, ['source', 'sourcetype', 'origintype'], true);
             if (self::inspectSource($child, $depth + 1, $nodes, $stringBytes, $childIsSource)) {
                 return true;

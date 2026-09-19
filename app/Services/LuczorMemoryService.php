@@ -151,6 +151,7 @@ class LuczorMemoryService
     /** @param array<string,mixed> $data */
     public function remember(array $data): MemoryLink
     {
+        $data = MemoryMetadata::normalizeInput($data);
         $data['importance'] = MemoryPriority::resolve($data);
         if (MemoryDlp::containsSecretInMemoryPayload($data)
             || MemoryDlp::containsLocalOnlySourceInMemoryPayload($data)) {
@@ -358,7 +359,10 @@ class LuczorMemoryService
 
                 $existingQuery = MemoryLink::query()->whereIn('dataset', $datasets);
                 if (! $sharedScope) {
-                    $existingQuery->where('user_id', $userId)->where('client_id', $clientId);
+                    $existingQuery->where('user_id', $userId);
+                    if (! array_key_exists('expected_previous_id', $data)) {
+                        $existingQuery->where('client_id', $clientId);
+                    }
                 }
                 $existing = $existingQuery
                     ->where(function (Builder $query) use ($requestedExternalId, $memoryKey) {
@@ -372,22 +376,6 @@ class LuczorMemoryService
                     ->lockForUpdate()
                     ->latest('id')
                     ->first();
-
-                if ($existing
-                    && $this->isCurrentIdempotentRetry($existing, $status)
-                    && hash_equals((string) $existing->content_hash, $hash)) {
-                    if (! $existing->idempotency_key || ! $existing->write_fingerprint) {
-                        $existing->update([
-                            'idempotency_key' => $idempotencyKey,
-                            'write_fingerprint' => $writeFingerprint,
-                            'ledger_identity_version' => 2,
-                        ]);
-                    }
-
-                    $this->recordWriteEvent($idempotencyKey, $writeFingerprint, $existing);
-
-                    return $existing;
-                }
 
                 /** @var Collection<int,MemoryLink> $supersededFamily */
                 $supersededFamily = new Collection;
@@ -409,7 +397,10 @@ class LuczorMemoryService
                 if ($supersededFamily->isEmpty()) {
                     $supersededQuery = MemoryLink::query()->whereIn('dataset', $datasets);
                     if (! $sharedScope) {
-                        $supersededQuery->where('user_id', $userId)->where('client_id', $clientId);
+                        $supersededQuery->where('user_id', $userId);
+                        if (! array_key_exists('expected_previous_id', $data)) {
+                            $supersededQuery->where('client_id', $clientId);
+                        }
                     }
                     $supersededFamily = $supersededQuery
                         ->where('status', 'active')
@@ -422,14 +413,67 @@ class LuczorMemoryService
                         ->get();
                 }
                 $superseded = $supersededFamily->first();
+                $candidatePrevious = $status === 'candidate' && $existing?->status === 'candidate'
+                    && hash_equals((string) $existing->content_hash, $hash) ? $existing : null;
+                $currentVersion = $candidatePrevious ?? $superseded;
 
                 if (array_key_exists('expected_previous_id', $data)) {
                     $expectedPreviousId = $data['expected_previous_id'] === null
                         ? null
                         : (int) $data['expected_previous_id'];
-                    if ($superseded?->id !== $expectedPreviousId) {
-                        throw new MemoryVersionConflictException($superseded?->id);
+                    if ($currentVersion?->id !== $expectedPreviousId) {
+                        throw new MemoryVersionConflictException($currentVersion?->id);
                     }
+                }
+
+                // Resolve legacy omission only after hashing the immutable caller request.
+                // Otherwise a retry would inherit newer state and change its fingerprint.
+                $previous = $currentVersion ?? $existing;
+                $sameContent = $previous && hash_equals((string) $previous->content_hash, $hash);
+                if ($sameContent) {
+                    foreach (['observed_at', 'valid_from', 'valid_until', 'expires_at'] as $field) {
+                        if (! array_key_exists($field, $data)) {
+                            $data[$field] = $previous->$field;
+                        }
+                    }
+                }
+                $metadataProvided = array_key_exists('memory_metadata', $meta);
+                if ($data['_tags_omitted'] ?? false) {
+                    unset($meta['tags']);
+                }
+                if (! $metadataProvided && isset($previous?->meta['memory_metadata'])) {
+                    $meta['memory_metadata'] = $sameContent ? $previous->meta['memory_metadata']
+                        : MemoryMetadata::invalidate($previous->meta['memory_metadata']);
+                }
+                if ($previous && ! array_key_exists('tags', $meta) && isset($previous->meta['tags'])) {
+                    $meta['tags'] = $sameContent || in_array('tags', $previous->meta['memory_metadata']['overrides'] ?? [], true)
+                        ? $previous->meta['tags'] : [];
+                }
+                if ($previous && ! $data['_importance_provided']
+                    && ($sameContent || in_array('importance', $previous->meta['memory_metadata']['overrides'] ?? [], true))) {
+                    $data['importance'] = (float) $previous->importance;
+                }
+                abort_if(MemoryDlp::containsSecretInMemoryPayload(array_replace($data, ['meta' => $meta]))
+                    || MemoryDlp::containsLocalOnlySourceInMemoryPayload(array_replace($data, ['meta' => $meta])), 422, 'Inherited metadata failed the DLP policy.');
+                if ($sameContent && (($metadataProvided && $this->canonicalFingerprintValue($previous->meta['memory_metadata'] ?? null)
+                    !== $this->canonicalFingerprintValue($meta['memory_metadata']))
+                    || ($previous->meta['tags'] ?? []) !== ($meta['tags'] ?? [])
+                    || (float) $previous->importance !== (float) $data['importance'])
+                    && ! array_key_exists('expected_previous_id', $data)) {
+                    throw new MemoryVersionConflictException($previous->id);
+                }
+                if ($existing && $this->isCurrentIdempotentRetry($existing, $status) && $sameContent
+                    && $this->sameMemoryAttributes($existing, $data, $meta)) {
+                    if (! $existing->idempotency_key || ! $existing->write_fingerprint) {
+                        $existing->update(['idempotency_key' => $idempotencyKey, 'write_fingerprint' => $writeFingerprint, 'ledger_identity_version' => 2]);
+                    }
+                    $this->recordWriteEvent($idempotencyKey, $writeFingerprint, $existing);
+
+                    return $existing;
+                }
+
+                if (! $metadataProvided && ! isset($meta['memory_metadata'])) {
+                    $meta['memory_metadata'] = MemoryMetadata::initial(new MemoryLink(['source_type' => $data['source_type'] ?? ($data['source'] ?? 'user')]));
                 }
 
                 $projectionRequired = (bool) ($data['project_to_cognee'] ?? false) && $status === 'active';
@@ -473,16 +517,21 @@ class LuczorMemoryService
                     'source_type' => $data['source_type'] ?? ($data['source'] ?? 'user'),
                     'source_ref' => $data['source_ref'] ?? null,
                     'provenance' => $data['provenance'] ?? null,
-                    'observed_at' => $data['observed_at'] ?? now(),
-                    'valid_from' => $data['valid_from'] ?? now(),
+                    'observed_at' => $sameContent ? $data['observed_at'] : ($data['observed_at'] ?? now()),
+                    'valid_from' => $sameContent ? $data['valid_from'] : ($data['valid_from'] ?? now()),
                     'valid_until' => $data['valid_until'] ?? null,
                     'recorded_at' => now(),
                     'expires_at' => $data['expires_at'] ?? ($retention === 'session' ? now()->addDay() : null),
-                    'supersedes_id' => $superseded?->id,
+                    'supersedes_id' => $currentVersion?->id,
                     'write_reason' => $data['write_reason'] ?? null,
                     'projection_status' => $projectionStatus,
                     'meta' => $meta,
                 ]);
+                $inputRevision = MemoryMetadata::inputRevision($link);
+                if (($metadataProvided && ($meta['memory_metadata']['classification']['origin'] ?? null) === 'dream')
+                    || ($sameContent && ($previous->provenance['memory_metadata_input_revision'] ?? null) === $inputRevision)) {
+                    $link->update(['provenance' => array_replace($link->provenance ?? [], ['memory_metadata_input_revision' => $inputRevision])]);
+                }
                 $this->recordWriteEvent($idempotencyKey, $writeFingerprint, $link);
 
                 if ($status === 'active') {
@@ -493,6 +542,8 @@ class LuczorMemoryService
                         $oldVersion->update(['status' => 'superseded', 'staleness' => 'stale']);
                         $this->enqueueDelete($oldVersion);
                     }
+                } elseif ($candidatePrevious) {
+                    $candidatePrevious->update(['status' => 'superseded', 'staleness' => 'stale']);
                 }
 
                 if ($projectionStatus === 'pending') {
@@ -635,28 +686,41 @@ class LuczorMemoryService
             ? collect()
             : (clone $base)->whereIn('cognee_memory_id', array_keys($semanticRanks))->get();
         $lexicalRows = collect();
+        $mysql = DB::connection()->getDriverName() === 'mysql';
+        $castType = $mysql ? 'CHAR' : 'TEXT';
+        $columns = ["COALESCE(summary, '')", "COALESCE(feature_key, '')"];
+        foreach (['tags', 'memory_metadata.categories', 'memory_metadata.files'] as $path) {
+            $columns[] = "COALESCE(CAST(JSON_EXTRACT(meta, '$.{$path}') AS {$castType}), '')";
+        }
+        $searchSql = $mysql ? 'LOWER(CONCAT('.implode(", ' ', ", $columns).'))'
+            : 'LOWER('.implode(" || ' ' || ", $columns).')';
         if ($terms->isNotEmpty()) {
             // Keep every parsed term for final scoring and candidate discovery.
             // Chunk only the SQL expression so short technical identifiers are
             // never discarded merely because a query also contains many long
             // prose tokens or DLP identifiers.
             foreach ($terms->chunk(self::MAX_LEXICAL_TERMS) as $termChunk) {
-                $patterns = $termChunk->map(fn (string $term): string => '%'.str_replace(
-                    ['!', '%', '_'],
-                    ['!!', '!%', '!_'],
-                    $term,
-                ).'%')->all();
+                $patterns = $termChunk->flatMap(function (string $term): array {
+                    $escape = fn (string $value) => '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $value).'%';
+                    $literal = $escape($term);
+                    $encoded = $escape(substr(json_encode($term, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 1, -1));
+                    // JSON may store Unicode as escapes. Match its codepoint slot here;
+                    // decoded Unicode text is checked exactly in final relevance scoring.
+                    $encoded = preg_replace('/\\\\u[0-9a-f]{4}/i', '\\u____', $encoded);
+
+                    return array_values(array_unique([$literal, $encoded]));
+                })->all();
                 $matchExpression = implode(' + ', array_fill(
                     0,
                     count($patterns),
-                    "CASE WHEN LOWER(summary) LIKE ? ESCAPE '!' THEN 1 ELSE 0 END",
+                    "CASE WHEN {$searchSql} LIKE ? ESCAPE '!' THEN 1 ELSE 0 END",
                 ));
                 $lexicalRows = $lexicalRows->concat((clone $base)
                     ->select('memory_links.*')
                     ->selectRaw("({$matchExpression}) AS lexical_match_count", $patterns)
-                    ->where(function (Builder $builder) use ($patterns): void {
+                    ->where(function (Builder $builder) use ($patterns, $searchSql): void {
                         foreach ($patterns as $pattern) {
-                            $builder->orWhereRaw("LOWER(summary) LIKE ? ESCAPE '!'", [$pattern]);
+                            $builder->orWhereRaw("{$searchSql} LIKE ? ESCAPE '!'", [$pattern]);
                         }
                     })
                     ->orderByDesc('lexical_match_count')
@@ -681,7 +745,7 @@ class LuczorMemoryService
             $semanticRank = $row->cognee_memory_id
                 ? ($semanticRanks[$row->cognee_memory_id] ?? null)
                 : null;
-            $haystack = mb_strtolower($row->summary);
+            $haystack = MemoryMetadata::searchText($row);
             $lexicalHits = $terms->filter(fn ($term) => str_contains($haystack, $term))->count();
             $lexical = $terms->isEmpty() ? 0.0 : $lexicalHits / $terms->count();
             $lexicalPresence = $lexicalHits > 0 ? 1.0 : 0.0;
@@ -721,7 +785,8 @@ class LuczorMemoryService
                 || MemoryDlp::containsLocalOnlySourceInMemoryPayload($payload)
                     ? null
                     : $payload;
-        })->filter()->sortByDesc('retrieval_score')
+        })->filter()->sort(fn (array $a, array $b) => ($b['retrieval_score'] <=> $a['retrieval_score'])
+            ?: (($b['meta']['memory_metadata']['interest'] ?? -1) <=> ($a['meta']['memory_metadata']['interest'] ?? -1)))
             // Identical evidence occupies one context slot. Preserve every ledger
             // version; normalization never changes or deletes stored facts.
             ->unique(fn (array $item) => preg_replace('/\s+/u', ' ', trim($item['content'])))
@@ -1108,13 +1173,17 @@ class LuczorMemoryService
         $page = $rows->take(50);
 
         return ['next' => $rows->count() > 50 ? $page->last()->id : null, 'records' => $page
-            ->filter(fn (MemoryLink $link) => MemoryProjectionPolicy::isEligible($link)
-                && empty(($link->provenance ?? [])['maintenance_policy']))
+            ->filter(fn (MemoryLink $link) => MemoryProjectionPolicy::isEligible($link))
             ->map(fn (MemoryLink $link) => [
                 'id' => (string) $link->id, 'external_id' => $link->logicalExternalId(),
                 'revision' => $this->maintenanceRevision($link), 'content' => $link->summary,
                 'source' => $link->source_type, 'scope' => $link->scope, 'project_id' => $link->project_id,
                 'confidence' => $link->confidence, 'visibility' => $link->visibility,
+                'metadata' => $link->meta['memory_metadata'] ?? null, 'tags' => $link->meta['tags'] ?? [],
+                'importance' => (float) $link->importance, 'provenance' => $link->provenance,
+                'input_revision' => MemoryMetadata::inputRevision($link),
+                'metadata_needed' => ($link->provenance['memory_metadata_input_revision'] ?? null) !== MemoryMetadata::inputRevision($link),
+                'rewrite_eligible' => $link->source_type === 'user' && empty(($link->provenance ?? [])['maintenance_policy']),
                 'valid_from' => $link->valid_from?->toISOString(), 'valid_until' => $link->valid_until?->toISOString(),
             ])->values()->all()];
     }
@@ -1123,7 +1192,8 @@ class LuczorMemoryService
     {
         return hash('sha256', json_encode([$link->id, $link->content_hash, $link->updated_at?->toISOString(),
             $link->status, $link->visibility, $link->valid_from, $link->valid_until, $link->expires_at,
-            $link->summary, $link->source_type, $link->confidence, $link->sensitivity, $link->retention, $link->provenance], JSON_THROW_ON_ERROR));
+            $link->summary, $link->source_type, $link->confidence, $link->sensitivity, $link->retention, $link->provenance,
+            $link->importance, $link->meta], JSON_THROW_ON_ERROR));
     }
 
     /** Called only through the orchestrator. Replacements delete source text, not a whole historical archive. */
@@ -1162,8 +1232,11 @@ class LuczorMemoryService
                 abort_if(empty($references) || in_array(null, $references, true), 422, 'Unknown maintenance source.');
                 $targets = $operation['targets'];
                 $kind = $operation['operation'];
-                abort_unless(in_array($kind, ['add', 'rewrite', 'merge', 'conflict'], true), 422);
-                abort_if(trim($operation['content']) === '', 422, 'Empty maintenance content.');
+                abort_unless(in_array($kind, ['add', 'rewrite', 'merge', 'conflict', 'annotate'], true), 422);
+                abort_if($kind !== 'annotate' && trim($operation['content']) === '', 422, 'Empty maintenance content.');
+                abort_if($kind === 'annotate' && (count($targets) !== 1 || count($references) !== 1
+                    || (string) $targets[0] !== (string) $references[0]->id || trim($operation['content'] ?? '') !== ''
+                    || ! is_array($operation['metadata'] ?? null)), 422, 'Annotation requires exactly one unchanged source.');
                 abort_if(($kind === 'rewrite' && count($targets) !== 1) || ($kind === 'merge' && count($targets) < 2)
                     || (in_array($kind, ['add', 'conflict'], true) && count($targets) !== 0), 422);
                 foreach ($targets as $target) {
@@ -1173,6 +1246,28 @@ class LuczorMemoryService
                 }
                 abort_if(MemoryDlp::containsSecretInMemoryPayload($operation)
                     || MemoryDlp::containsLocalOnlySourceInMemoryPayload($operation), 422, 'Local-only maintenance content.');
+                if ($kind === 'annotate') {
+                    $link = $references[0];
+                    $patched = MemoryMetadata::patch($link, $operation['metadata'], $data['model_id']);
+                    $result = $remember(array_merge($ids, $patched, [
+                        'scope' => $link->scope, 'content' => $link->summary, 'external_id' => $link->logicalExternalId(),
+                        'write_id' => 'maintenance:'.$key.':'.$index, 'expected_previous_id' => $link->id,
+                        'client_id' => $link->client_id, 'project_ref_id' => $link->project_ref_id,
+                        'feature_key' => $link->feature_key, 'type' => $link->type, 'session_id' => $link->session_id,
+                        'source_type' => $link->source_type, 'source_ref' => $link->source_ref,
+                        'write_intent' => 'system', 'visibility' => $link->visibility, 'retention' => $link->retention,
+                        'sensitivity' => $link->sensitivity, 'confidence' => $link->confidence,
+                        'provenance' => $link->provenance, 'observed_at' => $link->observed_at,
+                        'valid_from' => $link->valid_from, 'valid_until' => $link->valid_until, 'expires_at' => $link->expires_at,
+                    ]));
+                    abort_unless($result->link !== null, 422, 'Metadata rejected by privacy policy.');
+                    $changed++;
+
+                    continue;
+                }
+                abort_if(collect($references)->contains(fn (MemoryLink $reference) => $reference->source_type !== 'user'
+                    || ! empty($reference->provenance['maintenance_policy'])), 422, 'This source is available for metadata annotation only.');
+                $merged = MemoryMetadata::merge($references);
                 foreach ($targets as $target) {
                     $link = $sources[(string) $target];
                     abort_unless($link->idempotency_key && $link->write_fingerprint && MemoryWriteEvent::query()
@@ -1184,7 +1279,7 @@ class LuczorMemoryService
                     MemoryWriteEvent::query()->where('memory_link_id', $link->id)->update(['state' => 'forgotten', 'forgotten_at' => now()]);
                     $link->delete();
                 }
-                $result = $remember(array_merge($ids, [
+                $result = $remember(array_merge($ids, $merged, [
                     'scope' => $data['scope'], 'content' => $operation['content'],
                     'write_id' => 'maintenance:'.$key.':'.$index, 'external_id' => 'maintenance:'.$key.':'.$index,
                     'source_type' => 'assistant', 'write_intent' => 'system', 'visibility' => 'syncable',
@@ -1193,7 +1288,6 @@ class LuczorMemoryService
                     'valid_until' => collect($references)->pluck('valid_until')->filter()->min(),
                     'expires_at' => collect($references)->pluck('expires_at')->filter()->min(),
                     'type' => $kind === 'conflict' ? 'memory_conflict' : 'memory_consolidation',
-                    'tags' => ['maintenance-derived'],
                     'provenance' => ['source_memory_ids' => $operation['sources'], 'source_revisions' => $data['sources'],
                         'maintenance_policy' => 'luczor-maintenance-v1', 'model_id' => $data['model_id'], 'reason' => $operation['reason'],
                         'derived' => true, 'reviewed_locally' => true],
@@ -1509,6 +1603,40 @@ class LuczorMemoryService
     }
 
     /** Canonicalize caller-controlled write fields before hashing them. */
+    private function sameMemoryAttributes(MemoryLink $link, array $data, array $meta): bool
+    {
+        foreach (['type' => 'note', 'visibility' => 'syncable', 'sensitivity' => 'normal', 'retention' => 'durable',
+            'source_type' => 'user', 'source_ref' => null, 'importance' => 0.5, 'confidence' => 0.5] as $field => $default) {
+            $incoming = $data[$field] ?? $default;
+            $stored = $link->$field;
+            if (in_array($field, ['importance', 'confidence'], true)) {
+                if ((float) $stored !== (float) $incoming) {
+                    return false;
+                }
+            } elseif ($stored !== $incoming) {
+                return false;
+            }
+        }
+        foreach (['observed_at', 'valid_from', 'valid_until', 'expires_at'] as $field) {
+            if (array_key_exists($field, $data) && ($data[$field] === null ? $link->$field !== null
+                : ! $link->$field?->equalTo($data[$field]))) {
+                return false;
+            }
+        }
+        foreach ($meta as $key => $value) {
+            if ($this->canonicalFingerprintValue($link->meta[$key] ?? null) !== $this->canonicalFingerprintValue($value)) {
+                return false;
+            }
+        }
+        foreach ($data['provenance'] ?? [] as $key => $value) {
+            if ($key !== 'captured_at' && $this->canonicalFingerprintValue($link->provenance[$key] ?? null) !== $this->canonicalFingerprintValue($value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function canonicalFingerprintValue(mixed $value): mixed
     {
         if ($value instanceof \DateTimeInterface) {

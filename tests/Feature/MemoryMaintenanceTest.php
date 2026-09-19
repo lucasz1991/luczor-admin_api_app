@@ -7,6 +7,7 @@ use App\Models\MemoryLink;
 use App\Models\MemoryProjectionOutbox;
 use App\Models\User;
 use App\Services\MemoryOrchestrator;
+use App\Services\MemoryProjectionPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -46,7 +47,13 @@ class MemoryMaintenanceTest extends TestCase
         $receipt = DB::table('memory_maintenance_receipts')->first();
         $this->assertStringNotContainsString($link->summary, $receipt->metadata);
         $this->assertStringNotContainsString($data['operations'][0]['content'], $receipt->metadata);
-        $this->assertSame([], $memory->maintenanceSources('project', $ids, 0)['records']);
+        $derived = $memory->maintenanceSources('project', $ids, 0)['records'];
+        $replacement = MemoryLink::first();
+        $this->assertCount(1, $derived, json_encode(['projection' => $replacement->projection_status,
+            'active' => MemoryProjectionPolicy::isActiveWithinValidity($replacement),
+            'content_policy' => MemoryProjectionPolicy::passesContentPolicy($replacement)], JSON_THROW_ON_ERROR));
+        $this->assertFalse($derived[0]['rewrite_eligible']);
+        $this->assertTrue($derived[0]['metadata_needed']);
         $this->assertSame('assistant', MemoryLink::first()->source_type);
         $this->assertLessThanOrEqual(0.35, MemoryLink::first()->confidence);
     }
