@@ -1,11 +1,11 @@
 {
   "src/workflow-editor-web.ts": {
-    "file": "editor-Dtq8Jltt.js",
+    "file": "editor-CbldbYUF.js",
     "name": "workflow-editor-web",
     "src": "src/workflow-editor-web.ts",
     "isEntry": true,
     "css": [
-      "editor-T9GK0a3O.css"
+      "editor-CNXRs_Gs.css"
     ]
   }
 }
