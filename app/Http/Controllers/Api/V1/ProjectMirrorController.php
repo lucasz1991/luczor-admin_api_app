@@ -52,8 +52,8 @@ class ProjectMirrorController extends Controller
     public function create(Request $request, Project $project, DeviceLeadership $leadership, ProjectMirror $mirror)
     {
         $data = $this->body($request, ['operation_id' => 'required|uuid', 'base_revision' => 'required|integer|min:0',
-            'master_epoch' => 'sometimes|integer|min:1', 'lease_id' => 'sometimes|uuid', 'proposal' => 'sometimes|boolean',
-            'draft' => 'sometimes|boolean', 'job_id' => 'sometimes|uuid'] + $this->entryRules());
+            'base_manifest_id' => 'sometimes|nullable|uuid', 'master_epoch' => 'sometimes|integer|min:1', 'lease_id' => 'sometimes|uuid',
+            'proposal' => 'sometimes|boolean', 'draft' => 'sometimes|boolean', 'job_id' => 'sometimes|uuid'] + $this->entryRules());
 
         return response()->json(['data' => $mirror->create($leadership->device($request), $project, $data)], 201);
     }

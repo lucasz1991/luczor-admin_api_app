@@ -2,20 +2,26 @@
 
 namespace App\Services;
 
+use App\Events\ProjectMirrorChanged;
 use App\Models\Device;
 use App\Models\DeviceJob;
 use App\Models\Project;
-use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-/** Immutable encrypted full-folder snapshots. Names are data, never server filesystem paths. */
+/**
+ * Immutable encrypted full-folder snapshots. Names are data, never server filesystem paths.
+ * Every device of the owner publishes directly, like pushing to a shared repository: a stale base is
+ * three-way merged against the head and overlapping edits are kept as conflict copies, never dropped.
+ */
 class ProjectMirror
 {
     public const CHUNK_BYTES = 8_388_608;
+
+    public const CONFLICT_MARKER = '.konflikt-';
 
     public function __construct(private DeviceLeadership $leadership) {}
 
@@ -37,7 +43,7 @@ class ProjectMirror
         $this->owned($device, $project);
 
         return DB::transaction(function () use ($device, $project, $data) {
-            $this->leadership->fence($device, $data['master_epoch']);
+            $this->leadership->fence($device, $data['master_epoch'], false);
             $this->lockProject($project);
             $head = DB::table('project_mirror_heads')->where('project_id', $project->id)->first();
             abort_unless((int) $head->revision === $data['expected_revision'], 409, 'mirror_revision_conflict');
@@ -101,7 +107,7 @@ class ProjectMirror
         return DB::transaction(function () use ($device, $project, $data) {
             $proposal = (bool) ($data['proposal'] ?? false);
             if (! $proposal) {
-                $this->leadership->fence($device, (int) ($data['master_epoch'] ?? 0));
+                $this->leadership->fence($device, (int) ($data['master_epoch'] ?? 0), false);
             } else {
                 $job = DeviceJob::where('user_id', $device->user_id)->where('device_id', $device->id)
                     ->where('project_id', $project->id)->where('public_id', $data['job_id'] ?? '')->where('protocol_version', 2)->firstOrFail();
@@ -118,10 +124,15 @@ class ProjectMirror
             }
             $head = $this->head($project);
             abort_unless($data['base_revision'] <= $head['revision'], 409, 'mirror_base_revision_unknown');
+            $baseManifest = $data['base_manifest_id'] ?? null;
+            if ($baseManifest !== null) {
+                abort_unless(DB::table('project_mirror_manifests')->where('project_id', $project->id)->where('id', $baseManifest)
+                    ->whereIn('status', ['published', 'accepted'])->exists(), 409, 'mirror_base_manifest_unknown');
+            }
             $id = (string) Str::uuid();
             DB::table('project_mirror_manifests')->insert(['id' => $id, 'project_id' => $project->id, 'device_id' => $device->id,
                 'operation_id' => $data['operation_id'], 'request_hash' => $hash, 'base_revision' => $data['base_revision'],
-                'master_epoch' => $data['master_epoch'] ?? null, 'job_id' => $data['job_id'] ?? null,
+                'base_manifest_id' => $baseManifest, 'master_epoch' => $data['master_epoch'] ?? null, 'job_id' => $data['job_id'] ?? null,
                 'status' => 'draft', 'created_at' => now(), 'updated_at' => now()]);
             $this->append($device, $project, $id, ['operation_id' => $data['operation_id'], 'entries' => $data['entries'] ?? []]);
             if (! ($data['draft'] ?? false)) {
@@ -214,7 +225,7 @@ class ProjectMirror
     {
         return DB::transaction(function () use ($device, $project, $id, $data) {
             $this->owned($device, $project);
-            $this->leadership->fence($device, $data['master_epoch']);
+            $this->leadership->fence($device, $data['master_epoch'], false);
             $this->lockProject($project);
             $manifest = $this->manifest($project, $id);
             $hash = CoordinatedDeviceJobs::hash($data);
@@ -226,13 +237,16 @@ class ProjectMirror
             abort_unless($head->lease_id === $data['lease_id'] && (int) $head->master_epoch === $data['master_epoch']
                 && $head->lease_expires_at && Carbon::parse($head->lease_expires_at)->isFuture(), 409, 'mirror_lease_expired');
             abort_unless((int) $head->revision === $data['expected_revision'], 409, 'mirror_revision_conflict');
-            if ((int) $manifest->base_revision !== $data['expected_revision']) {
-                abort_unless($manifest->status === 'proposed', 409, 'mirror_revision_conflict');
-                $id = $this->mergeProposal($device, $project, $manifest, $head, $data);
+            $base = $this->baseManifest($project, $manifest);
+            $fastForward = $head->manifest_id === null ? $base === null : ($base !== null && $base->id === $head->manifest_id);
+            if (! $fastForward) {
+                // Any stale upload merges like a rebase: the head keeps every change the upload did not touch.
+                $id = $this->mergeProposal($device, $project, $manifest, $base, $head, $data);
             }
             $this->seal($project, $id, 'sealed');
             DB::table('project_mirror_manifests')->where('id', $id)->update(['status' => 'published', 'revision' => $head->revision + 1, 'updated_at' => now()]);
             DB::table('project_mirror_heads')->where('project_id', $project->id)->update(['manifest_id' => $id, 'revision' => $head->revision + 1, 'updated_at' => now()]);
+            ProjectMirrorChanged::notify($project, (int) $head->revision + 1, (int) $device->id);
 
             return $this->metadata($this->manifest($project, $id));
         }, 3);
@@ -262,21 +276,41 @@ class ProjectMirror
     public function metadata(object $row): array
     {
         return ['manifest_id' => $row->id, 'project_id' => (int) $row->project_id, 'revision' => $row->revision === null ? null : (int) $row->revision,
-            'base_revision' => (int) $row->base_revision, 'status' => $row->status, 'manifest_hash' => $row->manifest_hash,
+            'base_revision' => (int) $row->base_revision, 'base_manifest_id' => $row->base_manifest_id ?? null,
+            'status' => $row->status, 'manifest_hash' => $row->manifest_hash,
             'entry_count' => (int) $row->entry_count, 'total_bytes' => (int) $row->total_bytes, 'job_id' => $row->job_id,
-            'merged_manifest_id' => $row->merged_manifest_id,
+            'merged_manifest_id' => $row->merged_manifest_id, 'conflict_count' => (int) ($row->conflict_count ?? 0),
             'device_id' => Device::whereKey($row->device_id)->value('device_id')];
     }
 
-    /** Three-way merge by exact entry identity. Divergent overlapping changes never overwrite the head. */
-    private function mergeProposal(Device $device, Project $project, object $proposal, object $head, array $data): string
+    /** The manifest whose content the uploading device had when it started editing. Null means an empty folder. */
+    private function baseManifest(Project $project, object $manifest): ?object
     {
-        $base = $proposal->base_revision == 0 ? null : DB::table('project_mirror_manifests')->where('project_id', $project->id)->where('revision', $proposal->base_revision)->first();
-        abort_if($proposal->base_revision != 0 && ! $base, 409, 'mirror_base_revision_unknown');
+        if ($manifest->base_manifest_id ?? null) {
+            $base = DB::table('project_mirror_manifests')->where('project_id', $project->id)->where('id', $manifest->base_manifest_id)->first();
+            abort_unless($base !== null, 409, 'mirror_base_manifest_unknown');
+
+            return $base;
+        }
+        if ((int) $manifest->base_revision === 0) {
+            return null;
+        }
+        $base = DB::table('project_mirror_manifests')->where('project_id', $project->id)->where('revision', $manifest->base_revision)->first();
+        abort_unless($base !== null, 409, 'mirror_base_revision_unknown');
+
+        return $base;
+    }
+
+    /**
+     * Three-way merge by exact entry identity. Divergent overlapping changes never overwrite the head:
+     * the head version keeps its name and the uploaded version is retained as a conflict copy next to it.
+     */
+    private function mergeProposal(Device $device, Project $project, object $proposal, ?object $base, object $head, array $data): string
+    {
         $id = (string) Str::uuid();
         DB::table('project_mirror_manifests')->insert(['id' => $id, 'project_id' => $project->id, 'device_id' => $device->id,
             'operation_id' => (string) Str::uuid(), 'request_hash' => CoordinatedDeviceJobs::hash($data),
-            'base_revision' => $head->revision, 'master_epoch' => $data['master_epoch'], 'status' => 'draft',
+            'base_revision' => $head->revision, 'base_manifest_id' => $head->manifest_id, 'master_epoch' => $data['master_epoch'], 'status' => 'draft',
             'created_at' => now(), 'updated_at' => now()]);
         $ids = array_values(array_filter([$base?->id, $proposal->id, $head->manifest_id]));
         $paths = DB::table('project_mirror_entries')->whereIn('manifest_id', $ids)->select('path_hash')->distinct();
@@ -289,6 +323,15 @@ class ProjectMirror
         $last = '';
         $count = 0;
         $bytes = 0;
+        $conflicts = 0;
+        $stamp = now()->format('Ymd-His');
+        $origin = $this->deviceSlug(Device::find($proposal->device_id) ?? $device);
+        $insert = function (string $encrypted, string $entryHash, string $pathHash) use ($id, &$count, &$bytes) {
+            $entry = json_decode(Crypt::decryptString($encrypted), true);
+            DB::table('project_mirror_entries')->insert(['manifest_id' => $id, 'path_hash' => $pathHash, 'entry_hash' => $entryHash, 'entry' => $encrypted]);
+            $count++;
+            $bytes += $entry['type'] === 'file' ? $entry['size'] : 0;
+        };
         while (true) {
             $rows = (clone $query)->where('paths.path_hash', '>', $last)->orderBy('paths.path_hash')->limit(500)->get();
             if ($rows->isEmpty()) {
@@ -296,28 +339,65 @@ class ProjectMirror
             }
             foreach ($rows as $row) {
                 $last = $row->path_hash;
-                if ($row->proposal_hash !== $row->base_hash && $row->current_hash !== $row->base_hash && $row->proposal_hash !== $row->current_hash) {
-                    $entry = json_decode(Crypt::decryptString($row->proposal_entry ?? $row->current_entry ?? $row->base_entry), true);
-                    throw new HttpResponseException(response()->json([
-                        'code' => 'mirror_merge_conflict', 'message' => 'Overlapping file changes require a master decision.',
-                        'data' => ['paths' => [$entry['path']], 'proposal_manifest_id' => $proposal->id, 'current_manifest_id' => $head->manifest_id,
-                            'base_manifest_id' => $base?->id, 'current_revision' => (int) $head->revision]], 409));
+                $divergent = $row->proposal_hash !== $row->base_hash && $row->current_hash !== $row->base_hash && $row->proposal_hash !== $row->current_hash;
+                if (! $divergent) {
+                    $useProposal = $row->proposal_hash !== $row->base_hash;
+                    $encrypted = $useProposal ? $row->proposal_entry : $row->current_entry;
+                    if ($encrypted !== null) {
+                        $insert($encrypted, $useProposal ? $row->proposal_hash : $row->current_hash, $row->path_hash);
+                    }
+
+                    continue;
                 }
-                $useProposal = $row->proposal_hash !== $row->base_hash;
-                $encrypted = $useProposal ? $row->proposal_entry : $row->current_entry;
-                $entryHash = $useProposal ? $row->proposal_hash : $row->current_hash;
-                if ($encrypted !== null) {
-                    $entry = json_decode(Crypt::decryptString($encrypted), true);
-                    DB::table('project_mirror_entries')->insert(['manifest_id' => $id, 'path_hash' => $row->path_hash,
-                        'entry_hash' => $entryHash, 'entry' => $encrypted]);
-                    $count++;
-                    $bytes += $entry['type'] === 'file' ? $entry['size'] : 0;
+                $conflicts++;
+                if ($row->current_entry === null) {
+                    // Deleted on the head, edited on the device: the edited file survives under its own name.
+                    $insert($row->proposal_entry, $row->proposal_hash, $row->path_hash);
+
+                    continue;
                 }
+                $insert($row->current_entry, $row->current_hash, $row->path_hash);
+                if ($row->proposal_entry === null) {
+                    // Deleted on the device, edited on the head: the head version is the only content left to keep.
+                    continue;
+                }
+                $entry = json_decode(Crypt::decryptString($row->proposal_entry), true);
+                if ($entry['type'] !== 'file') {
+                    // Directory or link versus another kind: the head decides the name; uploaded children stay as uploaded.
+                    continue;
+                }
+                $entry['path'] = $this->conflictPath($entry['path'], $origin, $stamp, $ids);
+                $insert(Crypt::encryptString(AutomationGrantService::canonicalJson($entry)), CoordinatedDeviceJobs::hash($entry), hash('sha256', $entry['path']));
             }
         }
-        DB::table('project_mirror_manifests')->where('id', $id)->update(['entry_count' => $count, 'total_bytes' => $bytes]);
+        DB::table('project_mirror_manifests')->where('id', $id)->update(['entry_count' => $count, 'total_bytes' => $bytes, 'conflict_count' => $conflicts]);
         DB::table('project_mirror_manifests')->where('id', $proposal->id)->update(['status' => 'accepted', 'merged_manifest_id' => $id, 'updated_at' => now()]);
 
         return $id;
+    }
+
+    private function deviceSlug(Device $device): string
+    {
+        $slug = trim((string) preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $device->name), '-');
+
+        return $slug === '' ? substr((string) $device->device_id, 0, 12) : substr($slug, 0, 40);
+    }
+
+    /** `dir/name.ext` becomes `dir/name.konflikt-<device>-<stamp>.ext`; a taken name receives a counter. */
+    private function conflictPath(string $path, string $origin, string $stamp, array $manifestIds): string
+    {
+        $slash = strrpos($path, '/');
+        $directory = $slash === false ? '' : substr($path, 0, $slash + 1);
+        $name = $slash === false ? $path : substr($path, $slash + 1);
+        $dot = strrpos($name, '.');
+        $stem = $dot === false || $dot === 0 ? $name : substr($name, 0, $dot);
+        $extension = $dot === false || $dot === 0 ? '' : substr($name, $dot);
+        for ($attempt = 0; $attempt < 1000; $attempt++) {
+            $candidate = $directory.$stem.self::CONFLICT_MARKER.$origin.'-'.$stamp.($attempt === 0 ? '' : '-'.$attempt).$extension;
+            if (! DB::table('project_mirror_entries')->whereIn('manifest_id', $manifestIds)->where('path_hash', hash('sha256', $candidate))->exists()) {
+                return $candidate;
+            }
+        }
+        abort(409, 'mirror_conflict_name_exhausted');
     }
 }

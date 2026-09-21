@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\ProjectMirrorChanged;
 use App\Models\ApiKey;
 use App\Models\Device;
 use App\Models\DeviceJob;
@@ -9,7 +10,9 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\CoordinatedDeviceJobs;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -58,7 +61,8 @@ class ProjectMirrorApiTest extends TestCase
             $this->assertStringNotContainsString('PRIVATE_TOKEN', Storage::disk('cloud-projects')->get($path));
         }
         $this->assertStringNotContainsString('.env', DB::table('project_mirror_entries')->first()->entry);
-        $this->withHeader('X-Api-Key', $this->worker)->postJson($this->base.'/lease', ['master_epoch' => 1, 'expected_revision' => 1])->assertForbidden();
+        // Every device of the owner publishes directly; only foreign accounts are shut out.
+        $this->withHeader('X-Api-Key', $this->worker)->postJson($this->base.'/lease', ['master_epoch' => 1, 'expected_revision' => 1])->assertOk();
         $other = $this->device(User::factory()->create(['role' => 'admin']), 'foreign');
         $this->withHeader('X-Api-Key', $other)->getJson($this->base)->assertNotFound();
         $this->get($this->base.'/chunks/'.$sha)->assertNotFound();
@@ -110,13 +114,82 @@ class ProjectMirrorApiTest extends TestCase
         $entries = collect($this->getJson($this->base.'/manifests/'.$merged['manifest_id'])->json('data.entries'))->keyBy('path');
         $this->assertSame(hash('sha256', 'assistant-a'), $entries['a']['sha256']);
         $this->assertSame(hash('sha256', 'master-b'), $entries['b']['sha256']);
+        $this->assertSame(0, $merged['conflict_count']);
+        // Overlapping edits keep both versions: the head keeps the name, the upload becomes a conflict copy.
         $conflicting = $this->proposal([$this->file('a', 'another-a'), $b], 1);
-        $this->withHeader('X-Api-Key', $this->master)->postJson($this->base.'/manifests/'.$conflicting.'/publish', [
+        $resolved = $this->withHeader('X-Api-Key', $this->master)->postJson($this->base.'/manifests/'.$conflicting.'/publish', [
             'operation_id' => (string) Str::uuid(), 'master_epoch' => 1, 'lease_id' => $this->lease(3), 'expected_revision' => 3])
-            ->assertConflict()->assertJsonPath('code', 'mirror_merge_conflict')->assertJsonPath('data.proposal_manifest_id', $conflicting);
-        $this->getJson($this->base)->assertJsonPath('data.revision', 3)->assertJsonPath('data.manifest_id', $merged['manifest_id']);
-        $this->getJson($this->base.'/manifests/'.$conflicting)->assertJsonPath('data.status', 'proposed');
-        $this->assertSame(5, DB::table('project_mirror_manifests')->count());
+            ->assertOk()->assertJsonPath('data.revision', 4)->assertJsonPath('data.conflict_count', 1)->json('data');
+        $entries = collect($this->getJson($this->base.'/manifests/'.$resolved['manifest_id'])->json('data.entries'))->keyBy('path');
+        $this->assertSame(hash('sha256', 'assistant-a'), $entries['a']['sha256']);
+        $copy = $entries->keys()->first(fn ($path) => str_starts_with($path, 'a.konflikt-worker-'));
+        $this->assertNotNull($copy);
+        $this->assertSame(hash('sha256', 'another-a'), $entries[$copy]['sha256']);
+        $this->assertSame(hash('sha256', 'master-b'), $entries['b']['sha256']);
+        $this->getJson($this->base)->assertJsonPath('data.revision', 4)->assertJsonPath('data.manifest_id', $resolved['manifest_id']);
+        $this->getJson($this->base.'/manifests/'.$conflicting)->assertJsonPath('data.status', 'accepted');
+    }
+
+    public function test_every_device_pushes_directly_and_a_stale_base_merges_like_a_rebase(): void
+    {
+        Config::set('queue.default', 'redis');
+        Config::set('broadcasting.default', 'reverb');
+        Event::fake([ProjectMirrorChanged::class]);
+        $a = $this->file('a', 'base-a');
+        $b = $this->file('b', 'base-b');
+        $first = $this->publish([$a, $b], 0);
+        // The assistant device publishes without a job and without being master.
+        $second = $this->publishAs($this->worker, [$this->file('a', 'worker-a'), $b], 1, $first['manifest_id']);
+        $this->assertSame(2, $second['revision']);
+        $this->assertSame($second['manifest_id'], $this->getJson($this->base)->json('data.manifest_id'));
+        // The master still holds revision 1 and edits b: the server merges instead of rejecting the stale base.
+        $third = $this->publishAs($this->master, [$a, $this->file('b', 'master-b')], 1, $first['manifest_id'], 2);
+        $this->assertSame(3, $third['revision']);
+        $this->assertSame(0, $third['conflict_count']);
+        $entries = collect($this->getJson($this->base.'/manifests/'.$third['manifest_id'])->json('data.entries'))->keyBy('path');
+        $this->assertSame(hash('sha256', 'worker-a'), $entries['a']['sha256']);
+        $this->assertSame(hash('sha256', 'master-b'), $entries['b']['sha256']);
+        // A device whose own last upload was merged names that upload as its base, so its untouched files never revert peers.
+        $draft = $this->withHeader('X-Api-Key', $this->master)->postJson($this->base.'/manifests', ['operation_id' => (string) Str::uuid(),
+            'base_revision' => 2, 'base_manifest_id' => $second['manifest_id'], 'master_epoch' => 1, 'draft' => true, 'entries' => []])->assertCreated()->json('data');
+        $this->assertSame($second['manifest_id'], $draft['base_manifest_id']);
+        $this->withHeader('X-Api-Key', $this->master)->postJson($this->base.'/manifests', ['operation_id' => (string) Str::uuid(),
+            'base_revision' => 2, 'base_manifest_id' => (string) Str::uuid(), 'master_epoch' => 1, 'draft' => true, 'entries' => []])->assertConflict();
+        Event::assertDispatched(ProjectMirrorChanged::class, 3);
+        $event = new ProjectMirrorChanged($this->project, 3, Device::where('device_id', 'master')->value('id'));
+        $this->assertSame(['private-device.worker'], array_map(fn ($channel) => $channel->name, $event->broadcastOn()));
+        $this->assertSame(['project_id' => $this->project->id, 'external_id' => 'full-folder', 'revision' => 3], $event->broadcastWith());
+    }
+
+    public function test_deletions_against_edits_keep_the_edited_content(): void
+    {
+        $a = $this->file('a', 'base-a');
+        $b = $this->file('b', 'base-b');
+        $first = $this->publish([$a, $b], 0);
+        $second = $this->publishAs($this->worker, [$this->file('a', 'worker-a'), $b], 1, $first['manifest_id']);
+        // Master deletes a (stale base) while the worker edited it: the edited file survives.
+        $third = $this->publishAs($this->master, [$b], 1, $first['manifest_id'], 2);
+        $entries = collect($this->getJson($this->base.'/manifests/'.$third['manifest_id'])->json('data.entries'))->keyBy('path');
+        $this->assertSame(hash('sha256', 'worker-a'), $entries['a']['sha256']);
+        $this->assertSame(1, $third['conflict_count']);
+        // Worker deletes b (stale base) while master edited it: the head edit is the only content left.
+        $fourth = $this->publishAs($this->master, [$entries['a'], $this->file('b', 'master-b')], 3, $third['manifest_id']);
+        $fifth = $this->publishAs($this->worker, [$entries['a']], 3, $third['manifest_id'], 4);
+        $entries = collect($this->getJson($this->base.'/manifests/'.$fifth['manifest_id'])->json('data.entries'))->keyBy('path');
+        $this->assertSame(hash('sha256', 'master-b'), $entries['b']['sha256']);
+        $this->assertSame(1, $fifth['conflict_count']);
+        $this->assertSame(4, $fourth['revision']);
+    }
+
+    private function publishAs(string $key, array $entries, int $base, ?string $baseManifest = null, ?int $expected = null): array
+    {
+        $expected ??= $base;
+        $draft = $this->withHeader('X-Api-Key', $key)->postJson($this->base.'/manifests', ['operation_id' => (string) Str::uuid(),
+            'base_revision' => $base, 'base_manifest_id' => $baseManifest, 'master_epoch' => 1, 'draft' => true, 'entries' => $entries])->assertCreated()->json('data');
+        $lease = $this->withHeader('X-Api-Key', $key)->postJson($this->base.'/lease', ['master_epoch' => 1, 'expected_revision' => $expected])->assertOk()->json('data.lease_id');
+
+        return $this->withHeader('X-Api-Key', $key)->postJson($this->base.'/manifests/'.$draft['manifest_id'].'/publish', ['operation_id' => (string) Str::uuid(),
+            'master_epoch' => 1, 'lease_id' => $lease, 'expected_revision' => $expected])->assertOk()->json('data');
     }
 
     private function proposal(array $entries, int $base): string
