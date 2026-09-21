@@ -14,6 +14,7 @@ class DeviceAgentLease
             app(DeviceLeadership::class)->fence($source, $epoch);
             $targets = collect(app(DeviceLanIdentity::class)->peers($source->user_id))
                 ->pluck('client_id')->reject(fn ($id) => $id === $source->device_id)->sort()->values()->all();
+            abort_if(count($targets) > 256, 422, 'Too many devices for a bounded LAN agent lease.');
             $data = ['protocol_version' => 1, 'scope' => 'agent.read', 'user_id' => (int) $source->user_id,
                 'source_device_id' => $source->device_id, 'target_device_ids' => $targets, 'epoch' => $epoch,
                 'issued_at' => now()->toIso8601String(), 'expires_at' => now()->addMinutes(15)->toIso8601String()];
