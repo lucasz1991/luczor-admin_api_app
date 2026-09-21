@@ -32,7 +32,7 @@ class DeviceLeadership
                 $device->forceFill(['coordination_seen_at' => now(), 'coordination_available' => $heartbeat['available'],
                     'coordination_busy' => $heartbeat['busy'], 'last_seen_at' => now(),
                     'status' => $heartbeat['available'] ? ($heartbeat['busy'] ? 'busy' : 'online') : 'offline'])->save();
-                $metadata = array_intersect_key($heartbeat, array_flip(['platform', 'model_tier', 'generation', 'active_model_id']));
+                $metadata = array_intersect_key($heartbeat, array_flip(['platform', 'model_tier', 'generation', 'active_model_id', 'model_ready', 'agent_protocol']));
                 $tier = isset($heartbeat['model_tier']) ? $heartbeat['model_tier'] : $this->activeModelTier($heartbeat['active_model_id'] ?? null);
                 $metadata['model_tier'] = $tier;
                 $metadata['model_tier_source'] = $tier === null ? null : (isset($heartbeat['model_tier']) ? 'explicit' : 'published_model');
@@ -95,6 +95,8 @@ class DeviceLeadership
                     'platform' => $item->meta['coordination']['platform'] ?? 'unknown',
                     'model_tier' => $item->meta['coordination']['model_tier'] ?? null,
                     'active_model_id' => $item->meta['coordination']['active_model_id'] ?? null,
+                    'model_ready' => ($item->meta['coordination']['model_ready'] ?? false) === true,
+                    'agent_protocol' => $item->meta['coordination']['agent_protocol'] ?? null,
                     'model_tier_source' => $item->meta['coordination']['model_tier_source'] ?? null,
                     'generation' => $item->meta['coordination']['generation'] ?? null,
                     'available' => $eligible->contains('id', $item->id), 'busy' => (bool) $item->coordination_busy,

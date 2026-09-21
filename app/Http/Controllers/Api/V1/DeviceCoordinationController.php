@@ -3,12 +3,21 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Services\DeviceAgentLease;
 use App\Services\DeviceLanIdentity;
 use App\Services\DeviceLeadership;
 use Illuminate\Http\Request;
 
 class DeviceCoordinationController extends Controller
 {
+    public function agentLease(Request $request, DeviceLeadership $leadership, DeviceAgentLease $leases)
+    {
+        $data = $request->validate(['epoch' => 'required|integer|min:1']);
+
+        return response()->json(['data' => $leases->issue($leadership->device($request), $data['epoch'])])
+            ->header('Cache-Control', 'private, no-store');
+    }
+
     public function identity(Request $request, DeviceLeadership $leadership, DeviceLanIdentity $identity)
     {
         $device = $leadership->device($request);
@@ -31,7 +40,7 @@ class DeviceCoordinationController extends Controller
         $data = $request->validate(['available' => 'required|boolean', 'busy' => 'required|boolean', 'preferred' => 'sometimes|boolean',
             'platform' => 'sometimes|in:windows,linux,macos,unknown', 'model_tier' => 'sometimes|integer|between:1,20',
             'active_model_id' => ['sometimes', 'nullable', 'string', 'max:120', 'regex:/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/'],
-            'generation' => 'sometimes|integer|min:0']);
+            'generation' => 'sometimes|integer|min:0', 'model_ready' => 'sometimes|boolean', 'agent_protocol' => 'sometimes|integer|in:1']);
 
         return response()->json(['data' => $leadership->status($leadership->device($request), $data)])->header('Cache-Control', 'private, no-store');
     }

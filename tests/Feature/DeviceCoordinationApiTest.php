@@ -263,6 +263,37 @@ class DeviceCoordinationApiTest extends TestCase
         $this->withHeader('X-Api-Key', $small)->getJson('/api/v1/coordination')->assertOk()->assertJsonPath('data.leader_device_id', 'large')->assertJsonPath('data.epoch', 2);
     }
 
+    public function test_lan_analysis_lease_is_signed_bounded_and_does_not_extend_leadership(): void
+    {
+        $user = User::factory()->create();
+        $master = $this->device($user, 'master');
+        $worker = $this->device($user, 'worker');
+        $other = $this->device(User::factory()->create(), 'other');
+        foreach ([$worker, $other] as $token) {
+            $this->withHeader('X-Api-Key', $token)->postJson('/api/v1/coordination/identity', ['cert_sha256' => str_repeat('a', 64)])->assertOk();
+        }
+        $this->heartbeat($master, true);
+        $expiry = DB::table('device_leaderships')->where('user_id', $user->id)->value('lease_expires_at');
+        $lease = $this->withHeader('X-Api-Key', $master)->postJson('/api/v1/coordination/agent-lease', ['epoch' => 1])
+            ->assertOk()->assertJsonPath('data.scope', 'agent.read')->assertJsonPath('data.target_device_ids', ['worker'])->json('data');
+        $signature = base64_decode($lease['signature']);
+        unset($lease['signature'], $lease['algorithm']);
+        $this->assertSame(1, openssl_verify(json_encode($lease, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $signature, app(DeviceJobSigner::class)->publicKey(), OPENSSL_ALGO_SHA256));
+        $this->assertSame(900, strtotime($lease['expires_at']) - strtotime($lease['issued_at']));
+        $this->assertSame($expiry, DB::table('device_leaderships')->where('user_id', $user->id)->value('lease_expires_at'));
+        $this->withHeader('X-Api-Key', $worker)->postJson('/api/v1/coordination/agent-lease', ['epoch' => 1])->assertForbidden();
+        $this->withHeader('X-Api-Key', $master)->postJson('/api/v1/coordination/agent-lease', ['epoch' => 2])->assertConflict();
+    }
+
+    public function test_worker_readiness_is_explicit_and_not_inferred_from_model_name(): void
+    {
+        $key = $this->device(User::factory()->create(), 'master');
+        $this->withHeader('X-Api-Key', $key)->postJson('/api/v1/coordination/heartbeat', ['available' => true, 'busy' => false, 'active_model_id' => 'model'])
+            ->assertJsonPath('data.devices.0.model_ready', false);
+        $this->postJson('/api/v1/coordination/heartbeat', ['available' => true, 'busy' => false, 'active_model_id' => 'model', 'model_ready' => true, 'agent_protocol' => 1])
+            ->assertJsonPath('data.devices.0.model_ready', true)->assertJsonPath('data.devices.0.agent_protocol', 1);
+    }
+
     private function jobBody(string $target): array
     {
         return ['operation_id' => (string) Str::uuid(), 'target_device_id' => $target, 'master_epoch' => 1,

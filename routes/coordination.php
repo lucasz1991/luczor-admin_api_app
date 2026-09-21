@@ -25,6 +25,7 @@ Route::prefix('v1')->group(function () {
         Route::put('/coordination/jobs/{publicId}/artifacts/{sha256}', [CoordinatedArtifactController::class, 'content'])->whereUuid('publicId')->where('sha256', '[a-f0-9]{64}');
     });
     Route::middleware('luczor.api:device.jobs.write')->group(function () {
+        Route::post('/coordination/agent-lease', [DeviceCoordinationController::class, 'agentLease']);
         Route::post('/coordination/jobs', [CoordinatedJobController::class, 'store']);
         Route::post('/coordination/jobs/{publicId}/cancel', [CoordinatedJobController::class, 'mutate'])->whereUuid('publicId')->defaults('action', 'cancel');
         Route::post('/coordination/jobs/{publicId}/adopt', [CoordinatedJobController::class, 'mutate'])->whereUuid('publicId')->defaults('action', 'adopt');
