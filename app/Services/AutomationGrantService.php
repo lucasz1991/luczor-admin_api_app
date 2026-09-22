@@ -167,7 +167,9 @@ class AutomationGrantService
         if (isset($payload['device_id'])) {
             abort_unless($payload['device_id'] === $grant->device_id, 409, 'Automation device requires new approval.');
         }
-        if (isset($payload['url']) && is_string($payload['url'])) {
+        // The internal browser accepts web and local-file navigation. Keep the
+        // separate API/program egress grant; native browser IPC remains isolated.
+        if (! str_starts_with($type, 'browser.') && isset($payload['url']) && is_string($payload['url'])) {
             $host = strtolower((string) parse_url($payload['url'], PHP_URL_HOST));
             $port = parse_url($payload['url'], PHP_URL_PORT);
             $scheme = strtolower((string) parse_url($payload['url'], PHP_URL_SCHEME));

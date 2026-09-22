@@ -308,6 +308,24 @@ class WorkflowTriggersTest extends TestCase
         app(AutomationGrantService::class)->authorizeRun($definition, $graph, ['device_id' => 'device-a']);
     }
 
+    public function test_internal_browser_navigation_does_not_require_api_egress_hosts(): void
+    {
+        $definition = $this->definition();
+        [, $data] = $this->approvedGrant($definition);
+        $data['allowed_tasks'] = ['browser.open', 'browser.navigate', 'browser.download'];
+        $data['egress_hosts'] = [];
+        $data['operation_id'] = (string) Str::uuid();
+        app(AutomationGrantService::class)->configure($definition, $data, $definition->user_id, 'device-a');
+        foreach ($data['allowed_tasks'] as $type) {
+            foreach (['https://new-domain.test/page', 'file:///home/user/Project/index.html', 'E:\\Projekt\\Prüfung #1.html'] as $url) {
+                $graph = ['steps' => [['key' => 'open', 'type' => $type, 'payload' => ['url' => $url]]]];
+                $this->assertNotEmpty(app(AutomationGrantService::class)->authorizeRun($definition, $graph, ['device_id' => 'device-a']));
+            }
+        }
+        $this->expectException(HttpException::class);
+        app(AutomationGrantService::class)->authorizeRun($definition, ['steps' => [['key' => 'click', 'type' => 'browser.click', 'payload' => ['selector' => '#button']]]], ['device_id' => 'device-a']);
+    }
+
     public function test_source_picker_never_leaks_other_users_imports(): void
     {
         $user = User::factory()->create();
