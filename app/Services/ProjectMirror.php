@@ -35,7 +35,26 @@ class ProjectMirror
         $row = DB::table('project_mirror_heads')->where('project_id', $project->id)->first();
 
         return ['project_id' => $project->id, 'external_id' => $project->external_id, 'revision' => (int) ($row->revision ?? 0),
-            'manifest_id' => $row?->manifest_id, 'chunk_bytes' => self::CHUNK_BYTES, 'schema_version' => 1];
+            'manifest_id' => $row?->manifest_id, 'folder_shared' => (bool) $project->folder_shared,
+            'chunk_bytes' => self::CHUNK_BYTES, 'schema_version' => 1];
+    }
+
+    /** Switches whole-folder sharing for every device of the owner; the stored revisions stay untouched either way. */
+    public function setFolderShared(Device $device, Project $project, bool $shared): array
+    {
+        $this->owned($device, $project);
+
+        return DB::transaction(function () use ($device, $project, $shared) {
+            $this->lockProject($project);
+            $current = Project::whereKey($project->id)->firstOrFail();
+            if ((bool) $current->folder_shared !== $shared) {
+                $current->folder_shared = $shared;
+                $current->save();
+                ProjectMirrorChanged::notify($current, (int) $this->head($current)['revision'], (int) $device->id);
+            }
+
+            return $this->head($current);
+        }, 3);
     }
 
     public function lease(Device $device, Project $project, array $data): array

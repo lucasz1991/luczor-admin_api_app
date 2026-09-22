@@ -181,6 +181,31 @@ class ProjectMirrorApiTest extends TestCase
         $this->assertSame(4, $fourth['revision']);
     }
 
+    public function test_folder_sharing_switch_is_account_wide_and_wakes_other_devices(): void
+    {
+        Config::set('queue.default', 'redis');
+        Config::set('broadcasting.default', 'reverb');
+        Event::fake([ProjectMirrorChanged::class]);
+        $this->getJson($this->base)->assertOk()->assertJsonPath('data.folder_shared', false);
+        $this->withHeader('X-Api-Key', $this->worker)->putJson($this->base.'/settings', ['folder_shared' => true])
+            ->assertOk()->assertJsonPath('data.folder_shared', true)->assertJsonPath('data.revision', 0);
+        // Every device reads the same switch, and the cloud project list carries it too.
+        $this->withHeader('X-Api-Key', $this->master)->getJson($this->base)->assertJsonPath('data.folder_shared', true);
+        $this->project->forceFill(['cloud_enabled' => true])->save();
+        $this->withHeader('X-Api-Key', $this->master)->getJson('/api/v1/projects?scope=cloud')->assertOk()
+            ->assertJsonPath('data.data.0.folder_shared', true);
+        // Repeating the same value changes nothing and sends no wake-up; switching off keeps stored revisions.
+        $this->withHeader('X-Api-Key', $this->worker)->putJson($this->base.'/settings', ['folder_shared' => true])->assertOk();
+        $this->publish([$this->file('a', 'base-a')], 0);
+        $this->withHeader('X-Api-Key', $this->master)->putJson($this->base.'/settings', ['folder_shared' => false])
+            ->assertOk()->assertJsonPath('data.folder_shared', false)->assertJsonPath('data.revision', 1);
+        $this->withHeader('X-Api-Key', $this->master)->putJson($this->base.'/settings', ['folder_shared' => 'maybe'])->assertUnprocessable();
+        Event::assertDispatched(ProjectMirrorChanged::class, 3);
+        $other = $this->device(User::factory()->create(['role' => 'admin']), 'foreign');
+        $this->withHeader('X-Api-Key', $other)->putJson($this->base.'/settings', ['folder_shared' => true])->assertNotFound();
+        $this->assertFalse((bool) $this->project->fresh()->folder_shared);
+    }
+
     private function publishAs(string $key, array $entries, int $base, ?string $baseManifest = null, ?int $expected = null): array
     {
         $expected ??= $base;

@@ -12,6 +12,7 @@ class Project extends Model
         'meta' => 'array',
         'cloud_enabled' => 'boolean',
         'cloud_revision' => 'integer',
+        'folder_shared' => 'boolean',
         'cloud_snapshot' => 'encrypted:array',
     ];
 

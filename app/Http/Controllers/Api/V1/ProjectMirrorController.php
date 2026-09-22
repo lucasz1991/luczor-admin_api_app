@@ -21,6 +21,13 @@ class ProjectMirrorController extends Controller
         return response()->json(['data' => $mirror->head($project)])->header('Cache-Control', 'private, no-store');
     }
 
+    public function settings(Request $request, Project $project, DeviceLeadership $leadership, ProjectMirror $mirror)
+    {
+        $data = $this->body($request, ['folder_shared' => 'required|boolean']);
+
+        return response()->json(['data' => $mirror->setFolderShared($leadership->device($request), $project, (bool) $data['folder_shared'])]);
+    }
+
     public function lease(Request $request, Project $project, DeviceLeadership $leadership, ProjectMirror $mirror)
     {
         return response()->json(['data' => $mirror->lease($leadership->device($request), $project, $this->body($request, [

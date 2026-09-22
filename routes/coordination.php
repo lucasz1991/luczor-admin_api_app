@@ -43,6 +43,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/proposals', [ProjectMirrorController::class, 'proposals']);
         });
         Route::middleware('luczor.api:brain.write')->group(function () {
+            Route::put('/settings', [ProjectMirrorController::class, 'settings']);
             Route::post('/lease', [ProjectMirrorController::class, 'lease']);
             Route::put('/chunks/{sha256}', [ProjectMirrorController::class, 'chunk'])->where('sha256', '[a-f0-9]{64}');
             Route::post('/manifests', [ProjectMirrorController::class, 'create']);
