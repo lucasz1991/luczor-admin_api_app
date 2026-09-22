@@ -5,7 +5,7 @@
                 @csrf
                 <input type="hidden" name="_dashboard_tool_group" value="access">
                 <div class="grid gap-3 md:grid-cols-2">
-                    @foreach ($settings as $setting)
+                    @foreach ($settings->reject(fn ($setting) => $setting->key === \App\Services\InternalModelProfileService::SETTING_KEY) as $setting)
                         <div class="rounded border border-slate-800 bg-slate-950/50 px-3 py-2">
                             <div class="text-sm text-slate-200">{{ $setting->label ?? $setting->key }} <span class="text-xs text-slate-500">({{ $setting->key }})</span></div>
                             <div class="mt-2">

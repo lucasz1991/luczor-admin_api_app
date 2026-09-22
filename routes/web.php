@@ -78,6 +78,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/dashboard/device-debug/export', [SystemOperationsController::class, 'exportDeviceDebug'])->name('dashboard.devices.debug.export');
         Route::get('/dashboard/device-debug/{debugRequest}/download', [SystemOperationsController::class, 'downloadDeviceDebug'])->name('dashboard.devices.debug.download');
         Route::post('/dashboard/settings', [SystemOperationsController::class, 'storeSettings'])->name('dashboard.settings.store');
+        Route::put('/dashboard/internal-model-profiles', [SystemOperationsController::class, 'storeInternalModelProfiles'])->name('dashboard.internal-model-profiles.update');
 
         Route::post('/dashboard/workflows', [WorkflowController::class, 'storeWorkflow'])->name('dashboard.workflows.store');
         Route::post('/dashboard/workflows/import', [WorkflowController::class, 'importWorkflow'])->name('dashboard.workflows.import');

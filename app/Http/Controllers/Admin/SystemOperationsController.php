@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\DeviceDebugRequest;
 use App\Models\LlmRun;
 use App\Models\Setting;
+use App\Services\InternalModelProfileService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
@@ -67,7 +68,7 @@ class SystemOperationsController extends AdminController
 
         $incoming = (array) $request->input('settings', []);
 
-        foreach (Setting::all() as $setting) {
+        foreach (Setting::where('key', '!=', InternalModelProfileService::SETTING_KEY)->get() as $setting) {
             $attrs = ['group' => $setting->group, 'label' => $setting->label, 'type' => $setting->type];
 
             if (! array_key_exists($setting->key, $incoming)) {
@@ -90,6 +91,30 @@ class SystemOperationsController extends AdminController
         }
 
         return Redirect::route('dashboard')->with('status', 'Einstellungen gespeichert.');
+    }
+
+    public function storeInternalModelProfiles(Request $request, InternalModelProfileService $profiles)
+    {
+        $this->ensureAdmin($request);
+        $rules = ['profiles' => ['required', 'array:standard,external_agents']];
+        foreach (InternalModelProfileService::MODES as $mode) {
+            $rules['profiles.'.$mode] = ['required', 'array:enabled,personality,system_prompt'];
+            $rules['profiles.'.$mode.'.enabled'] = ['required', 'boolean'];
+            $rules['profiles.'.$mode.'.personality'] = ['present', 'nullable', 'string', 'max:'.InternalModelProfileService::PERSONALITY_LIMIT];
+            $rules['profiles.'.$mode.'.system_prompt'] = ['present', 'nullable', 'string', 'max:'.InternalModelProfileService::SYSTEM_PROMPT_LIMIT];
+        }
+        $data = $request->validateWithBag('internalModels', $rules, [
+            'max' => ':attribute darf höchstens :max Zeichen enthalten.',
+            'string' => ':attribute muss ein Text sein.',
+        ], [
+            'profiles.standard.personality' => 'Persönlichkeit im internen Betrieb',
+            'profiles.standard.system_prompt' => 'System-Prompt im internen Betrieb',
+            'profiles.external_agents.personality' => 'Persönlichkeit im Externagentenmodus',
+            'profiles.external_agents.system_prompt' => 'System-Prompt im Externagentenmodus',
+        ]);
+        $profiles->save($data['profiles']);
+
+        return Redirect::route('admin.page', 'settings')->with('status', 'Profile für interne Modelle global gespeichert.');
     }
 
     public function exportTelemetry(Request $request)

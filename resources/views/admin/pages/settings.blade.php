@@ -1,7 +1,8 @@
 @php
-    $settingsGroups = $settings->groupBy('group');
+    $settingsGroups = $settings->reject(fn ($setting) => $setting->key === \App\Services\InternalModelProfileService::SETTING_KEY)->groupBy('group');
     $settingTabs = $settingsGroups->keys()->mapWithKeys(fn ($group, $index) => ['group-'.$index => ucfirst(str_replace('_', ' ', $group))])->all();
 @endphp
+@include('admin.pages.settings-internal-models')
 @if($settingsGroups->isNotEmpty())
 <form method="POST" action="{{ route('dashboard.settings.store') }}" class="space-y-6">@csrf
 <x-ui.tabs id="admin-settings" :tabs="$settingTabs">

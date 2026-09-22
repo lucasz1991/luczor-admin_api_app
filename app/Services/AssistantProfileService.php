@@ -43,7 +43,7 @@ class AssistantProfileService
         return $profile;
     }
 
-    /** The same actor-scoped instructions are used by desktop and server proxy. */
+    /** Shared actor-scoped guidance plus explicitly local-only desktop profiles. */
     public function forUser(?int $userId): array
     {
         $persona = Persona::query()
@@ -61,7 +61,11 @@ class AssistantProfileService
                 'tags' => array_values(array_filter($skill->tags ?? [], 'is_string')),
             ]))
             ->values()->toArray();
-        $profile = ['persona' => $persona?->toArray(), 'skills' => $skills];
+        $profile = [
+            'persona' => $persona?->toArray(),
+            'skills' => $skills,
+            'internal_models' => app(InternalModelProfileService::class)->profiles(),
+        ];
 
         return $profile + ['revision' => hash('sha256', json_encode($profile, JSON_THROW_ON_ERROR))];
     }

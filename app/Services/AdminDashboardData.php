@@ -106,6 +106,7 @@ class AdminDashboardData
 
         return [
             'page' => $page,
+            'internalModelProfiles' => $page === 'settings' ? app(InternalModelProfileService::class)->profiles() : [],
             'operations' => ['users' => User::count(), 'devices_online' => Device::where('status', 'online')->count(), 'device_jobs_open' => DeviceJob::whereIn('status', ['approval_required', 'queued', 'running'])->count(), 'llm_runs_24h' => LlmRun::where('created_at', '>=', now()->subDay())->count(), 'evaluations_24h' => EvaluationResult::where('created_at', '>=', now()->subDay())->count(), 'audit_events_24h' => AuditEvent::where('created_at', '>=', now()->subDay())->count()],
             'providers' => ProviderCredential::latest()->get(), 'modelProfiles' => ModelProfile::orderBy('purpose')->orderBy('name')->get(), 'modelUseCases' => ModelUseCase::with(['entries.modelProfile'])->orderBy('slug')->get(),
             'telemetry' => $this->telemetrySummary(), 'modelTelemetry' => $this->modelTelemetry(), 'recentAttempts' => LlmAttempt::with('run')->latest()->limit(50)->get(), 'modelRankings' => ModelRanking::whereNull('user_id')->orderBy('task_type')->orderByDesc('score')->get(),

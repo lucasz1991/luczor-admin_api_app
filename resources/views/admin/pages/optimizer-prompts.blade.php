@@ -1,6 +1,6 @@
 <div class="grid gap-6 lg:grid-cols-2">
     <x-ui.panel title="Prompt-Version veröffentlichen">
-        <p class="mt-1 text-xs text-slate-500">Server-Prompt: luczor.system → Persönlichkeit → aktive Prompt-Skills → Use-Case → Rollen-Regeln → Verlauf. Die Desktop-App lädt Persönlichkeit und Skills auch für lokale Antworten.</p>
+        <p class="mt-1 text-xs text-slate-500">Externe Provider: luczor.system → Persönlichkeit → aktive Prompt-Skills → Use-Case → Rollen-Regeln → Verlauf. Eigene Persönlichkeit und System-Prompt ausschließlich für interne Modelle, auch im Externagentenmodus, werden unter <a class="text-cyan-300 underline" href="{{ route('admin.page', 'settings') }}#internal-model-profiles">Server-Einstellungen</a> verwaltet.</p>
         <form class="mt-4 space-y-3" method="POST" action="{{ route('dashboard.prompt-templates.store') }}">@csrf
             <label class="ui-field">Prompt-Schlüssel
 <x-ui.input name="key" placeholder="Key (z. B. luczor.role.coder)" required />
