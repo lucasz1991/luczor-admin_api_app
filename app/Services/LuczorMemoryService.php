@@ -48,6 +48,13 @@ class LuczorMemoryService
         return $this->opaqueDatasetFor($scope, $ids, $keys[0]);
     }
 
+    /** Canonical owner-scoped rows; callers must independently enforce payload eligibility. */
+    public function syncQuery(string $scope, array $ids): Builder
+    {
+        return MemoryLink::query()->whereIn('dataset', $this->datasetsFor($scope, $ids))
+            ->where('user_id', $ids['user_id']);
+    }
+
     /** @return array<int,string> */
     private function datasetsFor(string $scope, array $ids): array
     {

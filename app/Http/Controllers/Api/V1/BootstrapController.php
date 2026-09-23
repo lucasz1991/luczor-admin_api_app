@@ -7,6 +7,7 @@ use App\Models\ModelProfile;
 use App\Models\Setting;
 use App\Services\AssistantProfileService;
 use App\Services\LocalModelManifestService;
+use App\Services\MemorySyncService;
 use Illuminate\Http\Request;
 
 class BootstrapController extends Controller
@@ -27,6 +28,8 @@ class BootstrapController extends Controller
                 'email' => $request->user()?->email,
             ],
             'runtime_settings' => $this->runtimeSettingsPayload(),
+            'memory_capabilities' => MemorySyncService::capabilities(),
+            'memory_server_instance' => MemorySyncService::serverInstance(),
             'realtime' => $this->realtimePayload(),
             'local_model_manifest' => $localModels->discovery(),
             'routing' => $this->routingPayload(),

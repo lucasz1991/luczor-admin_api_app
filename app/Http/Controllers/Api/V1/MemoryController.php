@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Services\ApiActor;
 use App\Services\MemoryOrchestrator;
+use App\Services\MemorySyncService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -132,7 +133,7 @@ class MemoryController extends Controller
         return response()->json(['data' => $items]);
     }
 
-    public function forget(Request $request, MemoryOrchestrator $memory)
+    public function forget(Request $request, MemoryOrchestrator $memory, MemorySyncService $sync)
     {
         $data = $request->validate([
             'external_id' => ['required', 'string', 'max:190'],
@@ -142,6 +143,10 @@ class MemoryController extends Controller
         ]);
 
         abort_if(($data['scope'] ?? 'project') === 'global' && ! $request->user()?->isAdmin(), 403, 'Global memory is administrator-managed.');
+
+        if (in_array($data['scope'] ?? 'project', ['user', 'project'], true)) {
+            return response()->json($sync->forget($data['scope'] ?? 'project', $this->ids($request), $data['external_id'], $memory));
+        }
 
         $forgotten = $memory->forget(
             $data['scope'] ?? 'project',
@@ -190,6 +195,31 @@ class MemoryController extends Controller
 
         return response()->json(['data' => $memory->maintenanceStatus($data['scope'], $this->ids($request)),
             'capabilities' => ['memory_metadata_versions' => [1], 'memory_metadata_cas' => true]]);
+    }
+
+    public function capabilities()
+    {
+        return response()->json(['capabilities' => MemorySyncService::capabilities(),
+            'server_instance' => MemorySyncService::serverInstance()])
+            ->header('Cache-Control', 'private, max-age=300')->header('Vary', 'Authorization, X-Api-Key');
+    }
+
+    public function changes(Request $request, MemorySyncService $sync)
+    {
+        $data = $request->validate(['scope' => ['required', 'in:user,project'],
+            'project_id' => ['required_if:scope,project', 'nullable', 'string', 'max:120'],
+            'cursor' => ['nullable', 'string', 'max:4096'], 'limit' => ['nullable', 'integer', 'min:1', 'max:100']]);
+
+        return response()->json($sync->changes($data['scope'], $this->ids($request), $data['cursor'] ?? null, $data['limit'] ?? 50))
+            ->header('Cache-Control', 'no-store');
+    }
+
+    public function deletionReceipt(Request $request, MemorySyncService $sync)
+    {
+        $data = $request->validate(['receipt_id' => ['required', 'uuid']]);
+
+        return response()->json(['data' => $sync->receipt($data['receipt_id'], (int) $request->user()->id)])
+            ->header('Cache-Control', 'no-store');
     }
 
     public function maintenanceSources(Request $request, MemoryOrchestrator $memory, ApiActor $actor)

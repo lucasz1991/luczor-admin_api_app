@@ -241,6 +241,12 @@ Route::prefix('v1')->group(function () {
     });
 
     // Memory (Cognee behind Laravel + memory_links System-of-Record)
+    Route::get('/memory/capabilities', [MemoryController::class, 'capabilities'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.memory.capabilities');
+    Route::post('/memory/changes', [MemoryController::class, 'changes'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.memory.changes');
+    Route::post('/memory/deletion-receipt', [MemoryController::class, 'deletionReceipt'])
+        ->middleware('luczor.api:brain.read')->name('api.v1.memory.deletion-receipt');
     Route::post('/memory/recall', [MemoryController::class, 'recall'])
         ->middleware('luczor.api:brain.read')->name('api.v1.memory.recall');
     Route::post('/memory/analyze', [MemoryController::class, 'analyze'])

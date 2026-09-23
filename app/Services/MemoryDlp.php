@@ -34,6 +34,8 @@ final class MemoryDlp
     private const LOCAL_ONLY_SOURCES = [
         'repository',
         'repository_graph',
+        'repository_file',
+        'local_file',
         'code_graph',
         'raw_code',
         'screen_secret',
