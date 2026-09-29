@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\DeviceDebugRequest;
 use App\Models\LlmRun;
 use App\Models\Setting;
+use App\Services\DeviceDebugRedactor;
 use App\Services\InternalModelProfileService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -43,7 +44,8 @@ class SystemOperationsController extends AdminController
         $filename = 'luczor-debug-'.$debugRequest->device_id.'-'.now()->format('Ymd-His').'.json';
 
         return response()->streamDownload(function () use ($debugRequest) {
-            echo json_encode($debugRequest->payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            // Apply current redaction rules to historical reports as well.
+            echo json_encode(app(DeviceDebugRedactor::class)->clean($debugRequest->payload), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }, $filename, ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 
@@ -54,7 +56,7 @@ class SystemOperationsController extends AdminController
         return response()->streamDownload(function () {
             foreach (DeviceDebugRequest::with('device')->where('status', 'completed')->latest()->limit(50)->cursor() as $debug) {
                 echo json_encode(['id' => $debug->public_id, 'device' => $debug->device?->device_id,
-                    'completed_at' => $debug->completed_at?->toIso8601String(), 'report' => $debug->payload],
+                    'completed_at' => $debug->completed_at?->toIso8601String(), 'report' => app(DeviceDebugRedactor::class)->clean($debug->payload)],
                     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n";
             }
         }, 'luczor-debug-'.now()->format('Ymd-His').'.jsonl', [

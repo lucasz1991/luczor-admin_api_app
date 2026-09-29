@@ -8,7 +8,9 @@
                 x-on:mouseleave="scheduleDesktopExpansion(false)"
             >
                 <a href="{{ route('dashboard') }}" class="luczor-brand-link" aria-label="Luczor Dashboard">
-                    <span class="luczor-brand-mark" aria-hidden="true">LZ</span>
+                    <span class="luczor-brand-mark" aria-hidden="true">
+                        <img src="{{ asset('brand/luczor-mark.svg') }}" width="28" height="28" alt="">
+                    </span>
                     <span class="luczor-brand-copy">
                         <span class="luczor-brand-name">Luczor</span>
                         <span class="luczor-brand-subtitle">{{ $layoutIsAdmin ? 'Admin Control Plane' : 'Cloud Terminal' }}</span>

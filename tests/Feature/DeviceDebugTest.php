@@ -13,6 +13,51 @@ class DeviceDebugTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_chat_diagnostics_require_consent_regardless_of_report_version(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $key = ApiKey::mint(['user_id' => $user->id, 'name' => 'Debug', 'abilities' => ['device.connect'], 'active' => true]);
+        $device = Device::create(['user_id' => $user->id, 'api_key_id' => $key['model']->id, 'device_id' => 'consent-test', 'name' => 'Consent Test']);
+        $debug = DeviceDebugRequest::create(['device_id' => $device->id, 'user_id' => $user->id, 'requested_by' => $user->id, 'status' => 'collecting']);
+        $url = '/api/v1/devices/debug/'.$debug->public_id.'/complete';
+
+        foreach ([null, 'luczor-debug-v1', 'luczor-debug-v2', 'luczor-debug-v3', 'luczor-debug-v4'] as $version) {
+            $report = ['chat_trace' => ['enabled' => true, 'events' => [['kind' => 'test', 'data' => ['content' => 'synthetic']]]]];
+            if ($version !== null) {
+                $report['version'] = $version;
+            }
+            $this->withHeader('X-Api-Key', $key['plain'])->postJson($url, ['client_id' => 'consent-test', 'report' => $report])->assertStatus(422);
+            $report['consent'] = ['diagnostics_enabled' => false];
+            $this->postJson($url, ['client_id' => 'consent-test', 'report' => $report])->assertStatus(422);
+            $this->assertSame('collecting', $debug->fresh()->status);
+            $this->assertNull($debug->fresh()->payload);
+        }
+
+        $report['consent']['diagnostics_enabled'] = true;
+        $report['chat_trace']['enabled'] = false;
+        $this->postJson($url, ['client_id' => 'consent-test', 'report' => $report])->assertStatus(422);
+        $report['chat_trace']['enabled'] = true;
+        $this->postJson($url, ['client_id' => 'consent-test', 'report' => $report])->assertOk();
+    }
+
+    public function test_historical_downloads_apply_current_redaction_without_mutating_storage(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'email_verified_at' => now()]);
+        $device = Device::create(['user_id' => $admin->id, 'device_id' => 'historical-test', 'name' => 'Historical Test']);
+        $original = ['version' => 'luczor-debug-v1', 'headers' => ['Set_Cookie' => 'hidden-historical'], 'public_status' => 'ready'];
+        $debug = DeviceDebugRequest::create(['device_id' => $device->id, 'user_id' => $admin->id, 'requested_by' => $admin->id, 'status' => 'completed', 'completed_at' => now(), 'payload' => $original]);
+
+        foreach (['dashboard.devices.debug.download', 'dashboard.devices.debug.export'] as $route) {
+            $response = $this->actingAs($admin)->get(route($route, $route === 'dashboard.devices.debug.download' ? $debug : []));
+            $response->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+            $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+            $body = $response->streamedContent();
+            $this->assertStringNotContainsString('hidden-historical', $body);
+            $this->assertStringContainsString('ready', $body);
+        }
+        $this->assertSame($original, $debug->fresh()->payload);
+    }
+
     public function test_admin_can_request_debug_and_device_can_complete_it_silently(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'email_verified_at' => now()]);

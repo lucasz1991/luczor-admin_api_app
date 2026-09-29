@@ -132,6 +132,11 @@ html.luczor-mobile-nav-open body {
         inset 0 1px 0 rgba(255, 255, 255, 0.08),
         0 8px 22px -14px rgba(143, 123, 216, 0.65);
 }
+.luczor-brand-mark img {
+    display: block;
+    width: 1.8rem;
+    height: 1.8rem;
+}
 
 .luczor-brand-copy {
     display: flex;

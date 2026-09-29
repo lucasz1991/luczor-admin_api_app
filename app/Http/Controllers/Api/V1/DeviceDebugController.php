@@ -39,6 +39,9 @@ class DeviceDebugController extends Controller
             'client_id' => ['required', 'string', 'max:120'],
             'report' => ['required', 'array'],
             'report.version' => ['sometimes', 'string', 'max:80'],
+            'report.consent' => ['sometimes', 'array'],
+            'report.consent.diagnostics_enabled' => ['sometimes', 'boolean'],
+            'report.chat_trace' => ['sometimes', 'array'],
             'report.chat_trace.enabled' => ['sometimes', 'boolean'],
             'report.chat_trace.dropped_events' => ['sometimes', 'integer', 'min:0'],
             'report.chat_trace.events' => ['sometimes', 'array', 'max:500'],
@@ -47,7 +50,8 @@ class DeviceDebugController extends Controller
         // nested validation otherwise strips fields unknown to this server version.
         $data['report'] = $request->input('report');
         abort_if(strlen(json_encode($data['report'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) > 6 * 1024 * 1024, 413, 'Debug report exceeds 6 MiB.');
-        if (($data['report']['version'] ?? null) === 'luczor-debug-v3') {
+        // Consent follows the data, not a client-controlled format version.
+        if (array_key_exists('chat_trace', $data['report']) || ($data['report']['version'] ?? null) === 'luczor-debug-v3') {
             abort_unless(($data['report']['consent']['diagnostics_enabled'] ?? false) === true
                 && ($data['report']['chat_trace']['enabled'] ?? false) === true, 422);
         }
