@@ -115,7 +115,9 @@ class LocalModelTierService
                 'audio_output' => 'unsupported',
                 'uncensored' => 'verified',
             ],
-            'context_limit' => 8192,
+            // Aligned with the other tiers and the 32768 runtime ceiling; the 27B
+            // KV cache is ~0.033 MiB/token, so this adds only ~1.1 GiB VRAM total.
+            'context_limit' => 32768,
             'artifact' => [
                 'url' => 'https://huggingface.co/bartowski/orcarouter_Qwen3.8-27B-Uncensored-GGUF/resolve/87d37daf5e5eb72a926d8b413e08809a57f1a120/orcarouter_Qwen3.8-27B-Uncensored-Q4_K_M.gguf',
                 'sha256' => '6c8c7658fe13eef22666aa89862f7fb70aa72109838cf19989e59b15875e5e08',
