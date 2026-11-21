@@ -156,6 +156,15 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
+            // The loopback gateway can accept a TCP connection while Redis itself is
+            // still restarting; AUTH then fails with "read error on connection".
+            // Bounded reconnects with jittered backoff absorb such short gaps instead
+            // of turning one request into an HTTP 500. A real outage still fails.
+            'timeout' => (float) env('REDIS_TIMEOUT', 2.0),
+            'max_retries' => (int) env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => (int) env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => (int) env('REDIS_BACKOFF_CAP', 1000),
         ],
 
         'cache' => [
@@ -165,6 +174,15 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            // The loopback gateway can accept a TCP connection while Redis itself is
+            // still restarting; AUTH then fails with "read error on connection".
+            // Bounded reconnects with jittered backoff absorb such short gaps instead
+            // of turning one request into an HTTP 500. A real outage still fails.
+            'timeout' => (float) env('REDIS_TIMEOUT', 2.0),
+            'max_retries' => (int) env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => (int) env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => (int) env('REDIS_BACKOFF_CAP', 1000),
         ],
 
     ],
