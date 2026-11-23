@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\V1\NotificationPreferenceController;
 use App\Http\Controllers\Api\V1\PolicyController;
 use App\Http\Controllers\Api\V1\PreferenceController;
 use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\ProviderKeyController;
 use App\Http\Controllers\Api\V1\ProxyController;
 use App\Http\Controllers\Api\V1\ReverbAuthController;
 use App\Http\Controllers\Api\V1\SyncController;
@@ -238,6 +239,16 @@ Route::prefix('v1')->group(function () {
             ->middleware(ThrottleAuthenticatedSpeech::class.':voice-tts-status')->name('api.v1.voice.tts.status');
         Route::get('/voice/voices', [VoiceTtsController::class, 'voices'])
             ->middleware(ThrottleAuthenticatedSpeech::class.':voice-tts-status')->name('api.v1.voice.voices');
+    });
+
+    // Personal Claude access of the calling user; the key itself is write-only.
+    Route::middleware(['luczor.api:provider.keys', 'throttle:30,1'])->prefix('provider-keys/anthropic')->group(function () {
+        Route::get('/', [ProviderKeyController::class, 'show'])->name('api.v1.provider-keys.anthropic.show');
+        Route::put('/', [ProviderKeyController::class, 'store'])->name('api.v1.provider-keys.anthropic.store');
+        Route::delete('/', [ProviderKeyController::class, 'destroy'])->name('api.v1.provider-keys.anthropic.destroy');
+        Route::post('/test', [ProviderKeyController::class, 'test'])->name('api.v1.provider-keys.anthropic.test');
+        Route::put('/source', [ProviderKeyController::class, 'updateSource'])->name('api.v1.provider-keys.anthropic.source');
+        Route::put('/options', [ProviderKeyController::class, 'updateOptions'])->name('api.v1.provider-keys.anthropic.options');
     });
 
     // Memory (Cognee behind Laravel + memory_links System-of-Record)

@@ -20,7 +20,7 @@ class OpenAiCompatDriver implements ProviderDriver
         return $baseUrl.'/chat/completions';
     }
 
-    public function headers(string $apiKey, bool $stream): array
+    public function headers(string $apiKey, bool $stream, array $payload = []): array
     {
         $headers = [
             'Authorization' => 'Bearer '.$apiKey,
@@ -37,6 +37,10 @@ class OpenAiCompatDriver implements ProviderDriver
 
     public function buildBody(array $payload): array
     {
+        // Luczor-internal routing hints are Anthropic-only and must never
+        // reach a passthrough upstream.
+        unset($payload['effort'], $payload['provider_fallback']);
+
         // OpenRouter models may reason internally by default. Keep that
         // reasoning available to the model, but never stream it into the
         // user-visible assistant response.

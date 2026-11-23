@@ -12,10 +12,13 @@ final class ProxyPromptBuilder
 {
     public function __construct(private ProviderPolicyService $providerPolicy, private AssistantProfileService $assistant) {}
 
-    /** @param array<string,mixed> $meta */
-    public function prepare(ProxyChatInput $input, array $meta): PreparedProxyRequest
+    /**
+     * @param  array<string,mixed>  $meta
+     * @param  array<string,mixed>  $providerOptions  server-resolved driver hints (never client supplied)
+     */
+    public function prepare(ProxyChatInput $input, array $meta, array $providerOptions = []): PreparedProxyRequest
     {
-        $payload = $input->providerPayload();
+        $payload = $input->providerPayload() + $providerOptions;
         if (str_starts_with($input->taskType, 'agent.') && empty($input->tools)) {
             // Some free text endpoints reject even an empty tool contract or choice=none.
             // Nonempty context-only contracts are validated by the FormRequest.

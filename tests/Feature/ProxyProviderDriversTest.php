@@ -35,7 +35,10 @@ class ProxyProviderDriversTest extends TestCase
             $this->assertSame('POST', $method);
             $this->assertSame('https://api.anthropic.com/v1/messages', $url);
             $this->assertSame('anthropic-secret', $options['headers']['x-api-key']);
-            $this->assertSame('2023-06-01', $options['headers']['anthropic-version']);
+            $this->assertSame('2026-10-21', $options['headers']['anthropic-version']);
+            $this->assertArrayNotHasKey('anthropic-beta', $options['headers']);
+            $this->assertArrayNotHasKey('temperature', $options['json']);
+            $this->assertSame(['type' => 'adaptive'], $options['json']['thinking']);
             $this->assertArrayNotHasKey('Authorization', $options['headers']);
             $this->assertSame('claude-sonnet-5', $options['json']['model']);
             $this->assertSame(50, $options['json']['max_tokens']);

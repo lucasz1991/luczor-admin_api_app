@@ -32,7 +32,7 @@
             <label class="block text-sm" for="agent-credential">Vorhandener OpenRouter-Zugang</label>
             <x-ui.select id="agent-credential" name="provider_credential_id" required>
                 <option value="">Zugang auswählen</option>
-                @foreach($providers->where('active', true)->where('provider', 'openrouter')->where('request_format', 'chat_completions') as $credential)
+                @foreach($providers->where('active', true)->whereNull('user_id')->where('provider', 'openrouter')->where('request_format', 'chat_completions') as $credential)
                     <option value="{{ $credential->id }}">{{ $credential->label }}</option>
                 @endforeach
             </x-ui.select>

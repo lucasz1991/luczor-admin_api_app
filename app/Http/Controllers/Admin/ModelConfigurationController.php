@@ -12,7 +12,9 @@ use App\Models\NetworkPolicy;
 use App\Models\PromptTemplate;
 use App\Models\ProviderCredential;
 use App\Models\ProviderPriceSnapshot;
+use App\Services\ClaudeAccessService;
 use App\Services\Llm\ProviderWireFormat;
+use App\Services\ProviderPolicyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
@@ -52,6 +54,34 @@ class ModelConfigurationController extends AdminController
         $providerCredential->update(['active' => ! $providerCredential->active]);
 
         return Redirect::route('admin.page', 'providers')->with('status', 'Provider status updated.');
+    }
+
+    public function updateClaudeSettings(Request $request, ClaudeAccessService $claude)
+    {
+        $this->ensureAdmin($request);
+        $request->validate(['settings' => ['nullable', 'array'], 'settings.*' => ['nullable', 'boolean']]);
+        foreach (array_keys(ClaudeAccessService::SETTINGS) as $key) {
+            // Unchecked checkboxes are absent -> false.
+            $claude->putSetting($key, $request->boolean('settings.'.$key));
+        }
+
+        return Redirect::route('admin.page', 'providers')->with('status', 'Claude-Einstellungen gespeichert.');
+    }
+
+    public function toggleComposerVisibility(Request $request, ModelProfile $modelProfile)
+    {
+        $this->ensureAdmin($request);
+        $inMainUseCase = ModelUseCaseEntry::query()
+            ->where('model_profile_id', $modelProfile->id)
+            ->whereHas('useCase', fn ($query) => $query->where('slug', ProviderPolicyService::MAIN_USE_CASE))
+            ->exists();
+        abort_unless($inMainUseCase, 404);
+
+        $meta = is_array($modelProfile->meta) ? $modelProfile->meta : [];
+        $meta['composer_visible'] = ! (($meta['composer_visible'] ?? false) === true);
+        $modelProfile->update(['meta' => $meta]);
+
+        return Redirect::route('admin.page', 'providers')->with('status', 'Sichtbarkeit im Eingabefeld aktualisiert.');
     }
 
     public function storeModelProfile(Request $request)
@@ -360,6 +390,8 @@ class ModelConfigurationController extends AdminController
         $credential = ProviderCredential::query()->find($data['provider_credential_id']);
         if (! $credential
             || ! $credential->active
+            // Personal keys belong to one user and never back a shared profile.
+            || $credential->isPersonal()
             || $credential->provider !== $data['provider']
             || ! is_string($credential->request_format)
             || ! in_array($credential->request_format, ProviderWireFormat::allowedFor($data['provider']), true)) {

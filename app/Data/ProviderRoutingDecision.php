@@ -5,6 +5,7 @@ namespace App\Data;
 use App\Models\ModelProfile;
 use App\Models\ModelUseCase;
 use App\Models\NetworkPolicy;
+use App\Models\ProviderCredential;
 
 final readonly class ProviderRoutingDecision
 {
@@ -27,6 +28,8 @@ final readonly class ProviderRoutingDecision
         public float $reservedCostUsd,
         public array $estimatedCostsByProfileId,
         public array $excludedReasonCodes,
+        /** Request-scoped credential that replaces every profile credential. */
+        public ?ProviderCredential $credentialOverride = null,
     ) {}
 
     public function estimatedCost(ModelProfile $profile): ?float

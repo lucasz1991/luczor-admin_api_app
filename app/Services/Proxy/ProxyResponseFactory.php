@@ -46,7 +46,7 @@ final class ProxyResponseFactory
             'X-Luczor-Use-Case' => $prepared->useCase->slug ?? '',
             'X-Luczor-Model-Profile' => $profile->slug,
             'X-Luczor-Model-Id' => $profile->model_id,
-            'X-Luczor-Provider' => $credential->provider ?: 'openrouter',
+            'X-Luczor-Provider' => $credential->provider ?: $profile->provider,
             'X-Luczor-Review-Enabled' => $prepared->useCase?->review_enabled ? '1' : '0',
         ] + $routing->headers($profile);
         $currentEstimate = $attempt->routing_meta['estimated_cost_usd'] ?? null;

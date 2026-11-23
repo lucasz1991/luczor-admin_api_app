@@ -43,7 +43,9 @@ final class ProxyProviderGateway
             if (count($profiles) >= $routing->maxAttempts) {
                 break;
             }
-            $credential = $profile->credential?->fresh();
+            // A request-scoped credential (personal Claude key) takes precedence
+            // over the credential stored on the profile.
+            $credential = ($routing->credentialOverride ?? $profile->credential)?->fresh();
             if (! $credential || ! ProviderWireFormat::isCompatible($profile, $credential)) {
                 return $this->policyFailure($run, 'routing_credential_incompatible', 503);
             }
@@ -103,6 +105,8 @@ final class ProxyProviderGateway
             $providerPayload['model'] = $profile->model_id;
             $providerPayload['temperature'] = $profile->temperature;
             $providerPayload['max_tokens'] = $this->outputBudget($profile, $providerPayload, $networkPolicy);
+            // max_price is an OpenRouter-only endpoint filter; other providers
+            // are bounded by the server-side cost reservation above.
             if ((str_starts_with($prepared->taskType, 'agent.') || $prepared->workflowVisionPolicyRevision !== null) && $providerName === 'openrouter') {
                 $price = ProviderPriceSnapshot::current('openrouter', $profile->model_id);
                 if ($price === null) {
@@ -139,7 +143,7 @@ final class ProxyProviderGateway
                     ($prepared->beforeDispatch)();
                 }
                 $upstream = $client->request('POST', $driver->endpoint($baseUrl), [
-                    'headers' => $driver->headers($credential->api_key, (bool) $providerPayload['stream']),
+                    'headers' => $driver->headers($credential->api_key, (bool) $providerPayload['stream'], $providerPayload),
                     'json' => $driver->buildBody($providerPayload),
                     // Always stream the transport so response limits apply while
                     // reading. The provider JSON `stream` flag remains unchanged.

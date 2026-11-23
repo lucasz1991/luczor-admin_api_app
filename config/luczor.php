@@ -22,6 +22,9 @@ return [
         'connect_timeout' => (int) env('LUCZOR_PROXY_CONNECT_TIMEOUT', 10),
         'timeout' => (int) env('LUCZOR_PROXY_TIMEOUT', 90),
         'max_output_tokens' => (int) env('LUCZOR_PROXY_MAX_OUTPUT_TOKENS', 8192),
+        // Anthropic counts adaptive thinking against max_tokens; profile and
+        // network policy budgets still apply below this ceiling.
+        'anthropic_max_output_tokens' => (int) env('LUCZOR_PROXY_ANTHROPIC_MAX_OUTPUT_TOKENS', 64000),
         'max_input_tokens' => (int) env('LUCZOR_PROXY_MAX_INPUT_TOKENS', 24000),
         'requests_per_minute' => (int) env('LUCZOR_PROXY_REQUESTS_PER_MINUTE', 60),
         'max_request_bytes' => (int) env('LUCZOR_PROXY_MAX_REQUEST_BYTES', 16 * 1024 * 1024),

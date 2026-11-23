@@ -19,7 +19,7 @@ class OpenAiResponsesDriver implements ProviderDriver
         return $baseUrl.'/responses';
     }
 
-    public function headers(string $apiKey, bool $stream): array
+    public function headers(string $apiKey, bool $stream, array $payload = []): array
     {
         return [
             'Authorization' => 'Bearer '.$apiKey,

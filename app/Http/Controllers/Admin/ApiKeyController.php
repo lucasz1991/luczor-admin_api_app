@@ -25,7 +25,7 @@ class ApiKeyController extends Controller
         $data = $request->validate($rules);
         $abilities = $request->user()?->isAdmin()
             ? $data['abilities']
-            : ['sync.read', 'sync.write', 'settings.read', 'brain.read', 'brain.write', 'proxy.use', 'device.connect', 'device.jobs.read', 'device.jobs.write'];
+            : ['sync.read', 'sync.write', 'settings.read', 'brain.read', 'brain.write', 'proxy.use', 'provider.keys', 'device.connect', 'device.jobs.read', 'device.jobs.write'];
 
         $minted = ApiKey::mint([
             'user_id' => $request->user()->id,

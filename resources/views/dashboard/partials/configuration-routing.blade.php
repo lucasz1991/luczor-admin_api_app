@@ -11,7 +11,7 @@
                 </div>
                 <x-ui.select class="luczor-input" name="provider_credential_id" aria-label="Explizites Provider-Credential" required>
                     <option value="">Provider-Credential auswählen</option>
-                    @foreach ($providers->where('active', true) as $credential)
+                    @foreach ($providers->where('active', true)->whereNull('user_id') as $credential)
                         <option value="{{ $credential->id }}">{{ $credential->provider }} · {{ $credential->label }}</option>
                     @endforeach
                 </x-ui.select>

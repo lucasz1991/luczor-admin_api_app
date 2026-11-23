@@ -9,7 +9,15 @@ namespace App\Services\Llm;
  */
 class AnthropicMessagesDriver implements ProviderDriver
 {
-    public const VERSION = '2023-06-01';
+    public const VERSION = '2026-10-21';
+
+    public const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+
+    public const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+    private const DEFAULT_MAX_TOKENS = 16000;
+
+    private const DEFAULT_STREAM_MAX_TOKENS = 64000;
 
     public function defaultBaseUrl(): string
     {
@@ -21,14 +29,19 @@ class AnthropicMessagesDriver implements ProviderDriver
         return $baseUrl.'/messages';
     }
 
-    public function headers(string $apiKey, bool $stream): array
+    public function headers(string $apiKey, bool $stream, array $payload = []): array
     {
-        return [
+        $headers = [
             'x-api-key' => $apiKey,
             'anthropic-version' => self::VERSION,
             'Content-Type' => 'application/json',
             'Accept' => $stream ? 'text/event-stream' : 'application/json',
         ];
+        if (self::wantsProviderFallback($payload)) {
+            $headers['anthropic-beta'] = self::FALLBACK_BETA;
+        }
+
+        return $headers;
     }
 
     public function buildBody(array $payload): array
@@ -85,31 +98,45 @@ class AnthropicMessagesDriver implements ProviderDriver
             $merged[] = $message;
         }
 
+        $stream = (bool) ($payload['stream'] ?? false);
         $body = [
             'model' => $payload['model'] ?? null,
-            // Required by the Messages API; the proxy always sets a budget.
-            'max_tokens' => (int) ($payload['max_tokens'] ?? 1024),
+            // Thinking tokens count against this budget, so the fallback is
+            // generous; a profile/policy budget in the payload still wins.
+            'max_tokens' => isset($payload['max_tokens'])
+                ? (int) $payload['max_tokens']
+                : ($stream ? self::DEFAULT_STREAM_MAX_TOKENS : self::DEFAULT_MAX_TOKENS),
             'messages' => $merged,
-            'stream' => (bool) ($payload['stream'] ?? false),
+            'stream' => $stream,
+            'thinking' => ['type' => 'adaptive'],
         ];
+        $effort = $payload['effort'] ?? null;
+        if (is_string($effort) && in_array($effort, self::EFFORTS, true)) {
+            $body['output_config'] = ['effort' => $effort];
+        }
+        if (self::wantsProviderFallback($payload)) {
+            $body['fallbacks'] = 'default';
+        }
         if ($system !== []) {
-            $body['system'] = implode("\n\n", $system);
+            // One cacheable block: the system prefix is stable across turns.
+            $body['system'] = [[
+                'type' => 'text',
+                'text' => implode("\n\n", $system),
+                'cache_control' => ['type' => 'ephemeral'],
+            ]];
         }
-        if (isset($payload['temperature'])) {
-            // Anthropic caps temperature at 1.
-            $body['temperature'] = min(1.0, max(0.0, (float) $payload['temperature']));
-        }
+        // Sampling parameters (temperature/top_p/top_k) are rejected by the
+        // pinned API version and are therefore never forwarded.
         if (! empty($payload['tools'])) {
             $body['tools'] = array_values(array_map(static fn (array $tool) => [
                 'name' => (string) ($tool['function']['name'] ?? ''),
                 'description' => (string) ($tool['function']['description'] ?? ''),
                 'input_schema' => $tool['function']['parameters'] ?? ['type' => 'object'],
             ], $payload['tools']));
-            $choice = $payload['tool_choice'] ?? null;
-            if ($choice === 'required') {
-                $body['tool_choice'] = ['type' => 'any'];
-            } elseif (is_array($choice) && isset($choice['function']['name'])) {
-                $body['tool_choice'] = ['type' => 'tool', 'name' => (string) $choice['function']['name']];
+            // Forced tool use ("required"/named) is rejected by current models;
+            // those choices degrade to the default (auto) by omission.
+            if (($payload['tool_choice'] ?? null) === 'none') {
+                $body['tool_choice'] = ['type' => 'none'];
             }
         }
 
@@ -121,6 +148,7 @@ class AnthropicMessagesDriver implements ProviderDriver
         $text = '';
         $toolCalls = [];
         foreach ($json['content'] ?? [] as $block) {
+            // Unknown block types (thinking, fallback markers, ...) are skipped.
             if (($block['type'] ?? null) === 'text') {
                 $text .= (string) ($block['text'] ?? '');
             }
@@ -140,21 +168,26 @@ class AnthropicMessagesDriver implements ProviderDriver
             $message['tool_calls'] = $toolCalls;
         }
 
-        $usage = $json['usage'] ?? [];
-        $prompt = (int) ($usage['input_tokens'] ?? 0);
-        $completion = (int) ($usage['output_tokens'] ?? 0);
-
-        return [
+        $stopReason = is_string($json['stop_reason'] ?? null) ? $json['stop_reason'] : null;
+        $canonical = [
             'id' => (string) ($json['id'] ?? ''),
             'object' => 'chat.completion',
             'model' => (string) ($json['model'] ?? ''),
             'choices' => [[
                 'index' => 0,
                 'message' => $message,
-                'finish_reason' => self::finishReason($json['stop_reason'] ?? null),
+                'finish_reason' => self::finishReason($stopReason),
             ]],
-            'usage' => ['prompt_tokens' => $prompt, 'completion_tokens' => $completion, 'total_tokens' => $prompt + $completion],
+            'usage' => self::usage(is_array($json['usage'] ?? null) ? $json['usage'] : []),
         ];
+        if ($stopReason === 'refusal') {
+            $canonical['luczor_refusal'] = self::refusal(
+                $json['stop_details'] ?? null,
+                $text !== '' || $toolCalls !== [],
+            );
+        }
+
+        return $canonical;
     }
 
     public function passthrough(): bool
@@ -170,9 +203,64 @@ class AnthropicMessagesDriver implements ProviderDriver
     public static function finishReason(?string $stopReason): string
     {
         return match ($stopReason) {
-            'max_tokens' => 'length',
+            'max_tokens', 'model_context_window_exceeded' => 'length',
             'tool_use' => 'tool_calls',
+            'refusal' => 'content_filter',
             default => 'stop',
         };
+    }
+
+    /**
+     * Canonical refusal marker shared by the JSON response and the final
+     * stream frame.
+     *
+     * @return array{category: ?string, phase: string}
+     */
+    public static function refusal(mixed $stopDetails, bool $producedOutput): array
+    {
+        $category = is_array($stopDetails) ? ($stopDetails['category'] ?? null) : null;
+
+        return [
+            'category' => is_string($category) && $category !== '' ? $category : null,
+            'phase' => $producedOutput ? 'mid_stream' : 'before_output',
+        ];
+    }
+
+    /**
+     * Canonical usage. prompt_tokens stays the uncached input so the cost
+     * telemetry can price cache reads and writes separately.
+     *
+     * @param  array<string,mixed>  $usage
+     * @return array<string,mixed>
+     */
+    public static function usage(array $usage): array
+    {
+        $prompt = (int) ($usage['input_tokens'] ?? 0);
+        $completion = (int) ($usage['output_tokens'] ?? 0);
+        $canonical = [
+            'prompt_tokens' => $prompt,
+            'completion_tokens' => $completion,
+            'total_tokens' => $prompt + $completion,
+        ];
+        if (isset($usage['cache_read_input_tokens'])) {
+            $canonical['prompt_tokens_details'] = ['cached_tokens' => (int) $usage['cache_read_input_tokens']];
+        }
+        if (isset($usage['cache_creation_input_tokens'])) {
+            $canonical['cache_write_tokens'] = (int) $usage['cache_creation_input_tokens'];
+        }
+
+        return $canonical;
+    }
+
+    /**
+     * Server-side refusal fallback is opt-in per request and unavailable on
+     * Haiku models.
+     *
+     * @param  array<string,mixed>  $payload
+     */
+    private static function wantsProviderFallback(array $payload): bool
+    {
+        return ($payload['provider_fallback'] ?? null) === true
+            && ! str_contains(strtolower((string) ($payload['model'] ?? '')), 'haiku');
     }
 }

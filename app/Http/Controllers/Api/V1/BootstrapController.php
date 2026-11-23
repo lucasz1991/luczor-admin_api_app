@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ModelProfile;
 use App\Models\Setting;
 use App\Services\AssistantProfileService;
+use App\Services\ClaudeAccessService;
 use App\Services\LocalModelManifestService;
 use App\Services\MemorySyncService;
 use Illuminate\Http\Request;
@@ -91,6 +92,8 @@ class BootstrapController extends Controller
             'external_client_model_selection' => false,
             'local_routing_managed_by' => 'desktop_signed_policy',
             'local_model_manifest_required' => true,
+            // Claude as user-selected main model; re-checked by the proxy on every call.
+            'main_model' => app(ClaudeAccessService::class)->bootstrapPayload(),
         ];
     }
 

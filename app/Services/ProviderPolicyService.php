@@ -10,6 +10,7 @@ use App\Models\ModelProfile;
 use App\Models\ModelRanking;
 use App\Models\ModelUseCase;
 use App\Models\NetworkPolicy;
+use App\Models\ProviderCredential;
 use App\Models\ProviderPriceSnapshot;
 use App\Services\Llm\ProviderWireFormat;
 use Illuminate\Support\Collection;
@@ -19,6 +20,11 @@ use JsonException;
 /** Enforces the server-owned external provider allow-list and fallback ladder. */
 class ProviderPolicyService
 {
+    /** Claude as the user-selected main model (personal or organization key). */
+    public const MAIN_TASK_TYPE = 'chat.main';
+
+    public const MAIN_USE_CASE = 'main-claude';
+
     private const CHAT_BASE_OVERHEAD_TOKENS = 3;
 
     private const CHAT_MESSAGE_OVERHEAD_TOKENS = 4;
@@ -35,8 +41,9 @@ class ProviderPolicyService
      *
      * @param  array<int,string>  $requiredCapabilities
      * @param  array<string,mixed>  $payload
+     * @param  ProviderCredential|null  $credentialOverride  request-scoped credential used instead of each profile's own
      */
-    public function resolve(string $taskType, array $requiredCapabilities, array $payload, ?array $eligibleProfileIds = null, ?int $attemptLimit = null): ProviderRoutingDecision
+    public function resolve(string $taskType, array $requiredCapabilities, array $payload, ?array $eligibleProfileIds = null, ?int $attemptLimit = null, ?ProviderCredential $credentialOverride = null): ProviderRoutingDecision
     {
         $this->selectionSource = 'admin_policy_manual';
         $useCase = $this->useCaseFor($taskType);
@@ -63,8 +70,10 @@ class ProviderPolicyService
         $estimatedInputTokens = $this->estimatedInputTokens($payload);
 
         foreach ($profiles as $profile) {
-            $profile->loadMissing('credential');
-            $credential = $profile->credential;
+            if ($credentialOverride === null) {
+                $profile->loadMissing('credential');
+            }
+            $credential = $credentialOverride ?? $profile->credential;
             if (! $credential || ! ProviderWireFormat::isCompatible($profile, $credential)) {
                 $excluded[] = 'routing_credential_incompatible';
 
@@ -131,6 +140,7 @@ class ProviderPolicyService
             reservedCostUsd: $reservedCostUsd,
             estimatedCostsByProfileId: $estimatedCosts,
             excludedReasonCodes: array_values(array_unique($excluded)),
+            credentialOverride: $credentialOverride,
         );
     }
 
@@ -163,6 +173,11 @@ class ProviderPolicyService
     {
         $requested = is_numeric($requested) ? (int) $requested : $profile->max_tokens;
         $hardLimit = (int) config('luczor.proxy.max_output_tokens', 8192);
+        if ($profile->provider === 'anthropic') {
+            // Adaptive thinking counts against max_tokens, so the Messages
+            // wire has its own ceiling; profile and network policy still cap it.
+            $hardLimit = max($hardLimit, (int) config('luczor.proxy.anthropic_max_output_tokens', 64000));
+        }
 
         return max(1, min($requested, (int) $profile->max_tokens, $hardLimit));
     }
@@ -250,6 +265,9 @@ class ProviderPolicyService
 
     public function useCaseFor(string $taskType): ?ModelUseCase
     {
+        if ($taskType === self::MAIN_TASK_TYPE) {
+            return ModelUseCase::query()->where('slug', self::MAIN_USE_CASE)->where('active', true)->first();
+        }
         if (str_starts_with($taskType, 'agent.')) {
             if (! AgentProfile::query()->where('key', AgentTeamPolicyService::POLICY_KEY)->where('type', 'team_policy')->where('status', 'active')->exists()) {
                 return null;

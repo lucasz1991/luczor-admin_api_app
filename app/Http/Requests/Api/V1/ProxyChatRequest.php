@@ -46,6 +46,9 @@ class ProxyChatRequest extends FormRequest
             'stream' => ['nullable', 'boolean'],
             'input_source' => ['nullable', 'string', 'in:keyboard,push_to_talk,hands_free'],
             'task_type' => ['nullable', 'string', 'max:120'],
+            // Only honoured for task_type chat.main (Claude as main model).
+            'main_model_profile' => ['nullable', 'string', 'max:120', 'regex:/^[a-z0-9][a-z0-9._-]*$/'],
+            'effort' => ['nullable', 'string', 'in:low,medium,high,xhigh,max'],
             'agent_team_policy_revision' => ['nullable', 'string', 'regex:/^[a-f0-9]{64}$/'],
             'client_id' => ['nullable', 'string', 'max:120'],
             'project_id' => ['nullable', 'string', 'max:120'],

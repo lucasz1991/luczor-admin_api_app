@@ -8,6 +8,7 @@ use App\Exceptions\RoutingPolicyException;
 use App\Http\Requests\Api\V1\ProxyChatRequest;
 use App\Services\AgentTeamPolicyService;
 use App\Services\ApiActor;
+use App\Services\ClaudeAccessService;
 use App\Services\LlmTelemetryService;
 use App\Services\ProviderPolicyService;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,6 +22,7 @@ final class ProxyChatService
         private LlmTelemetryService $telemetry,
         private ProxyProviderGateway $providerGateway,
         private ProxyResponseFactory $responseFactory,
+        private ClaudeAccessService $claude,
     ) {}
 
     public function handle(ProxyChatRequest $request, ProxyChatInput $input): Response
@@ -36,7 +38,34 @@ final class ProxyChatService
         $meta['user_id'] = $userId;
         $meta['client_id'] = $this->actor->deviceId($request, $input->clientId);
         $meta['project_ref_id'] = $this->actor->project($request, $input->projectId)?->id;
-        $prepared = $this->promptBuilder->prepare($input, $meta);
+
+        // Claude as main model: the client may pick one admin-approved profile
+        // and the request runs on the caller's resolved Claude credential.
+        // Every other task type keeps pure server-side model selection.
+        $eligibleProfileIds = null;
+        $attemptLimit = null;
+        $credentialOverride = null;
+        $providerOptions = [];
+        if ($input->taskType === ProviderPolicyService::MAIN_TASK_TYPE) {
+            if (! $this->claude->modesAllowed()) {
+                return $this->mainModelRejection('claude_modes_disabled', 'Claude als Hauptmodell ist auf diesem Server nicht freigegeben.', 403);
+            }
+            $credentialOverride = $this->claude->resolve($userId)['credential'];
+            if (! $credentialOverride) {
+                return $this->mainModelRejection('claude_access_missing', 'Es ist kein nutzbarer Claude-Zugang hinterlegt.', 403);
+            }
+            if ($input->mainModelProfile !== null) {
+                $profile = $this->claude->allowedProfile($input->mainModelProfile);
+                if (! $profile) {
+                    return $this->mainModelRejection('claude_model_not_allowed', 'Das gewählte Claude-Modell ist nicht freigegeben.', 422);
+                }
+                $eligibleProfileIds = [(int) $profile->id];
+                $attemptLimit = 1;
+            }
+            $providerOptions = ['provider_fallback' => $this->claude->providerFallback($userId)];
+        }
+
+        $prepared = $this->promptBuilder->prepare($input, $meta, $providerOptions);
         $run = $this->telemetry->startRun(
             $prepared->meta,
             $prepared->taskType,
@@ -49,6 +78,9 @@ final class ProxyChatService
                 $prepared->taskType,
                 $prepared->requiredCapabilities,
                 $prepared->payload,
+                $eligibleProfileIds,
+                $attemptLimit,
+                $credentialOverride,
             );
         } catch (RoutingPolicyException $exception) {
             $run->update([
@@ -118,5 +150,13 @@ final class ProxyChatService
         }
 
         return $this->responseFactory->make($prepared, $dispatch, $run, $limits, $routing);
+    }
+
+    /** `code` matches the proxy error convention; `error_code` the provider-key API. */
+    private function mainModelRejection(string $code, string $message, int $status): Response
+    {
+        return response()->json(['message' => $message, 'code' => $code, 'error_code' => $code], $status)
+            ->header('X-Luczor-Routing-Class', 'external')
+            ->header('X-Luczor-Routing-Reason', $code);
     }
 }

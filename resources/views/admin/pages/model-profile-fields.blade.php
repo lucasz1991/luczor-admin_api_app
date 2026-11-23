@@ -4,7 +4,7 @@
     <label class="ui-field">Provider-Zugang
         <x-ui.select name="provider_credential_id" required>
             <option value="">Zugang auswählen</option>
-            @foreach($providers->where('active', true) as $credential)
+            @foreach($providers->where('active', true)->whereNull('user_id') as $credential)
                 <option value="{{ $credential->id }}" @selected($profile?->provider_credential_id === $credential->id)>{{ $credential->provider }} · {{ $credential->label }}</option>
             @endforeach
         </x-ui.select>

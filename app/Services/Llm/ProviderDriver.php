@@ -12,8 +12,11 @@ interface ProviderDriver
 
     public function endpoint(string $baseUrl): string;
 
-    /** @return array<string,string> */
-    public function headers(string $apiKey, bool $stream): array;
+    /**
+     * @param  array<string,mixed>  $payload  canonical payload, for request-scoped opt-in headers
+     * @return array<string,string>
+     */
+    public function headers(string $apiKey, bool $stream, array $payload = []): array;
 
     /**
      * Canonical payload (messages/tools/model/temperature/max_tokens/stream)

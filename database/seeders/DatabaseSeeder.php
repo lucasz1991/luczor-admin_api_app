@@ -12,6 +12,7 @@ use App\Models\PromptTemplate;
 use App\Models\Setting;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\ClaudeProfileInstaller;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -155,6 +156,9 @@ class DatabaseSeeder extends Seeder
                 'max_input_tokens' => 24000, 'max_output_tokens' => 8192,
                 'config' => ['retry_statuses' => [0, 408, 409, 425, 429, 500, 502, 503, 504, 529]]]
         );
+
+        // Claude as main model: profiles, use case main-claude, prices (idempotent).
+        app(ClaudeProfileInstaller::class)->install();
 
         foreach ([
             ['planner', 'Planner Agent', ['cognee', 'project']],

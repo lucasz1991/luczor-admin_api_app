@@ -28,6 +28,8 @@ final readonly class ProxyChatInput
         public ?string $commitSha,
         public int $toolCallCount,
         public ?string $agentTeamPolicyRevision = null,
+        public ?string $mainModelProfile = null,
+        public ?string $effort = null,
     ) {}
 
     /** @param array<string,mixed> $validated */
@@ -56,6 +58,8 @@ final readonly class ProxyChatInput
             commitSha: self::nullableString($validated['commit_sha'] ?? null),
             toolCallCount: (int) ($validated['tool_call_count'] ?? 0),
             agentTeamPolicyRevision: self::nullableString($validated['agent_team_policy_revision'] ?? null),
+            mainModelProfile: self::nullableString($validated['main_model_profile'] ?? null),
+            effort: self::nullableString($validated['effort'] ?? null),
         );
     }
 
@@ -71,6 +75,10 @@ final readonly class ProxyChatInput
         }
         if ($this->hasToolChoice) {
             $payload['tool_choice'] = $this->toolChoice;
+        }
+        if ($this->taskType === 'chat.main' && $this->effort !== null) {
+            // Routing hint for the Anthropic driver; stripped by other drivers.
+            $payload['effort'] = $this->effort;
         }
 
         return $payload;

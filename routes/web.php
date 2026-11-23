@@ -41,6 +41,8 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/admin/{page}', [DashboardController::class, 'page'])->name('admin.page');
         Route::post('/dashboard/provider-credentials', [ModelConfigurationController::class, 'storeProviderCredential'])->name('dashboard.provider-credentials.store');
         Route::post('/dashboard/provider-credentials/{providerCredential}/toggle', [ModelConfigurationController::class, 'toggleProviderCredential'])->name('dashboard.provider-credentials.toggle');
+        Route::post('/dashboard/claude-settings', [ModelConfigurationController::class, 'updateClaudeSettings'])->name('dashboard.claude-settings.update');
+        Route::post('/dashboard/model-profiles/{modelProfile}/composer-visibility', [ModelConfigurationController::class, 'toggleComposerVisibility'])->name('dashboard.model-profiles.composer-visibility');
         Route::post('/dashboard/model-profiles', [ModelConfigurationController::class, 'storeModelProfile'])->name('dashboard.model-profiles.store');
         Route::post('/dashboard/model-profiles/{modelProfile}/toggle', [ModelConfigurationController::class, 'toggleModelProfile'])->name('dashboard.model-profiles.toggle');
         Route::put('/dashboard/model-profiles/{modelProfile}', [ModelConfigurationController::class, 'updateModelProfile'])->name('dashboard.model-profiles.update');

@@ -5,6 +5,7 @@ namespace App\Services\Proxy;
 use App\Models\ApiKey;
 use App\Models\ProviderCredential;
 use App\Services\ApiActor;
+use App\Services\ProviderPolicyService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -28,7 +29,10 @@ final class ProxyRequestAdmissionService
         }
         RateLimiter::hit($rateKey, 60);
 
-        if (! ProviderCredential::query()->where('active', true)->exists()) {
+        // chat.main resolves its own credential and answers with
+        // claude_access_missing instead of this generic outage.
+        if ($request->input('task_type') !== ProviderPolicyService::MAIN_TASK_TYPE
+            && ! ProviderCredential::query()->where('active', true)->exists()) {
             throw new HttpResponseException(
                 response()->json(['message' => 'Kein aktiver Provider im Server konfiguriert.'], 503),
             );
