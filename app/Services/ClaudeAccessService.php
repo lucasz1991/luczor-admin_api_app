@@ -44,6 +44,8 @@ class ClaudeAccessService
 
     public const PREFERENCE_PROVIDER_FALLBACK = 'claude_provider_fallback';
 
+    public const PREFERENCE_MODEL = 'claude_preferred_model';
+
     public const DEFAULT_EFFORTS = ['fast', 'balanced', 'thorough', 'max', 'ultra'];
 
     public function modesAllowed(): bool
@@ -130,6 +132,44 @@ class ClaudeAccessService
         $this->putPreference($userId, self::PREFERENCE_PROVIDER_FALLBACK, $enabled);
     }
 
+    /** The user's composer model, as long as the admin still offers it. */
+    public function preferredModel(int $userId): ?string
+    {
+        $value = $this->preference($userId, self::PREFERENCE_MODEL);
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+        foreach ($this->composerModels() as $model) {
+            if ($model['id'] === $value) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    public function isComposerModel(string $slug): bool
+    {
+        foreach ($this->composerModels() as $model) {
+            if ($model['id'] === $slug) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function setPreferredModel(int $userId, ?string $slug): void
+    {
+        if ($slug === null) {
+            // No stored choice: the device falls back to the server default.
+            UserPreference::query()->where('user_id', $userId)->where('key', self::PREFERENCE_MODEL)->delete();
+
+            return;
+        }
+        $this->putPreference($userId, self::PREFERENCE_MODEL, $slug);
+    }
+
     /**
      * Personal key first unless the user explicitly chose the organization
      * access; each source only counts while the admin allows it.
@@ -174,6 +214,25 @@ class ClaudeAccessService
             'last_test_status' => $credential?->last_test_status,
             'allowed_sources' => $this->allowedSources(),
             'provider_fallback' => $this->providerFallback($userId),
+            'preferred_model' => $this->preferredModel($userId),
+        ];
+    }
+
+    /**
+     * The account's Claude setup for a freshly started device: everything it
+     * needs to use Claude at once, and nothing that identifies the key.
+     *
+     * @return array{connected: bool, source: ?string, provider_fallback: bool, preferred_model: ?string}
+     */
+    public function accountSetup(int $userId): array
+    {
+        $resolved = $this->resolve($userId);
+
+        return [
+            'connected' => $resolved['credential'] !== null,
+            'source' => $resolved['source'],
+            'provider_fallback' => $this->providerFallback($userId),
+            'preferred_model' => $this->preferredModel($userId),
         ];
     }
 
@@ -223,7 +282,7 @@ class ClaudeAccessService
      *
      * @return array<string,mixed>
      */
-    public function bootstrapPayload(): array
+    public function bootstrapPayload(?int $userId = null): array
     {
         $models = $this->composerModels();
 
@@ -232,6 +291,8 @@ class ClaudeAccessService
             'key_sources' => $this->allowedSources(),
             'default_model' => $models[0]['id'] ?? null,
             'models' => $models,
+            // Stored per account on the server, so every device of the user starts configured.
+            'access' => $userId !== null ? $this->accountSetup($userId) : null,
         ];
     }
 

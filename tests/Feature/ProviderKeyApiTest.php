@@ -47,6 +47,7 @@ class ProviderKeyApiTest extends TestCase
             'last_test_status' => null,
             'allowed_sources' => ['user'],
             'provider_fallback' => false,
+            'preferred_model' => null,
         ]);
         $this->assertContains('provider.keys', ApiKey::DEVICE_ABILITIES);
         $this->assertContains('provider.keys', ApiKey::ABILITIES);

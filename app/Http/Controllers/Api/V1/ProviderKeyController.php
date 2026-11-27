@@ -118,9 +118,23 @@ class ProviderKeyController extends Controller
     public function updateOptions(UpdateProviderKeyOptionsRequest $request): JsonResponse
     {
         $userId = $this->actor->userId($request);
-        $enabled = (bool) $request->validated('provider_fallback');
-        $this->claude->setProviderFallback($userId, $enabled);
-        $this->record($request, 'provider_key.options', $enabled ? 'provider_fallback_on' : 'provider_fallback_off');
+        $options = $request->validated();
+        if (! array_key_exists('preferred_model', $options) && ! array_key_exists('provider_fallback', $options)) {
+            return $this->error('claude_options_empty', 'Es wurde keine Einstellung übergeben.', 422);
+        }
+        if (array_key_exists('preferred_model', $options)) {
+            $model = $options['preferred_model'];
+            if ($model !== null && ! $this->claude->isComposerModel((string) $model)) {
+                return $this->error('claude_model_not_allowed', 'Dieses Claude-Modell ist nicht freigegeben.', 422);
+            }
+            $this->claude->setPreferredModel($userId, $model === null ? null : (string) $model);
+            $this->record($request, 'provider_key.options', 'preferred_model');
+        }
+        if (array_key_exists('provider_fallback', $options)) {
+            $enabled = (bool) $options['provider_fallback'];
+            $this->claude->setProviderFallback($userId, $enabled);
+            $this->record($request, 'provider_key.options', $enabled ? 'provider_fallback_on' : 'provider_fallback_off');
+        }
 
         return response()->json($this->claude->status($userId));
     }

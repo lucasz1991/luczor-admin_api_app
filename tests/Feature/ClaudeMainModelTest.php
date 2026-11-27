@@ -88,6 +88,8 @@ class ClaudeMainModelTest extends TestCase
                     ['id' => 'claude-sonnet-5-5', 'label' => 'Claude Sonnet 5.5', 'description' => 'Schnell und vielseitig für den Alltag', 'efforts' => ['fast', 'balanced', 'thorough', 'max', 'ultra']],
                     ['id' => 'claude-haiku-5-5', 'label' => 'Claude Haiku 5.5', 'description' => 'Am schnellsten, für einfache Aufgaben', 'efforts' => ['fast', 'balanced', 'thorough', 'max', 'ultra']],
                 ],
+                // Per-account setup; this account has configured nothing yet.
+                'access' => ['connected' => false, 'source' => null, 'provider_fallback' => false, 'preferred_model' => null],
             ]);
 
         // Admin: release the modes + organization access, hide Opus, reorder Haiku first.

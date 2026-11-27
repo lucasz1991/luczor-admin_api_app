@@ -15,7 +15,10 @@ class UpdateProviderKeyOptionsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'provider_fallback' => ['required', 'boolean'],
+            // Either option may be sent alone; both are stored per account.
+            // `preferred_model: null` clears the stored choice.
+            'provider_fallback' => ['sometimes', 'boolean'],
+            'preferred_model' => ['sometimes', 'nullable', 'string', 'max:160', 'regex:/^[a-zA-Z0-9._-]+$/'],
         ];
     }
 }

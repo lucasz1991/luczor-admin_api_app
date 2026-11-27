@@ -33,7 +33,7 @@ class BootstrapController extends Controller
             'memory_server_instance' => MemorySyncService::serverInstance(),
             'realtime' => $this->realtimePayload(),
             'local_model_manifest' => $localModels->discovery(),
-            'routing' => $this->routingPayload(),
+            'routing' => $this->routingPayload($request->user()?->id),
             'assistant_profile' => $assistant->forUser($request->user()?->id),
         ]);
     }
@@ -55,11 +55,11 @@ class BootstrapController extends Controller
         ]);
     }
 
-    public function runtimeSettings()
+    public function runtimeSettings(Request $request)
     {
         return response()->json([
             'data' => $this->runtimeSettingsPayload(),
-            'routing' => $this->routingPayload(),
+            'routing' => $this->routingPayload($request->user()?->id),
         ]);
     }
 
@@ -81,7 +81,7 @@ class BootstrapController extends Controller
     }
 
     /** @return array<string,mixed> */
-    private function routingPayload(): array
+    private function routingPayload(?int $userId = null): array
     {
         return [
             // Legacy fields describe external provider selection only.
@@ -93,7 +93,7 @@ class BootstrapController extends Controller
             'local_routing_managed_by' => 'desktop_signed_policy',
             'local_model_manifest_required' => true,
             // Claude as user-selected main model; re-checked by the proxy on every call.
-            'main_model' => app(ClaudeAccessService::class)->bootstrapPayload(),
+            'main_model' => app(ClaudeAccessService::class)->bootstrapPayload($userId),
         ];
     }
 
